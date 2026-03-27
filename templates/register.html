@@ -1,0 +1,51 @@
+{{template "base.html" .}}
+
+{{define "title"}}注册 — FeatureTrack{{end}}
+
+{{define "content"}}
+<div style="max-width:440px;margin:48px auto">
+  <div class="us-card">
+    <div class="us-card-head">
+      <span class="us-card-title">创建账号</span>
+    </div>
+    <div class="us-card-body">
+      {{if .Flash}}
+      <div class="us-alert us-alert-{{.Flash.Type}}" style="margin-bottom:16px;border-radius:2px">
+        <div style="padding:10px 14px;font-size:14px">{{.Flash.Message}}</div>
+      </div>
+      {{end}}
+      <form method="POST" action="/register">
+        <div class="us-form-group">
+          <label class="us-label" for="username">用户名</label>
+          <input class="us-input" type="text" id="username" name="username" autocomplete="username" required>
+        </div>
+        <div class="us-form-group">
+          <label class="us-label" for="email">邮箱</label>
+          <input class="us-input" type="email" id="email" name="email" autocomplete="email" required>
+        </div>
+        <div class="us-form-group">
+          <label class="us-label" for="password">密码</label>
+          <span class="us-hint">至少 6 位</span>
+          <input class="us-input" type="password" id="password" name="password" autocomplete="new-password" required>
+        </div>
+        <div class="us-form-group">
+          <label class="us-label">角色</label>
+          <div style="display:flex;gap:16px;margin-top:4px">
+            <label style="display:flex;align-items:center;gap:6px;font-size:14px;cursor:pointer">
+              <input type="radio" name="role" value="pm" checked> 产品经理
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:14px;cursor:pointer">
+              <input type="radio" name="role" value="dev"> 开发工程师
+            </label>
+          </div>
+        </div>
+        <button type="submit" class="us-btn us-btn-primary" style="width:100%">注册</button>
+      </form>
+      <hr class="us-divider">
+      <p style="font-size:13px;text-align:center;color:#71767a">
+        已有账号？<a href="/login">立即登录</a>
+      </p>
+    </div>
+  </div>
+</div>
+{{end}}

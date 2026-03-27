@@ -1,0 +1,87 @@
+{{define "base.html"}}<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{block "title" .}}VisualLink Tasks{{end}}</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  {{block "head" .}}{{end}}
+</head>
+<body>
+
+  <!-- 顶部导航栏 -->
+  <header class="us-header">
+    <div class="us-header-inner">
+      <div class="us-logo">
+        VisualLink Tasks
+        <span>内部协作系统</span>
+      </div>
+      <nav class="us-nav">
+        {{if .CurrentUser}}
+          <a href="/dashboard" {{if eq .ActiveNav "dashboard"}}class="active"{{end}}>看板</a>
+          <a href="/features/mine" {{if eq .ActiveNav "mine"}}class="active"{{end}}>我的提交</a>
+          <a href="/groups" {{if eq .ActiveNav "groups"}}class="active"{{end}}>功能组</a>
+          {{if eq .CurrentUser.Role "admin"}}
+          <a href="/admin" {{if eq .ActiveNav "admin"}}class="active"{{end}}>管理</a>
+          {{end}}
+          <form method="POST" action="/logout" style="display:inline">
+            <button type="submit" class="us-nav-logout">退出</button>
+          </form>
+        {{else}}
+          <a href="/login">登录</a>
+          <a href="/register">注册</a>
+        {{end}}
+      </nav>
+    </div>
+  </header>
+
+  <!-- 信息横幅（登录后显示） -->
+  {{if .CurrentUser}}
+  <div class="us-banner">
+    <div class="us-banner-dot"></div>
+    <span>
+      当前用户：{{.CurrentUser.Username}}
+      （{{if eq .CurrentUser.Role "pm"}}产品经理{{else if eq .CurrentUser.Role "dev"}}开发工程师{{else}}管理员{{end}}）
+      {{if .BannerMessage}}&nbsp;·&nbsp;{{.BannerMessage}}{{end}}
+    </span>
+  </div>
+  {{end}}
+
+  <!-- Flash 消息（操作反馈） -->
+  {{if .Flash}}
+  <div class="us-alert us-alert-{{.Flash.Type}}">
+    <div class="us-alert-inner">
+      <strong>{{.Flash.Message}}</strong>
+    </div>
+  </div>
+  {{end}}
+
+  <!-- 主内容区 -->
+  <main class="us-main">
+    {{block "content" .}}
+    <p>页面内容加载中...</p>
+    {{end}}
+  </main>
+
+  <!-- 全局功能详情弹窗 -->
+  <div id="feature-modal"
+    x-data="{ open: false }"
+    @open-modal.window="open = true"
+    @close-modal.window="open = false"
+    x-show="open"
+    style="display:none"
+    class="modal-overlay"
+    @click.self="open = false">
+    <div class="modal-box">
+      <div id="modal-content"></div>
+    </div>
+  </div>
+
+  <!-- HTMX + Alpine.js 本地托管，避免 CDN 在中国不稳定 -->
+  <script src="/static/js/htmx.min.js"></script>
+  <script defer src="/static/js/alpine.min.js"></script>
+
+  {{block "scripts" .}}{{end}}
+</body>
+</html>
+{{end}}

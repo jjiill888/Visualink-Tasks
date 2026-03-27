@@ -1,0 +1,13 @@
+# 用于"开发机交叉编译后传二进制"的快速部署
+# 使用前先在开发机运行：
+#   GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o featuretrack .
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates tzdata
+WORKDIR /app
+
+COPY featuretrack .
+COPY templates/ templates/
+COPY static/    static/
+
+EXPOSE 8080
+CMD ["./featuretrack"]

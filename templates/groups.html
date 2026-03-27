@@ -1,0 +1,67 @@
+{{template "base.html" .}}
+
+{{define "title"}}功能组 — FeatureTrack{{end}}
+
+{{define "content"}}
+{{$d := .Data}}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+  <div class="us-page-title">功能组</div>
+</div>
+<div class="us-page-sub">将相关功能归组管理，便于版本规划</div>
+
+<div class="us-cols">
+  <div>
+    <div class="us-card">
+      <div class="us-card-head">
+        <span class="us-card-title">所有功能组（{{len $d.Groups}} 个）</span>
+      </div>
+      {{if $d.Groups}}
+        {{range $d.Groups}}
+        <a href="/groups/{{.ID}}" style="text-decoration:none;color:inherit">
+          <div class="us-feature-item">
+            <div class="us-feature-meta">
+              <div class="us-feature-title">{{.Title}}</div>
+              {{if .Description}}
+              <div class="us-feature-desc">{{.Description}}</div>
+              {{end}}
+              <div class="us-feature-footer">
+                创建者：{{.CreatorName}} &nbsp;·&nbsp; {{.FeatureCount}} 条功能
+              </div>
+            </div>
+            <span class="us-badge badge-pending">→</span>
+          </div>
+        </a>
+        {{end}}
+      {{else}}
+        <div class="us-empty">
+          <div class="us-empty-title">暂无功能组</div>
+          <p style="font-size:13px;color:#71767a">在右侧创建第一个功能组</p>
+        </div>
+      {{end}}
+    </div>
+  </div>
+
+  <div>
+    <div class="us-card">
+      <div class="us-card-head">
+        <span class="us-card-title">新建功能组</span>
+      </div>
+      <div class="us-card-body">
+        <form method="POST" action="/groups">
+          <div class="us-form-group">
+            <label class="us-label" for="g-title">组名称 *</label>
+            <input class="us-input" type="text" id="g-title" name="title" required
+              placeholder="例：v1.2 迭代 / 联机功能模块">
+          </div>
+          <div class="us-form-group">
+            <label class="us-label" for="g-desc">描述（可选）</label>
+            <textarea class="us-textarea" id="g-desc" name="description"
+              placeholder="这一组功能的目标或背景说明" style="min-height:70px"></textarea>
+          </div>
+          <button type="submit" class="us-btn us-btn-primary">创建功能组</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}

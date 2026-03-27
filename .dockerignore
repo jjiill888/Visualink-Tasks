@@ -1,0 +1,5 @@
+data/
+*.db
+.git/
+dashboard.html
+base.html

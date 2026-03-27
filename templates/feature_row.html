@@ -1,0 +1,44 @@
+{{define "feature_row.html"}}
+<div id="feature-{{.ID}}" class="us-feature-item" data-priority="{{.Priority}}" data-status="{{.Status}}">
+  <!-- 左侧：点击区域 → 打开弹窗 -->
+  <div style="display:flex;gap:12px;align-items:flex-start;flex:1;min-width:0;cursor:pointer"
+    hx-get="/features/{{.ID}}"
+    hx-target="#modal-content"
+    hx-swap="innerHTML"
+    hx-on:htmx:after-request="if(event.detail.successful) window.dispatchEvent(new CustomEvent('open-modal'))">
+    <div class="us-priority-dot {{.PriorityDotClass}}"></div>
+    <div class="us-feature-meta">
+      <div class="us-feature-title">{{.Title}}</div>
+      {{if .Description}}
+      <div class="us-feature-desc">{{.Description}}</div>
+      {{end}}
+      <div class="us-feature-footer">
+        提交者：{{.CreatorName}}（{{.CreatorRoleLabel}}）
+        {{if .GroupTitle}} &nbsp;·&nbsp; 组：{{.GroupTitle}}{{end}}
+      </div>
+    </div>
+  </div>
+
+  <!-- 右侧：状态徽章 + 操作按钮（独立，不触发弹窗） -->
+  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">
+    <span class="us-badge {{.StatusBadgeClass}}">{{.StatusLabel}}</span>
+    {{if eq .Status "pending"}}
+    <button class="us-btn us-btn-outline us-btn-sm"
+      hx-patch="/features/{{.ID}}/status"
+      hx-vals='{"status":"in_progress"}'
+      hx-target="#feature-{{.ID}}"
+      hx-swap="outerHTML">
+      开始处理
+    </button>
+    {{else if eq .Status "in_progress"}}
+    <button class="us-btn us-btn-primary us-btn-sm"
+      hx-patch="/features/{{.ID}}/status"
+      hx-vals='{"status":"done"}'
+      hx-target="#feature-{{.ID}}"
+      hx-swap="outerHTML">
+      标记完成 ✓
+    </button>
+    {{end}}
+  </div>
+</div>
+{{end}}

@@ -1,0 +1,27 @@
+{{template "base.html" .}}
+
+{{define "title"}}我的提交 — FeatureTrack{{end}}
+
+{{define "content"}}
+{{$d := .Data}}
+<div class="us-page-title">我的提交</div>
+<div class="us-page-sub">你提交的所有功能需求</div>
+
+<div class="us-card">
+  <div class="us-card-head">
+    <span class="us-card-title">提交记录（{{len $d.Features}} 条）</span>
+    <a href="/dashboard" class="us-btn us-btn-outline us-btn-sm">返回看板</a>
+  </div>
+
+  {{if $d.Features}}
+    {{range $d.Features}}{{template "feature_row.html" .}}{{end}}
+  {{else}}
+    <div class="us-empty">
+      <div class="us-empty-title">你还没有提交过功能</div>
+      <p style="font-size:13px;color:#71767a">
+        前往<a href="/dashboard">看板</a>，点击「+ 提交功能」开始
+      </p>
+    </div>
+  {{end}}
+</div>
+{{end}}

@@ -1,0 +1,69 @@
+{{define "feature_detail.html"}}
+{{$f := .Feature}}
+<div class="modal-header">
+  <div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <div class="us-priority-dot {{$f.PriorityDotClass}}" style="width:10px;height:10px;margin-top:0"></div>
+      <span class="us-badge {{$f.StatusBadgeClass}}">{{$f.StatusLabel}}</span>
+      <span style="font-size:12px;color:#a9aeb1">{{$f.PriorityLabel}} 优先级</span>
+    </div>
+    <h2 class="modal-title">{{$f.Title}}</h2>
+    <div style="font-size:13px;color:#71767a;margin-top:4px">
+      提交者：{{$f.CreatorName}}（{{$f.CreatorRoleLabel}}）
+      {{if $f.GroupTitle}} &nbsp;·&nbsp; 功能组：{{$f.GroupTitle}}{{end}}
+    </div>
+  </div>
+  <button class="modal-close-btn" onclick="window.dispatchEvent(new CustomEvent('close-modal'))">×</button>
+</div>
+
+{{if $f.Description}}
+<div class="modal-section">
+  <div class="modal-section-label">详细描述</div>
+  <p style="font-size:14px;color:#1b1b1b;white-space:pre-wrap;line-height:1.7;margin:0">{{$f.Description}}</p>
+</div>
+{{end}}
+
+<!-- 状态操作 -->
+<div class="modal-section" style="border-bottom:none;padding-bottom:4px">
+  <div id="status-actions-{{$f.ID}}">
+    {{if eq $f.Status "pending"}}
+    <button class="us-btn us-btn-outline us-btn-sm"
+      hx-patch="/features/{{$f.ID}}/status"
+      hx-vals='{"status":"in_progress"}'
+      hx-target="#feature-{{$f.ID}}"
+      hx-swap="outerHTML">
+      开始处理
+    </button>
+    {{else if eq $f.Status "in_progress"}}
+    <button class="us-btn us-btn-primary us-btn-sm"
+      hx-patch="/features/{{$f.ID}}/status"
+      hx-vals='{"status":"done"}'
+      hx-target="#feature-{{$f.ID}}"
+      hx-swap="outerHTML">
+      标记完成 ✓
+    </button>
+    {{else}}
+    <span style="font-size:13px;color:#1a7a1a;font-weight:700">✓ 已完成</span>
+    {{end}}
+  </div>
+</div>
+
+<!-- 评论 -->
+<div class="modal-section" style="border-bottom:none">
+  <div class="modal-section-label">评论（{{len .Comments}}）</div>
+
+  <div id="comments-{{$f.ID}}" class="comments-list">
+    {{template "comments_partial.html" .Comments}}
+  </div>
+
+  <form class="comment-form"
+    hx-post="/features/{{$f.ID}}/comments"
+    hx-target="#comments-{{$f.ID}}"
+    hx-swap="innerHTML"
+    hx-on:htmx:after-request="this.reset()">
+    <textarea class="us-textarea comment-input" name="content"
+      placeholder="添加评论…" required style="min-height:64px"></textarea>
+    <button type="submit" class="us-btn us-btn-primary us-btn-sm" style="margin-top:8px">发送</button>
+  </form>
+</div>
+{{end}}

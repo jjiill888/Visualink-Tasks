@@ -1,0 +1,29 @@
+{{define "comments_partial.html"}}
+{{if .}}
+  {{range .}}
+  <div class="comment-item">
+    <div class="comment-header">
+      <span class="comment-author">{{.Username}}（{{.UserRoleLabel}}）</span>
+      <span class="comment-time" data-utc="{{.CreatedAt.UTC.Format "2006-01-02T15:04:05Z"}}">{{.CreatedAt.Format "01-02 15:04"}}</span>
+    </div>
+    <p class="comment-body">{{.Content}}</p>
+  </div>
+  {{end}}
+{{else}}
+  <p class="comment-empty">暂无评论</p>
+{{end}}
+<script>
+(function(){
+  document.querySelectorAll('.comment-time[data-utc]').forEach(function(el){
+    var utc = el.getAttribute('data-utc');
+    if(!utc) return;
+    var d = new Date(utc);
+    var month = String(d.getMonth()+1).padStart(2,'0');
+    var day   = String(d.getDate()).padStart(2,'0');
+    var hour  = String(d.getHours()).padStart(2,'0');
+    var min   = String(d.getMinutes()).padStart(2,'0');
+    el.textContent = month+'-'+day+' '+hour+':'+min;
+  });
+})();
+</script>
+{{end}}

@@ -1,0 +1,35 @@
+{{template "base.html" .}}
+
+{{define "title"}}登录 — FeatureTrack{{end}}
+
+{{define "content"}}
+<div style="max-width:400px;margin:48px auto">
+  <div class="us-card">
+    <div class="us-card-head">
+      <span class="us-card-title">登录</span>
+    </div>
+    <div class="us-card-body">
+      {{if .Flash}}
+      <div class="us-alert us-alert-{{.Flash.Type}}" style="margin-bottom:16px;border-radius:2px">
+        <div style="padding:10px 14px;font-size:14px">{{.Flash.Message}}</div>
+      </div>
+      {{end}}
+      <form method="POST" action="/login">
+        <div class="us-form-group">
+          <label class="us-label" for="username">用户名</label>
+          <input class="us-input" type="text" id="username" name="username" autocomplete="username" required>
+        </div>
+        <div class="us-form-group">
+          <label class="us-label" for="password">密码</label>
+          <input class="us-input" type="password" id="password" name="password" autocomplete="current-password" required>
+        </div>
+        <button type="submit" class="us-btn us-btn-primary" style="width:100%">登录</button>
+      </form>
+      <hr class="us-divider">
+      <p style="font-size:13px;text-align:center;color:#71767a">
+        还没有账号？<a href="/register">立即注册</a>
+      </p>
+    </div>
+  </div>
+</div>
+{{end}}

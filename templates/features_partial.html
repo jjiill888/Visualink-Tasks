@@ -1,0 +1,10 @@
+{{define "features_partial.html"}}
+{{if .}}
+  {{range .}}{{template "feature_row.html" .}}{{end}}
+{{else}}
+  <div class="us-empty">
+    <div class="us-empty-title">没有符合条件的功能</div>
+    <p style="font-size:13px;color:#71767a">尝试调整筛选条件</p>
+  </div>
+{{end}}
+{{end}}
