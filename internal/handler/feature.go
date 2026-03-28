@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"featuretrack/internal/db"
+	"featuretrack/internal/hub"
 	"featuretrack/internal/model"
 
 	"github.com/go-chi/chi/v5"
@@ -105,8 +106,24 @@ func UpdateStatus(database *db.DB) http.HandlerFunc {
 			http.Error(w, "not found", 404)
 			return
 		}
+		hub.Global.Broadcast("feature-updated")
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if err := PartialTmpl.ExecuteTemplate(w, "feature_row.html", f); err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+	}
+}
+
+// GetStats handles GET /stats — returns stats grid partial + OOB banner update
+func GetStats(database *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		stats, err := database.GetStats()
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := PartialTmpl.ExecuteTemplate(w, "stats_partial.html", stats); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}
@@ -147,6 +164,7 @@ func CreateFeature(database *db.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), 500)
 			return
 		}
+		hub.Global.Broadcast("feature-updated")
 		http.Redirect(w, r, "/dashboard?success=1", http.StatusSeeOther)
 	}
 }
@@ -226,6 +244,7 @@ func AddComment(database *db.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), 500)
 			return
 		}
+		hub.Global.Broadcast("feature-updated")
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if err := PartialTmpl.ExecuteTemplate(w, "comments_partial.html", comments); err != nil {
 			http.Error(w, err.Error(), 500)

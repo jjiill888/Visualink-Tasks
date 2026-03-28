@@ -52,6 +52,7 @@ func buildPartialTmpl() *template.Template {
 		"templates/features_partial.html",
 		"templates/comments_partial.html",
 		"templates/feature_detail.html",
+		"templates/stats_partial.html",
 	))
 }
 
@@ -97,6 +98,8 @@ func main() {
 
 		r.Get("/dashboard", handler.Dashboard(database))
 
+		r.Get("/sse", handler.SSE())
+		r.Get("/stats", handler.GetStats(database))
 		r.Get("/features/mine", handler.Mine(database))
 		r.Get("/features", handler.ListFeatures(database))
 		r.Post("/features", handler.CreateFeature(database))

@@ -42,7 +42,7 @@
     <span>
       当前用户：{{.CurrentUser.Username}}
       （{{if eq .CurrentUser.Role "pm"}}产品经理{{else if eq .CurrentUser.Role "dev"}}开发工程师{{else}}管理员{{end}}）
-      {{if .BannerMessage}}&nbsp;·&nbsp;{{.BannerMessage}}{{end}}
+      {{if .BannerMessage}}<span id="banner-pending">&nbsp;·&nbsp;{{.BannerMessage}}</span>{{end}}
     </span>
   </div>
   {{end}}
@@ -79,6 +79,7 @@
 
   <!-- HTMX + Alpine.js 本地托管，避免 CDN 在中国不稳定 -->
   <script src="/static/js/htmx.min.js"></script>
+  <script src="/static/js/htmx-ext-sse.js"></script>
   <script defer src="/static/js/alpine.min.js"></script>
 
   {{block "scripts" .}}{{end}}

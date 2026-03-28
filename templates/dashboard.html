@@ -8,7 +8,7 @@
 <div class="us-page-sub">查看所有提交的功能需求及当前处理状态</div>
 
 <!-- Stats -->
-<div class="us-stat-grid">
+<div id="stats-grid" class="us-stat-grid">
   <div class="us-stat">
     <div class="us-stat-label">全部功能</div>
     <div class="us-stat-val">{{$d.Stats.Total}}</div>
@@ -67,9 +67,15 @@
       </div>
 
       <!-- Feature list (HTMX target) -->
+      <div hx-ext="sse" sse-connect="/sse">
+      <div hx-trigger="sse:feature-updated"
+           hx-get="/stats"
+           hx-target="#stats-grid"
+           hx-swap="outerHTML"
+           style="display:none"></div>
       <div id="feature-list"
         hx-get="/features"
-        hx-trigger="load, refresh"
+        hx-trigger="load, refresh, sse:feature-updated"
         hx-include="#filter-priority, #filter-status"
         hx-swap="innerHTML">
         {{if $d.Features}}
@@ -81,6 +87,7 @@
           </div>
         {{end}}
       </div>
+      </div>{{/* end sse wrapper */}}
     </div>
   </div>
 
@@ -180,5 +187,6 @@
       history.replaceState({}, '', '/dashboard');
     }
   })();
+
 </script>
 {{end}}

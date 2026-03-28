@@ -27,7 +27,8 @@
       hx-patch="/features/{{.ID}}/status"
       hx-vals='{"status":"in_progress"}'
       hx-target="#feature-{{.ID}}"
-      hx-swap="outerHTML">
+      hx-swap="outerHTML"
+      hx-on:htmx:after-request="if(event.detail.successful) htmx.ajax('GET', '/stats', {target:'#stats-grid', swap:'outerHTML'})">
       开始处理
     </button>
     {{else if eq .Status "in_progress"}}
@@ -35,7 +36,8 @@
       hx-patch="/features/{{.ID}}/status"
       hx-vals='{"status":"done"}'
       hx-target="#feature-{{.ID}}"
-      hx-swap="outerHTML">
+      hx-swap="outerHTML"
+      hx-on:htmx:after-request="if(event.detail.successful) htmx.ajax('GET', '/stats', {target:'#stats-grid', swap:'outerHTML'})">
       标记完成 ✓
     </button>
     {{end}}

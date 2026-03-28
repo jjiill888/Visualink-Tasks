@@ -1,0 +1,21 @@
+{{define "stats_partial.html"}}
+<div id="stats-grid" class="us-stat-grid">
+  <div class="us-stat">
+    <div class="us-stat-label">全部功能</div>
+    <div class="us-stat-val">{{.Total}}</div>
+  </div>
+  <div class="us-stat warn">
+    <div class="us-stat-label">待处理</div>
+    <div class="us-stat-val">{{.Pending}}</div>
+  </div>
+  <div class="us-stat">
+    <div class="us-stat-label">进行中</div>
+    <div class="us-stat-val">{{.InProgress}}</div>
+  </div>
+  <div class="us-stat success">
+    <div class="us-stat-label">已完成</div>
+    <div class="us-stat-val">{{.Done}}</div>
+  </div>
+</div>
+<span id="banner-pending" hx-swap-oob="innerHTML">&nbsp;·&nbsp;共 {{.Pending}} 条待处理功能</span>
+{{end}}
