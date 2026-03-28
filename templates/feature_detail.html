@@ -50,9 +50,7 @@
 
 <!-- 评论 -->
 <div class="modal-section" style="border-bottom:none">
-  <div class="modal-section-label">评论（{{len .Comments}}）</div>
-
-  <div id="comments-{{$f.ID}}" class="comments-list">
+  <div id="comments-{{$f.ID}}">
     {{template "comments_partial.html" .Comments}}
   </div>
 
