@@ -26,6 +26,7 @@
 <!-- 状态操作 -->
 <div class="modal-section" style="border-bottom:none;padding-bottom:4px">
   <div id="status-actions-{{$f.ID}}">
+    {{if .CanEditStatus}}
     {{if eq $f.Status "pending"}}
     <button class="us-btn us-btn-outline us-btn-sm"
       hx-patch="/features/{{$f.ID}}/status"
@@ -46,6 +47,11 @@
     </button>
     {{else}}
     <span style="font-size:13px;color:#1a7a1a;font-weight:700">✓ 已完成</span>
+    {{end}}
+    {{else}}
+    {{if eq $f.Status "done"}}
+    <span style="font-size:13px;color:#1a7a1a;font-weight:700">✓ 已完成</span>
+    {{end}}
     {{end}}
   </div>
 </div>

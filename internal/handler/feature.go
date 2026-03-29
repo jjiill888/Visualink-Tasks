@@ -15,8 +15,8 @@ import (
 
 type dashboardData struct {
 	Stats      *model.Stats
-	Features   []*model.Feature
-	RecentDone []*model.Feature
+	Features   []featureRowData
+	RecentDone []featureRowData
 	Groups     []*model.Group
 	Priority   string
 	Status     string
@@ -43,10 +43,15 @@ func Dashboard(database *db.DB) http.HandlerFunc {
 		u := UserFromContext(r)
 		pd := pageData(r, "dashboard")
 		pd.BannerMessage = fmt.Sprintf("共 %d 条待处理功能", stats.Pending)
-		var recentDone []*model.Feature
+		canEdit := canEditStatus(u.Role)
+		featureRows := make([]featureRowData, len(features))
+		for i, f := range features {
+			featureRows[i] = featureRowData{Feature: f, CanEditStatus: canEdit}
+		}
+		var recentDone []featureRowData
 		for _, f := range features {
 			if f.Status == "done" {
-				recentDone = append(recentDone, f)
+				recentDone = append(recentDone, featureRowData{Feature: f, CanEditStatus: canEdit})
 				if len(recentDone) >= 3 {
 					break
 				}
@@ -54,13 +59,12 @@ func Dashboard(database *db.DB) http.HandlerFunc {
 		}
 		pd.Data = dashboardData{
 			Stats:      stats,
-			Features:   features,
+			Features:   featureRows,
 			RecentDone: recentDone,
 			Groups:     groups,
 			Priority:   "all",
 			Status:     "all",
 		}
-		_ = u
 		render(w, "dashboard.html", pd)
 	}
 }
@@ -68,6 +72,7 @@ func Dashboard(database *db.DB) http.HandlerFunc {
 // ListFeatures is the HTMX partial endpoint — returns only the feature rows.
 func ListFeatures(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		u := UserFromContext(r)
 		priority := r.URL.Query().Get("priority")
 		status := r.URL.Query().Get("status")
 
@@ -76,8 +81,12 @@ func ListFeatures(database *db.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), 500)
 			return
 		}
+		rows := make([]featureRowData, len(features))
+		for i, f := range features {
+			rows[i] = featureRowData{Feature: f, CanEditStatus: canEditStatus(u.Role)}
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := PartialTmpl.ExecuteTemplate(w, "features_partial.html", features); err != nil {
+		if err := PartialTmpl.ExecuteTemplate(w, "features_partial.html", rows); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}
@@ -86,6 +95,11 @@ func ListFeatures(database *db.DB) http.HandlerFunc {
 // UpdateStatus handles PATCH /features/{id}/status (HTMX)
 func UpdateStatus(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		u := UserFromContext(r)
+		if !canEditStatus(u.Role) {
+			http.Error(w, "forbidden", 403)
+			return
+		}
 		idStr := chi.URLParam(r, "id")
 		id, err := strconv.ParseInt(idStr, 10, 64)
 		if err != nil {
@@ -108,7 +122,8 @@ func UpdateStatus(database *db.DB) http.HandlerFunc {
 		}
 		hub.Global.Broadcast("feature-updated")
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := PartialTmpl.ExecuteTemplate(w, "feature_row.html", f); err != nil {
+		row := featureRowData{Feature: f, CanEditStatus: true}
+		if err := PartialTmpl.ExecuteTemplate(w, "feature_row.html", row); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}
@@ -170,7 +185,7 @@ func CreateFeature(database *db.DB) http.HandlerFunc {
 }
 
 type mineData struct {
-	Features []*model.Feature
+	Features []featureRowData
 }
 
 func Mine(database *db.DB) http.HandlerFunc {
@@ -181,15 +196,30 @@ func Mine(database *db.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), 500)
 			return
 		}
+		canEdit := canEditStatus(u.Role)
+		rows := make([]featureRowData, len(features))
+		for i, f := range features {
+			rows[i] = featureRowData{Feature: f, CanEditStatus: canEdit}
+		}
 		pd := pageData(r, "mine")
-		pd.Data = mineData{Features: features}
+		pd.Data = mineData{Features: rows}
 		render(w, "mine.html", pd)
 	}
 }
 
+type featureRowData struct {
+	*model.Feature
+	CanEditStatus bool
+}
+
 type featureDetailData struct {
-	Feature  *model.Feature
-	Comments []*model.Comment
+	Feature       *model.Feature
+	Comments      []*model.Comment
+	CanEditStatus bool
+}
+
+func canEditStatus(role string) bool {
+	return role == "dev" || role == "admin"
 }
 
 // FeatureDetail returns the modal content partial via HTMX GET /features/{id}
@@ -210,10 +240,12 @@ func FeatureDetail(database *db.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), 500)
 			return
 		}
+		u := UserFromContext(r)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if err := PartialTmpl.ExecuteTemplate(w, "feature_detail.html", featureDetailData{
-			Feature:  f,
-			Comments: comments,
+			Feature:       f,
+			Comments:      comments,
+			CanEditStatus: canEditStatus(u.Role),
 		}); err != nil {
 			http.Error(w, err.Error(), 500)
 		}

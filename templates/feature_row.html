@@ -22,6 +22,7 @@
   <!-- 右侧：状态徽章 + 操作按钮（独立，不触发弹窗） -->
   <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">
     <span class="us-badge {{.StatusBadgeClass}}">{{.StatusLabel}}</span>
+    {{if .CanEditStatus}}
     {{if eq .Status "pending"}}
     <button class="us-btn us-btn-outline us-btn-sm"
       hx-patch="/features/{{.ID}}/status"
@@ -40,6 +41,7 @@
       hx-on:htmx:after-request="if(event.detail.successful) htmx.ajax('GET', '/stats', {target:'#stats-grid', swap:'outerHTML'})">
       标记完成 ✓
     </button>
+    {{end}}
     {{end}}
   </div>
 </div>

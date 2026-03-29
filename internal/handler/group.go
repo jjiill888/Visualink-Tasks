@@ -30,11 +30,12 @@ func ListGroups(database *db.DB) http.HandlerFunc {
 
 type groupDetailData struct {
 	Group    *model.Group
-	Features []*model.Feature
+	Features []featureRowData
 }
 
 func GroupDetail(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		u := UserFromContext(r)
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if err != nil {
 			http.Error(w, "invalid id", 400)
@@ -50,8 +51,13 @@ func GroupDetail(database *db.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), 500)
 			return
 		}
+		canEdit := canEditStatus(u.Role)
+		rows := make([]featureRowData, len(features))
+		for i, f := range features {
+			rows[i] = featureRowData{Feature: f, CanEditStatus: canEdit}
+		}
 		pd := pageData(r, "groups")
-		pd.Data = groupDetailData{Group: g, Features: features}
+		pd.Data = groupDetailData{Group: g, Features: rows}
 		render(w, "group_detail.html", pd)
 	}
 }
