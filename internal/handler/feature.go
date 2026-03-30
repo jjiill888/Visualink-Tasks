@@ -29,7 +29,7 @@ func Dashboard(database *db.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		features, err := database.ListFeatures("", "")
+		features, err := database.ListFeatures("", "", "", nil, nil, nil)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -73,10 +73,29 @@ func Dashboard(database *db.DB) http.HandlerFunc {
 func ListFeatures(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := UserFromContext(r)
-		priority := r.URL.Query().Get("priority")
-		status := r.URL.Query().Get("status")
+		q := r.URL.Query()
+		priority := q.Get("priority")
+		status := q.Get("status")
+		search := strings.TrimSpace(q.Get("search"))
 
-		features, err := database.ListFeatures(priority, status)
+		var groupID, assigneeID, creatorID *int64
+		if v := q.Get("group_id"); v != "" {
+			if id, err := strconv.ParseInt(v, 10, 64); err == nil && id > 0 {
+				groupID = &id
+			}
+		}
+		if v := q.Get("assignee_id"); v != "" {
+			if id, err := strconv.ParseInt(v, 10, 64); err == nil && id > 0 {
+				assigneeID = &id
+			}
+		}
+		if v := q.Get("creator_id"); v != "" {
+			if id, err := strconv.ParseInt(v, 10, 64); err == nil && id > 0 {
+				creatorID = &id
+			}
+		}
+
+		features, err := database.ListFeatures(priority, status, search, groupID, assigneeID, creatorID)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return

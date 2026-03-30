@@ -192,12 +192,14 @@ func scanFeature(row interface {
 	return f, err
 }
 
-func (d *DB) ListFeatures(priority, status string) ([]*model.Feature, error) {
+// search: 标题/描述模糊搜索
+// groupID, assigneeID, creatorID: 精确筛选
+func (d *DB) ListFeatures(priority, status, search string, groupID, assigneeID, creatorID *int64) ([]*model.Feature, error) {
 	q := `SELECT ` + featureCols + `
-		FROM features f
-		JOIN users u ON u.id = f.created_by
-		LEFT JOIN groups g ON g.id = f.group_id
-		WHERE 1=1`
+	       FROM features f
+	       JOIN users u ON u.id = f.created_by
+	       LEFT JOIN groups g ON g.id = f.group_id
+	       WHERE 1=1`
 	args := []any{}
 	if priority != "" && priority != "all" {
 		q += ` AND f.priority=?`
@@ -206,6 +208,23 @@ func (d *DB) ListFeatures(priority, status string) ([]*model.Feature, error) {
 	if status != "" && status != "all" {
 		q += ` AND f.status=?`
 		args = append(args, status)
+	}
+	if search != "" {
+		q += ` AND (f.title LIKE ? OR f.description LIKE ?)`
+		like := "%" + search + "%"
+		args = append(args, like, like)
+	}
+	if groupID != nil && *groupID > 0 {
+		q += ` AND f.group_id=?`
+		args = append(args, *groupID)
+	}
+	if assigneeID != nil && *assigneeID > 0 {
+		q += ` AND f.assigned_to=?`
+		args = append(args, *assigneeID)
+	}
+	if creatorID != nil && *creatorID > 0 {
+		q += ` AND f.created_by=?`
+		args = append(args, *creatorID)
 	}
 	q += ` ORDER BY f.created_at DESC`
 	rows, err := d.Query(q, args...)
