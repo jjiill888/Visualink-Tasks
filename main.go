@@ -104,6 +104,8 @@ func main() {
 		r.Get("/features", handler.ListFeatures(database))
 		r.Post("/features", handler.CreateFeature(database))
 		r.Get("/features/{id}", handler.FeatureDetail(database))
+		r.Get("/features/{id}/row", handler.GetFeatureRow(database))
+		r.Get("/features/{id}/comments", handler.GetComments(database))
 		r.Delete("/features/{id}", handler.RetractFeature(database))
 		r.Patch("/features/{id}/status", handler.UpdateStatus(database))
 		r.Post("/features/{id}/comments", handler.AddComment(database))

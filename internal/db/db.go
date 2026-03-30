@@ -75,6 +75,16 @@ func (d *DB) migrate() error {
 		content    TEXT NOT NULL,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
+
+	CREATE TABLE IF NOT EXISTS feature_events (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		feature_id  INTEGER NOT NULL REFERENCES features(id) ON DELETE CASCADE,
+		operator_id INTEGER NOT NULL REFERENCES users(id),
+		action      TEXT NOT NULL,
+		old_value   TEXT NOT NULL DEFAULT '',
+		new_value   TEXT NOT NULL DEFAULT '',
+		created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
 	`)
 	return err
 }
@@ -404,6 +414,48 @@ func (d *DB) ListComments(featureID int64) ([]*model.Comment, error) {
 	}
 	return list, rows.Err()
 }
+
+// ── Feature Events ─────────────────────────────────────────────────────────
+
+func (d *DB) CreateFeatureEvent(e *model.FeatureEvent) error {
+	res, err := d.Exec(
+		`INSERT INTO feature_events (feature_id, operator_id, action, old_value, new_value)
+		 VALUES (?,?,?,?,?)`,
+		e.FeatureID, e.OperatorID, e.Action, e.OldValue, e.NewValue,
+	)
+	if err != nil {
+		return err
+	}
+	e.ID, _ = res.LastInsertId()
+	return nil
+}
+
+func (d *DB) ListFeatureEvents(featureID int64) ([]*model.FeatureEvent, error) {
+	rows, err := d.Query(`
+		SELECT fe.id, fe.feature_id, fe.operator_id, fe.action, fe.old_value, fe.new_value,
+		       fe.created_at, u.username, u.role
+		FROM feature_events fe
+		JOIN users u ON u.id = fe.operator_id
+		WHERE fe.feature_id = ?
+		ORDER BY fe.created_at ASC
+	`, featureID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []*model.FeatureEvent
+	for rows.Next() {
+		e := &model.FeatureEvent{}
+		if err := rows.Scan(&e.ID, &e.FeatureID, &e.OperatorID, &e.Action, &e.OldValue, &e.NewValue,
+			&e.CreatedAt, &e.OperatorName, &e.OperatorRole); err != nil {
+			return nil, err
+		}
+		list = append(list, e)
+	}
+	return list, rows.Err()
+}
+
+// ── Comments ───────────────────────────────────────────────────────────────
 
 func (d *DB) CreateComment(c *model.Comment) error {
 	res, err := d.Exec(

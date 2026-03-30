@@ -111,16 +111,30 @@ func UpdateStatus(database *db.DB) http.HandlerFunc {
 			http.Error(w, "invalid status", 400)
 			return
 		}
-		if err := database.UpdateFeatureStatus(id, status); err != nil {
-			http.Error(w, err.Error(), 500)
-			return
-		}
 		f, err := database.GetFeature(id)
 		if err != nil || f == nil {
 			http.Error(w, "not found", 404)
 			return
 		}
-		hub.Global.Broadcast("feature-updated")
+		oldStatus := f.Status
+		if err := database.UpdateFeatureStatus(id, status); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		f, err = database.GetFeature(id)
+		if err != nil || f == nil {
+			http.Error(w, "not found", 404)
+			return
+		}
+		_ = database.CreateFeatureEvent(&model.FeatureEvent{
+			FeatureID:  id,
+			OperatorID: u.ID,
+			Action:     "status_changed",
+			OldValue:   oldStatus,
+			NewValue:   status,
+		})
+		hub.Global.Broadcast("feature-row-updated:" + idStr)
+		hub.Global.Broadcast("stats-updated")
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		row := featureRowData{Feature: f, CanEditStatus: true}
 		if err := PartialTmpl.ExecuteTemplate(w, "feature_row.html", row); err != nil {
@@ -179,7 +193,16 @@ func CreateFeature(database *db.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		hub.Global.Broadcast("feature-updated")
+		// 写入创建事件
+		_ = database.CreateFeatureEvent(&model.FeatureEvent{
+			FeatureID:  f.ID,
+			OperatorID: u.ID,
+			Action:     "created",
+			OldValue:   "",
+			NewValue:   "",
+		})
+		hub.Global.Broadcast("feature-list-changed")
+		hub.Global.Broadcast("stats-updated")
 		http.Redirect(w, r, "/dashboard?success=1", http.StatusSeeOther)
 	}
 }
@@ -215,6 +238,7 @@ type featureRowData struct {
 type featureDetailData struct {
 	Feature       *model.Feature
 	Comments      []*model.Comment
+	Events        []*model.FeatureEvent
 	CanEditStatus bool
 	CanRetract    bool
 	CanReject     bool
@@ -242,11 +266,17 @@ func FeatureDetail(database *db.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), 500)
 			return
 		}
+		events, err := database.ListFeatureEvents(id)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
 		u := UserFromContext(r)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if err := PartialTmpl.ExecuteTemplate(w, "feature_detail.html", featureDetailData{
 			Feature:       f,
 			Comments:      comments,
+			Events:        events,
 			CanEditStatus: canEditStatus(u.Role),
 			CanRetract:    f.Status == "pending" && u.ID == f.CreatedBy,
 			CanReject:     canEditStatus(u.Role) && f.Status == "pending" && u.ID != f.CreatedBy,
@@ -269,7 +299,8 @@ func RetractFeature(database *db.DB) http.HandlerFunc {
 			http.Error(w, "无法撤回：功能不存在、不属于你或已不是待处理状态", 403)
 			return
 		}
-		hub.Global.Broadcast("feature-updated")
+		hub.Global.Broadcast("feature-list-changed")
+		hub.Global.Broadcast("stats-updated")
 		w.WriteHeader(http.StatusOK)
 	}
 }
@@ -298,7 +329,49 @@ func AddComment(database *db.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		hub.Global.Broadcast("feature-updated")
+		hub.Global.Broadcast("comment-added:" + chi.URLParam(r, "id"))
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := PartialTmpl.ExecuteTemplate(w, "comments_partial.html", comments); err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+	}
+}
+
+// GetFeatureRow handles GET /features/{id}/row — returns single feature row partial for SSE targeted update.
+func GetFeatureRow(database *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			http.Error(w, "invalid id", 400)
+			return
+		}
+		f, err := database.GetFeature(id)
+		if err != nil || f == nil {
+			http.Error(w, "not found", 404)
+			return
+		}
+		u := UserFromContext(r)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		row := featureRowData{Feature: f, CanEditStatus: canEditStatus(u.Role)}
+		if err := PartialTmpl.ExecuteTemplate(w, "feature_row.html", row); err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+	}
+}
+
+// GetComments handles GET /features/{id}/comments — returns comments partial for SSE targeted update.
+func GetComments(database *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			http.Error(w, "invalid id", 400)
+			return
+		}
+		comments, err := database.ListComments(id)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if err := PartialTmpl.ExecuteTemplate(w, "comments_partial.html", comments); err != nil {
 			http.Error(w, err.Error(), 500)

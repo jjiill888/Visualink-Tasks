@@ -2,8 +2,6 @@ package model
 
 import (
 	"time"
-
-	_ "time/tzdata" // embed timezone data
 )
 
 var shanghaiLoc *time.Location
@@ -123,6 +121,59 @@ func (f Feature) PriorityDotClass() string {
 		return "dot-low"
 	}
 	return ""
+}
+
+type FeatureEvent struct {
+	ID         int64
+	FeatureID  int64
+	OperatorID int64
+	Action     string // created | status_changed
+	OldValue   string
+	NewValue   string
+	CreatedAt  time.Time
+	// Joined
+	OperatorName string
+	OperatorRole string
+}
+
+func statusLabel(s string) string {
+	switch s {
+	case "pending":
+		return "待处理"
+	case "in_progress":
+		return "进行中"
+	case "done":
+		return "已完成"
+	case "rejected":
+		return "已驳回"
+	}
+	return s
+}
+
+func (e *FeatureEvent) ActionDesc() string {
+	switch e.Action {
+	case "created":
+		return "提交了此功能"
+	case "status_changed":
+		return "将状态从「" + statusLabel(e.OldValue) + "」改为「" + statusLabel(e.NewValue) + "」"
+	}
+	return e.Action
+}
+
+func (e *FeatureEvent) CreatedAtLocal() string {
+	return e.CreatedAt.In(shanghaiLoc).Format("2006-01-02 15:04")
+}
+
+func (e *FeatureEvent) OperatorRoleLabel() string {
+	switch e.OperatorRole {
+	case "pm":
+		return "产品经理"
+	case "dev":
+		return "开发工程师"
+	case "admin":
+		return "管理员"
+	}
+	return e.OperatorRole
 }
 
 type Comment struct {

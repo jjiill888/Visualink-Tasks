@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"featuretrack/internal/hub"
 )
@@ -34,7 +35,8 @@ func SSE() http.HandlerFunc {
 				if !ok {
 					return
 				}
-				fmt.Fprintf(w, "event: %s\ndata: \n\n", event)
+				eventName, data, _ := strings.Cut(event, ":")
+				fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventName, data)
 				flusher.Flush()
 			case <-r.Context().Done():
 				return
