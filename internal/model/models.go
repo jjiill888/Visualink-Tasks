@@ -1,6 +1,7 @@
 package model
 
 import (
+	"html/template"
 	"time"
 )
 
@@ -216,5 +217,7 @@ type PageData struct {
 	ActiveNav     string
 	BannerMessage string
 	Flash         *Flash
+	CSRFField     template.HTML
+	CSRFToken     string
 	Data          any
 }

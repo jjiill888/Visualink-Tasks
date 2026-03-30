@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
+	"github.com/gorilla/csrf"
 )
 
 var funcMap = template.FuncMap{
@@ -72,10 +73,17 @@ func main() {
 
 	handler.SetTemplates(buildTmplMap(), buildPartialTmpl())
 
+	csrfKey := []byte(os.Getenv("CSRF_KEY"))
+	if len(csrfKey) != 32 {
+		log.Println("WARNING: CSRF_KEY not set or not 32 bytes; using insecure dev key")
+		csrfKey = []byte("dev-csrf-key-do-not-use-in-prod!")
+	}
+
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.Compress(5)) // gzip — saves ~70% on HTML/CSS transfers
+	r.Use(csrf.Protect(csrfKey, csrf.RequestHeader("X-CSRF-Token"), csrf.Secure(false)))
 
 	// Static files with long cache (JS/CSS never change between deploys)
 	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))

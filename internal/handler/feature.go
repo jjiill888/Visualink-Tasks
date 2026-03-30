@@ -65,7 +65,7 @@ func Dashboard(database *db.DB) http.HandlerFunc {
 			Priority:   "all",
 			Status:     "all",
 		}
-		render(w, "dashboard.html", pd)
+		render(w, r, "dashboard.html", pd)
 	}
 }
 
@@ -245,7 +245,7 @@ func Mine(database *db.DB) http.HandlerFunc {
 		}
 		pd := pageData(r, "mine")
 		pd.Data = mineData{Features: rows}
-		render(w, "mine.html", pd)
+		render(w, r, "mine.html", pd)
 	}
 }
 

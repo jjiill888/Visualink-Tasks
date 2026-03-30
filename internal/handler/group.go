@@ -24,7 +24,7 @@ func ListGroups(database *db.DB) http.HandlerFunc {
 		}
 		pd := pageData(r, "groups")
 		pd.Data = groupsData{Groups: groups}
-		render(w, "groups.html", pd)
+		render(w, r, "groups.html", pd)
 	}
 }
 
@@ -58,7 +58,7 @@ func GroupDetail(database *db.DB) http.HandlerFunc {
 		}
 		pd := pageData(r, "groups")
 		pd.Data = groupDetailData{Group: g, Features: rows}
-		render(w, "group_detail.html", pd)
+		render(w, r, "group_detail.html", pd)
 	}
 }
 
