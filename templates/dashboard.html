@@ -98,7 +98,6 @@
       </div>
       <div class="us-card-body">
         <form method="POST" action="/features" x-data="{ submitting: false }" @submit="submitting = true">
-            {{.CSRFField}}
           <div class="us-form-group">
             <label class="us-label" for="f-group">功能组（可选）</label>
             <select class="us-select" name="group_id" id="f-group">

@@ -4,11 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{block "title" .}}VisualLink Tasks{{end}}</title>
-  <meta name="csrf-token" content="{{.CSRFToken}}">
   <link rel="stylesheet" href="/static/css/style.css?v=2">
   {{block "head" .}}{{end}}
 </head>
 <body>
+
 
   <!-- 顶部导航栏 -->
   <header class="us-header">
@@ -26,7 +26,6 @@
           <a href="/admin" {{if eq .ActiveNav "admin"}}class="active"{{end}}>管理</a>
           {{end}}
           <form method="POST" action="/logout" style="display:inline">
-            {{.CSRFField}}
             <button type="submit" class="us-nav-logout">退出</button>
           </form>
         {{else}}
@@ -83,13 +82,6 @@
   <script src="/static/js/htmx.min.js"></script>
   <script src="/static/js/htmx-ext-sse.js"></script>
   <script defer src="/static/js/alpine.min.js"></script>
-  <script>
-    document.addEventListener('htmx:configRequest', function(e) {
-      var token = document.querySelector('meta[name="csrf-token"]');
-      if (token) e.detail.headers['X-CSRF-Token'] = token.content;
-    });
-  </script>
-
   {{block "scripts" .}}{{end}}
 </body>
 </html>

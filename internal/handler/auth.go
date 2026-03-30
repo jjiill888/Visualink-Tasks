@@ -10,7 +10,6 @@ import (
 	"featuretrack/internal/model"
 	"featuretrack/internal/session"
 
-	"github.com/gorilla/csrf"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -33,8 +32,6 @@ func render(w http.ResponseWriter, r *http.Request, name string, data *model.Pag
 		http.Error(w, "template not found: "+name, 500)
 		return
 	}
-	data.CSRFField = csrf.TemplateField(r)
-	data.CSRFToken = csrf.Token(r)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := t.ExecuteTemplate(w, "base.html", data); err != nil {
 		http.Error(w, err.Error(), 500)
