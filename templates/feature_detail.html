@@ -6,6 +6,27 @@
       <div class="us-priority-dot {{$f.PriorityDotClass}}" style="width:10px;height:10px;margin-top:0"></div>
       <span class="us-badge {{$f.StatusBadgeClass}}">{{$f.StatusLabel}}</span>
       <span style="font-size:12px;color:#a9aeb1">{{$f.PriorityLabel}} 优先级</span>
+      {{if .CanRetract}}
+      <span x-data="{ confirming: false }" style="display:inline-flex;align-items:center;gap:6px">
+        <button x-show="!confirming" @click="confirming = true"
+          style="font-size:12px;color:#b42418;background:none;border:1px solid #b42418;border-radius:4px;padding:2px 8px;cursor:pointer;line-height:1.6">
+          撤回
+        </button>
+        <span x-show="confirming" style="display:inline-flex;align-items:center;gap:6px;font-size:12px">
+          <span style="color:#3d4551">确认撤回「{{$f.Title}}」提交？</span>
+          <button
+            hx-delete="/features/{{$f.ID}}"
+            hx-on:htmx:after-request="if(event.detail.successful){ window.dispatchEvent(new CustomEvent('close-modal')); htmx.trigger('#feature-list','refresh'); htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'outerHTML'}); }"
+            style="font-size:12px;color:#fff;background:#b42418;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;line-height:1.6">
+            确认撤回
+          </button>
+          <button @click="confirming = false"
+            style="font-size:12px;color:#3d4551;background:none;border:1px solid #d9d9d9;border-radius:4px;padding:2px 8px;cursor:pointer;line-height:1.6">
+            取消
+          </button>
+        </span>
+      </span>
+      {{end}}
     </div>
     <h2 class="modal-title">{{$f.Title}}</h2>
     <div style="font-size:13px;color:#71767a;margin-top:4px">

@@ -216,6 +216,7 @@ type featureDetailData struct {
 	Feature       *model.Feature
 	Comments      []*model.Comment
 	CanEditStatus bool
+	CanRetract    bool
 }
 
 func canEditStatus(role string) bool {
@@ -246,9 +247,28 @@ func FeatureDetail(database *db.DB) http.HandlerFunc {
 			Feature:       f,
 			Comments:      comments,
 			CanEditStatus: canEditStatus(u.Role),
+			CanRetract:    f.Status == "pending" && u.ID == f.CreatedBy,
 		}); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
+	}
+}
+
+// RetractFeature handles DELETE /features/{id} — creator can retract their own pending feature
+func RetractFeature(database *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := UserFromContext(r)
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			http.Error(w, "invalid id", 400)
+			return
+		}
+		if err := database.DeleteFeature(id, u.ID); err != nil {
+			http.Error(w, "无法撤回：功能不存在、不属于你或已不是待处理状态", 403)
+			return
+		}
+		hub.Global.Broadcast("feature-updated")
+		w.WriteHeader(http.StatusOK)
 	}
 }
 

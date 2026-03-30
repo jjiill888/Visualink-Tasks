@@ -99,7 +99,7 @@
         <span class="us-card-title">提交新功能</span>
       </div>
       <div class="us-card-body">
-        <form method="POST" action="/features">
+        <form method="POST" action="/features" x-data="{ submitting: false }" @submit="submitting = true">
           <div class="us-form-group">
             <label class="us-label" for="f-group">功能组（可选）</label>
             <select class="us-select" name="group_id" id="f-group">
@@ -131,7 +131,8 @@
               placeholder="背景：&#10;用户诉求：&#10;验收标准："></textarea>
           </div>
           <hr class="us-divider">
-          <button type="submit" class="us-btn us-btn-primary">提交功能</button>
+          <button type="submit" class="us-btn us-btn-primary" :disabled="submitting"
+            x-text="submitting ? '提交中…' : '提交功能'">提交功能</button>
         </form>
       </div>
     </div>
@@ -175,18 +176,9 @@
 
 {{define "scripts"}}
 <script>
-  // Show flash if redirected with ?success=1
   (function(){
     const p = new URLSearchParams(location.search);
-    if (p.get('success')) {
-      const el = document.createElement('div');
-      el.className = 'us-alert us-alert-success';
-      el.innerHTML = '<div class="us-alert-inner"><strong>功能已成功提交。</strong></div>';
-      document.querySelector('.us-main').prepend(el);
-      setTimeout(() => el.remove(), 3000);
-      history.replaceState({}, '', '/dashboard');
-    }
+    if (p.get('success')) history.replaceState({}, '', '/dashboard');
   })();
-
 </script>
 {{end}}

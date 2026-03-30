@@ -263,6 +263,21 @@ func (d *DB) CreateFeature(f *model.Feature) error {
 	return nil
 }
 
+func (d *DB) DeleteFeature(id int64, createdBy int64) error {
+	res, err := d.Exec(
+		`DELETE FROM features WHERE id=? AND created_by=? AND status='pending'`,
+		id, createdBy,
+	)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("feature not found or cannot be retracted")
+	}
+	return nil
+}
+
 func (d *DB) UpdateFeatureStatus(id int64, status string) error {
 	_, err := d.Exec(
 		`UPDATE features SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
