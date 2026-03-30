@@ -1,6 +1,20 @@
 package model
 
-import "time"
+import (
+	"time"
+
+	_ "time/tzdata" // embed timezone data
+)
+
+var shanghaiLoc *time.Location
+
+func init() {
+	var err error
+	shanghaiLoc, err = time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		shanghaiLoc = time.UTC
+	}
+}
 
 type User struct {
 	ID        int64
@@ -37,6 +51,10 @@ type Feature struct {
 	CreatorName string
 	CreatorRole string
 	GroupTitle  string
+}
+
+func (f Feature) CreatedAtLocal() string {
+	return f.CreatedAt.In(shanghaiLoc).Format("2006-01-02 15:04")
 }
 
 func (f Feature) CreatorRoleLabel() string {

@@ -57,6 +57,7 @@
       提交者：{{$f.CreatorName}}（{{$f.CreatorRoleLabel}}）
       {{if $f.GroupTitle}} &nbsp;·&nbsp; 功能组：{{$f.GroupTitle}}{{end}}
     </div>
+    <div style="font-size:12px;color:#a9aeb1;margin-top:2px">提交时间：{{$f.CreatedAtLocal}}</div>
   </div>
   <button class="modal-close-btn" onclick="window.dispatchEvent(new CustomEvent('close-modal'))">×</button>
 </div>
