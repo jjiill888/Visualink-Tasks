@@ -27,6 +27,30 @@
         </span>
       </span>
       {{end}}
+      {{if .CanReject}}
+      <span x-data="{ confirming: false }" style="display:inline-flex;align-items:center;gap:6px">
+        <button x-show="!confirming" @click="confirming = true"
+          style="font-size:12px;color:#b42418;background:none;border:1px solid #b42418;border-radius:4px;padding:2px 8px;cursor:pointer;line-height:1.6">
+          驳回
+        </button>
+        <span x-show="confirming" style="display:inline-flex;align-items:center;gap:6px;font-size:12px">
+          <span style="color:#3d4551">确认驳回「{{$f.Title}}」？</span>
+          <button
+            hx-patch="/features/{{$f.ID}}/status"
+            hx-vals='{"status":"rejected"}'
+            hx-target="#feature-{{$f.ID}}"
+            hx-swap="outerHTML"
+            hx-on:htmx:after-request="if(event.detail.successful){ htmx.ajax('GET','/features/{{$f.ID}}',{target:'#modal-content',swap:'innerHTML'}); htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'outerHTML'}); }"
+            style="font-size:12px;color:#fff;background:#b42418;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;line-height:1.6">
+            确认驳回
+          </button>
+          <button @click="confirming = false"
+            style="font-size:12px;color:#3d4551;background:none;border:1px solid #d9d9d9;border-radius:4px;padding:2px 8px;cursor:pointer;line-height:1.6">
+            取消
+          </button>
+        </span>
+      </span>
+      {{end}}
     </div>
     <h2 class="modal-title">{{$f.Title}}</h2>
     <div style="font-size:13px;color:#71767a;margin-top:4px">
@@ -66,12 +90,16 @@
       hx-on:htmx:after-request="if(event.detail.successful){ htmx.ajax('GET', '/features/{{$f.ID}}', {target:'#modal-content', swap:'innerHTML'}); htmx.ajax('GET', '/stats', {target:'#stats-grid', swap:'outerHTML'}); }">
       标记完成 ✓
     </button>
-    {{else}}
+    {{else if eq $f.Status "done"}}
     <span style="font-size:13px;color:#1a7a1a;font-weight:700">✓ 已完成</span>
+    {{else if eq $f.Status "rejected"}}
+    <span style="font-size:13px;color:#b42418;font-weight:700">✕ 已驳回</span>
     {{end}}
     {{else}}
     {{if eq $f.Status "done"}}
     <span style="font-size:13px;color:#1a7a1a;font-weight:700">✓ 已完成</span>
+    {{else if eq $f.Status "rejected"}}
+    <span style="font-size:13px;color:#b42418;font-weight:700">✕ 已驳回</span>
     {{end}}
     {{end}}
   </div>

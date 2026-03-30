@@ -107,7 +107,7 @@ func UpdateStatus(database *db.DB) http.HandlerFunc {
 			return
 		}
 		status := r.FormValue("status")
-		if status != "in_progress" && status != "done" && status != "pending" {
+		if status != "in_progress" && status != "done" && status != "pending" && status != "rejected" {
 			http.Error(w, "invalid status", 400)
 			return
 		}
@@ -217,6 +217,7 @@ type featureDetailData struct {
 	Comments      []*model.Comment
 	CanEditStatus bool
 	CanRetract    bool
+	CanReject     bool
 }
 
 func canEditStatus(role string) bool {
@@ -248,6 +249,7 @@ func FeatureDetail(database *db.DB) http.HandlerFunc {
 			Comments:      comments,
 			CanEditStatus: canEditStatus(u.Role),
 			CanRetract:    f.Status == "pending" && u.ID == f.CreatedBy,
+			CanReject:     canEditStatus(u.Role) && f.Status == "pending" && u.ID != f.CreatedBy,
 		}); err != nil {
 			http.Error(w, err.Error(), 500)
 		}

@@ -73,6 +73,8 @@ func (f Feature) StatusLabel() string {
 		return "进行中"
 	case "done":
 		return "已完成"
+	case "rejected":
+		return "已驳回"
 	}
 	return f.Status
 }
@@ -85,6 +87,8 @@ func (f Feature) StatusBadgeClass() string {
 		return "badge-progress"
 	case "done":
 		return "badge-done"
+	case "rejected":
+		return "badge-rejected"
 	}
 	return ""
 }
