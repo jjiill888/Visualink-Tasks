@@ -16,7 +16,14 @@
           <span style="color:#3d4551">确认撤回「{{$f.Title}}」提交？</span>
           <button
             hx-delete="/features/{{$f.ID}}"
-            hx-on:htmx:after-request="if(event.detail.successful){ window.dispatchEvent(new CustomEvent('close-modal')); htmx.trigger('#feature-list','refresh'); htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'outerHTML'}); }"
+            hx-on:htmx:after-request="
+              if(event.detail.successful){
+                window.dispatchEvent(new CustomEvent('close-modal'));
+                htmx.trigger('#feature-list','refresh');
+                htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'outerHTML'});
+              } else {
+                htmx.ajax('GET','/features/{{$f.ID}}',{target:'#modal-content',swap:'innerHTML'});
+              }"
             style="font-size:12px;color:#fff;background:#b42418;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;line-height:1.6">
             确认撤回
           </button>

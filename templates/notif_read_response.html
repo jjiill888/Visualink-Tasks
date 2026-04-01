@@ -1,0 +1,8 @@
+{{define "notif_read_response.html"}}
+<span id="notif-badge"
+  hx-get="/notifications/count"
+  hx-trigger="notif-refresh from:body"
+  hx-swap="outerHTML">
+  {{if .}}<span class="notif-dot">{{if gt (len .) 9}}9+{{else}}{{len .}}{{end}}</span>{{end}}
+</span>
+{{end}}

@@ -1,0 +1,36 @@
+{{define "notif_list.html"}}
+<div id="notif-dropdown-list">
+{{if .}}
+  {{range .}}
+  <div class="notif-item"
+    hx-get="/features/{{.FeatureID}}"
+    hx-target="#modal-content"
+    hx-swap="innerHTML"
+    hx-on:htmx:after-request="
+      window.dispatchEvent(new CustomEvent('open-modal'));
+      htmx.ajax('POST', '/notifications/read',
+        {values:{feature_id:'{{.FeatureID}}'},
+         target: document.getElementById('notif-badge'),
+         swap: 'outerHTML'});
+      document.getElementById('notif-dropdown-list').closest('[x-data]').__x.$data.open = false;">
+    <div class="notif-item-from">@{{.FromUser}}</div>
+    <div class="notif-item-title">在「{{.FeatureTitle}}」提到了你</div>
+    <div class="notif-item-time">{{.CreatedAt.Format "01-02 15:04"}}</div>
+  </div>
+  {{end}}
+  <div style="padding:8px 12px;border-top:1px solid #f0f0f0">
+    <button class="us-btn us-btn-outline us-btn-sm" style="width:100%;font-size:12px"
+      hx-post="/notifications/read-all"
+      hx-target="#notif-badge"
+      hx-swap="outerHTML"
+      hx-on:htmx:after-request="
+        document.getElementById('notif-dropdown-list').innerHTML = '<p class=\'notif-empty\'>暂无未读消息</p>';
+        document.getElementById('notif-dropdown-list').closest('[x-data]').__x.$data.open = false;">
+      全部标为已读
+    </button>
+  </div>
+{{else}}
+  <p class="notif-empty">暂无未读消息</p>
+{{end}}
+</div>
+{{end}}

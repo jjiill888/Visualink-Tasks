@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -12,6 +13,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 )
+
+var mentionRe = regexp.MustCompile(`@([\p{L}\p{N}_]+)`)
 
 type dashboardData struct {
 	Stats      *model.Stats
@@ -352,8 +355,25 @@ func RetractFeature(database *db.DB) http.HandlerFunc {
 			http.Error(w, "invalid id", 400)
 			return
 		}
+		f, err := database.GetFeature(id)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		if f == nil {
+			http.Error(w, "功能不存在", 404)
+			return
+		}
+		if f.CreatedBy != u.ID {
+			http.Error(w, fmt.Sprintf("无权撤回：该功能由用户 ID %d 提交，当前用户 ID %d", f.CreatedBy, u.ID), 403)
+			return
+		}
+		if f.Status != "pending" {
+			http.Error(w, fmt.Sprintf("无法撤回：当前状态为「%s」，只有待处理状态可撤回", f.Status), 403)
+			return
+		}
 		if err := database.DeleteFeature(id, u.ID); err != nil {
-			http.Error(w, "无法撤回：功能不存在、不属于你或已不是待处理状态", 403)
+			http.Error(w, err.Error(), 500)
 			return
 		}
 		hub.Global.Broadcast("feature-list-changed")
@@ -381,6 +401,28 @@ func AddComment(database *db.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), 500)
 			return
 		}
+
+		// Parse @mentions and create notifications
+		f, _ := database.GetFeature(id)
+		for _, username := range parseMentions(content) {
+			mentioned, _ := database.GetUserByUsername(username)
+			if mentioned == nil {
+				continue
+			}
+			featureTitle := ""
+			if f != nil {
+				featureTitle = f.Title
+			}
+			_ = database.CreateNotification(&model.Notification{
+				UserID:       mentioned.ID,
+				FeatureID:    id,
+				CommentID:    c.ID,
+				FromUser:     u.Username,
+				FeatureTitle: featureTitle,
+			})
+			hub.Global.Broadcast(fmt.Sprintf("mention-added:%d", mentioned.ID))
+		}
+
 		comments, err := database.ListComments(id)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
@@ -389,6 +431,95 @@ func AddComment(database *db.DB) http.HandlerFunc {
 		hub.Global.Broadcast("comment-added:" + chi.URLParam(r, "id"))
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if err := PartialTmpl.ExecuteTemplate(w, "comments_partial.html", comments); err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+	}
+}
+
+func parseMentions(content string) []string {
+	matches := mentionRe.FindAllStringSubmatch(content, -1)
+	seen := map[string]bool{}
+	var names []string
+	for _, m := range matches {
+		if !seen[m[1]] {
+			seen[m[1]] = true
+			names = append(names, m[1])
+		}
+	}
+	return names
+}
+
+// MarkAllNotificationsRead handles POST /notifications/read-all
+func MarkAllNotificationsRead(database *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := UserFromContext(r)
+		if err := database.MarkAllNotificationsRead(u.ID); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		// Return empty badge (no more unread)
+		if err := PartialTmpl.ExecuteTemplate(w, "notif_read_response.html", nil); err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+	}
+}
+
+// GetNotificationBadge handles GET /notifications/count — returns badge HTML for nav bell.
+func GetNotificationBadge(database *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := UserFromContext(r)
+		notifs, err := database.ListUnreadNotifications(u.ID)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := PartialTmpl.ExecuteTemplate(w, "notif_badge.html", notifs); err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+	}
+}
+
+// GetNotificationList handles GET /notifications — returns dropdown list HTML.
+func GetNotificationList(database *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := UserFromContext(r)
+		notifs, err := database.ListUnreadNotifications(u.ID)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := PartialTmpl.ExecuteTemplate(w, "notif_list.html", notifs); err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+	}
+}
+
+// MarkNotificationsRead handles POST /notifications/read — marks feature's notifs as read,
+// returns updated badge + list HTML via OOB swap.
+func MarkNotificationsRead(database *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := UserFromContext(r)
+		featureIDStr := r.FormValue("feature_id")
+		featureID, err := strconv.ParseInt(featureIDStr, 10, 64)
+		if err != nil {
+			http.Error(w, "invalid feature_id", 400)
+			return
+		}
+		if err := database.MarkNotificationsReadByFeature(u.ID, featureID); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		notifs, err := database.ListUnreadNotifications(u.ID)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		// Return badge update + list update via OOB
+		if err := PartialTmpl.ExecuteTemplate(w, "notif_read_response.html", notifs); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}

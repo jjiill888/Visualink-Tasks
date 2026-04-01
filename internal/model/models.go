@@ -198,6 +198,17 @@ func (c Comment) UserRoleLabel() string {
 	return c.UserRole
 }
 
+type Notification struct {
+	ID           int64
+	UserID       int64
+	FeatureID    int64
+	CommentID    int64
+	FromUser     string
+	FeatureTitle string
+	IsRead       bool
+	CreatedAt    time.Time
+}
+
 type Stats struct {
 	Total      int
 	Pending    int

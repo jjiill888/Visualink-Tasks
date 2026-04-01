@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 
 	"featuretrack/internal/db"
 	"featuretrack/internal/handler"
@@ -14,8 +16,23 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 )
 
+var mentionHighlightRe = regexp.MustCompile(`@([\p{L}\p{N}_]+)`)
+
 var funcMap = template.FuncMap{
 	"add": func(a, b int) int { return a + b },
+	"highlightMentions": func(s string) template.HTML {
+		var buf strings.Builder
+		last := 0
+		for _, loc := range mentionHighlightRe.FindAllStringIndex(s, -1) {
+			buf.WriteString(template.HTMLEscapeString(s[last:loc[0]]))
+			buf.WriteString(`<span class="mention">`)
+			buf.WriteString(template.HTMLEscapeString(s[loc[0]:loc[1]]))
+			buf.WriteString(`</span>`)
+			last = loc[1]
+		}
+		buf.WriteString(template.HTMLEscapeString(s[last:]))
+		return template.HTML(buf.String())
+	},
 }
 
 // buildTmplMap parses one isolated template set per full-page template.
@@ -54,6 +71,9 @@ func buildPartialTmpl() *template.Template {
 		"templates/feature_detail.html",
 		"templates/stats_partial.html",
 		"templates/submit_form_modal.html",
+		"templates/notif_badge.html",
+		"templates/notif_list.html",
+		"templates/notif_read_response.html",
 	))
 }
 
@@ -112,6 +132,11 @@ func main() {
 		r.Delete("/features/{id}", handler.RetractFeature(database))
 		r.Patch("/features/{id}/status", handler.UpdateStatus(database))
 		r.Post("/features/{id}/comments", handler.AddComment(database))
+
+		r.Get("/notifications/count", handler.GetNotificationBadge(database))
+		r.Get("/notifications", handler.GetNotificationList(database))
+		r.Post("/notifications/read", handler.MarkNotificationsRead(database))
+		r.Post("/notifications/read-all", handler.MarkAllNotificationsRead(database))
 
 		r.Get("/groups", handler.ListGroups(database))
 		r.Post("/groups", handler.CreateGroup(database))

@@ -85,6 +85,17 @@ func (d *DB) migrate() error {
 		new_value   TEXT NOT NULL DEFAULT '',
 		created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
+
+	CREATE TABLE IF NOT EXISTS notifications (
+		id            INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id       INTEGER NOT NULL REFERENCES users(id),
+		feature_id    INTEGER NOT NULL REFERENCES features(id) ON DELETE CASCADE,
+		comment_id    INTEGER NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
+		from_user     TEXT NOT NULL,
+		feature_title TEXT NOT NULL,
+		is_read       INTEGER NOT NULL DEFAULT 0,
+		created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
 	`)
 	return err
 }
@@ -293,7 +304,18 @@ func (d *DB) CreateFeature(f *model.Feature) error {
 }
 
 func (d *DB) DeleteFeature(id int64, createdBy int64) error {
-	res, err := d.Exec(
+	tx, err := d.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// comments has no ON DELETE CASCADE, must remove manually before deleting feature
+	if _, err := tx.Exec(`DELETE FROM comments WHERE feature_id=?`, id); err != nil {
+		return err
+	}
+
+	res, err := tx.Exec(
 		`DELETE FROM features WHERE id=? AND created_by=? AND status='pending'`,
 		id, createdBy,
 	)
@@ -304,7 +326,7 @@ func (d *DB) DeleteFeature(id int64, createdBy int64) error {
 	if n == 0 {
 		return fmt.Errorf("feature not found or cannot be retracted")
 	}
-	return nil
+	return tx.Commit()
 }
 
 func (d *DB) UpdateFeatureStatus(id int64, status string) error {
@@ -486,4 +508,49 @@ func (d *DB) CreateComment(c *model.Comment) error {
 	}
 	c.ID, _ = res.LastInsertId()
 	return nil
+}
+
+// ── Notifications ───────────────────────────────────────────────────────────
+
+func (d *DB) CreateNotification(n *model.Notification) error {
+	_, err := d.Exec(
+		`INSERT INTO notifications (user_id, feature_id, comment_id, from_user, feature_title) VALUES (?,?,?,?,?)`,
+		n.UserID, n.FeatureID, n.CommentID, n.FromUser, n.FeatureTitle,
+	)
+	return err
+}
+
+func (d *DB) ListUnreadNotifications(userID int64) ([]*model.Notification, error) {
+	rows, err := d.Query(`
+		SELECT id, user_id, feature_id, comment_id, from_user, feature_title, is_read, created_at
+		FROM notifications
+		WHERE user_id=? AND is_read=0
+		ORDER BY created_at DESC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []*model.Notification
+	for rows.Next() {
+		n := &model.Notification{}
+		if err := rows.Scan(&n.ID, &n.UserID, &n.FeatureID, &n.CommentID, &n.FromUser, &n.FeatureTitle, &n.IsRead, &n.CreatedAt); err != nil {
+			return nil, err
+		}
+		list = append(list, n)
+	}
+	return list, rows.Err()
+}
+
+func (d *DB) MarkNotificationsReadByFeature(userID, featureID int64) error {
+	_, err := d.Exec(
+		`UPDATE notifications SET is_read=1 WHERE user_id=? AND feature_id=?`,
+		userID, featureID,
+	)
+	return err
+}
+
+func (d *DB) MarkAllNotificationsRead(userID int64) error {
+	_, err := d.Exec(`UPDATE notifications SET is_read=1 WHERE user_id=?`, userID)
+	return err
 }
