@@ -22,6 +22,15 @@ var mentionHighlightRe = regexp.MustCompile(`@([\p{L}\p{N}_]+)`)
 
 var funcMap = template.FuncMap{
 	"add": func(a, b int) int { return a + b },
+	"map": func(kvs ...any) map[string]any {
+		m := make(map[string]any, len(kvs)/2)
+		for i := 0; i+1 < len(kvs); i += 2 {
+			if k, ok := kvs[i].(string); ok {
+				m[k] = kvs[i+1]
+			}
+		}
+		return m
+	},
 	"highlightMentions": func(s string) template.HTML {
 		var buf strings.Builder
 		last := 0
@@ -40,7 +49,7 @@ var funcMap = template.FuncMap{
 // buildTmplMap parses one isolated template set per full-page template.
 // This prevents {{define "content"}} from colliding across pages.
 func buildTmplMap() map[string]*template.Template {
-	// Pages that extend base.html and need feature_row partial
+	// Pages that extend base.html and need feature_row + group partials
 	withRow := []string{"dashboard.html", "mine.html", "group_detail.html"}
 	// Pages that extend base.html, no partials needed
 	plain := []string{"login.html", "register.html", "groups.html", "submit_standalone.html"}
@@ -50,6 +59,9 @@ func buildTmplMap() map[string]*template.Template {
 		t := template.Must(template.New("").Funcs(funcMap).ParseFiles(
 			"templates/base.html",
 			"templates/feature_row.html",
+			"templates/group_action_btn.html",
+			"templates/group_members_partial.html",
+			"templates/feature_watch_btn.html",
 			"templates/"+page,
 		))
 		m[page] = t
@@ -71,11 +83,15 @@ func buildPartialTmpl() *template.Template {
 		"templates/features_partial.html",
 		"templates/comments_partial.html",
 		"templates/feature_detail.html",
+		"templates/feature_watch_btn.html",
 		"templates/stats_partial.html",
 		"templates/submit_form_modal.html",
 		"templates/notif_badge.html",
 		"templates/notif_list.html",
 		"templates/notif_read_response.html",
+		"templates/preferences_partial.html",
+		"templates/group_action_btn.html",
+		"templates/group_members_partial.html",
 	))
 }
 
@@ -135,15 +151,25 @@ func main() {
 		r.Patch("/features/{id}/status", handler.UpdateStatus(database))
 		r.Post("/features/{id}/archive", handler.ArchiveFeature(database))
 		r.Post("/features/{id}/comments", handler.AddComment(database))
+		r.Post("/features/{id}/watch", handler.WatchFeature(database))
+		r.Delete("/features/{id}/watch", handler.UnwatchFeature(database))
 
 		r.Get("/notifications/count", handler.GetNotificationBadge(database))
 		r.Get("/notifications", handler.GetNotificationList(database))
 		r.Post("/notifications/read", handler.MarkNotificationsRead(database))
 		r.Post("/notifications/read-all", handler.MarkAllNotificationsRead(database))
 
+		r.Get("/preferences", handler.Preferences(database))
+
 		r.Get("/groups", handler.ListGroups(database))
 		r.Post("/groups", handler.CreateGroup(database))
 		r.Get("/groups/{id}", handler.GroupDetail(database))
+		r.Post("/groups/{id}/join", handler.JoinGroup(database))
+		r.Delete("/groups/{id}/join", handler.LeaveGroup(database))
+		r.Post("/groups/{id}/watch", handler.WatchGroup(database))
+		r.Delete("/groups/{id}/watch", handler.UnwatchGroup(database))
+		r.Post("/groups/{id}/members", handler.AddGroupMember(database))
+		r.Delete("/groups/{id}/members/{uid}", handler.RemoveGroupMember(database))
 	})
 
 	// 自动归档：每小时扫描一次，将 done 超过 24h 的功能归档

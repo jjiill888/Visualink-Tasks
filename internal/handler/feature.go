@@ -127,25 +127,32 @@ func ListFeatures(database *db.DB) http.HandlerFunc {
 		priority := q.Get("priority")
 		status := q.Get("status")
 		search := strings.TrimSpace(q.Get("search"))
+		view := q.Get("view") // "all" | "personal"
 
-		var groupID, assigneeID, creatorID *int64
-		if v := q.Get("group_id"); v != "" {
-			if id, err := strconv.ParseInt(v, 10, 64); err == nil && id > 0 {
-				groupID = &id
-			}
-		}
-		if v := q.Get("assignee_id"); v != "" {
-			if id, err := strconv.ParseInt(v, 10, 64); err == nil && id > 0 {
-				assigneeID = &id
-			}
-		}
-		if v := q.Get("creator_id"); v != "" {
-			if id, err := strconv.ParseInt(v, 10, 64); err == nil && id > 0 {
-				creatorID = &id
-			}
-		}
+		var features []*model.Feature
+		var err error
 
-		features, err := database.ListFeatures(priority, status, search, groupID, assigneeID, creatorID)
+		if view == "personal" {
+			features, err = database.ListFeaturesPersonal(u.ID, priority, status, search)
+		} else {
+			var groupID, assigneeID, creatorID *int64
+			if v := q.Get("group_id"); v != "" {
+				if id, err2 := strconv.ParseInt(v, 10, 64); err2 == nil && id > 0 {
+					groupID = &id
+				}
+			}
+			if v := q.Get("assignee_id"); v != "" {
+				if id, err2 := strconv.ParseInt(v, 10, 64); err2 == nil && id > 0 {
+					assigneeID = &id
+				}
+			}
+			if v := q.Get("creator_id"); v != "" {
+				if id, err2 := strconv.ParseInt(v, 10, 64); err2 == nil && id > 0 {
+					creatorID = &id
+				}
+			}
+			features, err = database.ListFeaturesWithWatch(u.ID, priority, status, search, groupID, assigneeID, creatorID)
+		}
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -388,6 +395,7 @@ func FeatureDetail(database *db.DB) http.HandlerFunc {
 			return
 		}
 		u := UserFromContext(r)
+		f.IsWatched, _ = database.IsFeatureWatched(u.ID, id)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if err := PartialTmpl.ExecuteTemplate(w, "feature_detail.html", featureDetailData{
 			Feature:       f,
@@ -642,9 +650,62 @@ func GetFeatureRow(database *db.DB) http.HandlerFunc {
 			return
 		}
 		u := UserFromContext(r)
+		f.IsWatched, _ = database.IsFeatureWatched(u.ID, id)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		row := featureRowData{Feature: f, CanEditStatus: canEditStatus(u.Role)}
 		if err := PartialTmpl.ExecuteTemplate(w, "feature_row.html", row); err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+	}
+}
+
+// WatchFeature handles POST /features/{id}/watch
+func WatchFeature(database *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := UserFromContext(r)
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			http.Error(w, "invalid id", 400)
+			return
+		}
+		if err := database.WatchFeature(u.ID, id); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		f, err := database.GetFeature(id)
+		if err != nil || f == nil {
+			http.Error(w, "not found", 404)
+			return
+		}
+		f.IsWatched = true
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := PartialTmpl.ExecuteTemplate(w, "feature_watch_btn.html", f); err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+	}
+}
+
+// UnwatchFeature handles DELETE /features/{id}/watch
+func UnwatchFeature(database *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := UserFromContext(r)
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			http.Error(w, "invalid id", 400)
+			return
+		}
+		if err := database.UnwatchFeature(u.ID, id); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		f, err := database.GetFeature(id)
+		if err != nil || f == nil {
+			http.Error(w, "not found", 404)
+			return
+		}
+		f.IsWatched = false
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := PartialTmpl.ExecuteTemplate(w, "feature_watch_btn.html", f); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}

@@ -315,6 +315,11 @@ a:visited { color: #4c2c92; }
 .badge-urgent   { background: #fce8ec; color: #9c1020; }
 .badge-archived { background: #f0f0f0; color: #a9aeb1; }
 
+/* ── Feature watch / pin ── */
+.feature-watched { border-left: 3px solid #ffbe2e; }
+.feature-watch-pin { color: #ffbe2e; font-size: 13px; line-height: 1; flex-shrink: 0; }
+.feature-watch-active { background: #fff8e1; color: #8a6400; border: 1px solid #ffbe2e; }
+
 /* ── Buttons ── */
 .us-btn {
   display: inline-block;

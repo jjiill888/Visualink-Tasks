@@ -1,0 +1,56 @@
+{{define "preferences_partial.html"}}
+<div class="modal-header">
+  <h2 class="modal-title">个人偏好设置</h2>
+  <button class="modal-close-btn" onclick="window.dispatchEvent(new CustomEvent('close-modal'))">×</button>
+</div>
+
+<div class="modal-section">
+  <div class="modal-section-label">我的功能组</div>
+  {{if .Groups}}
+    {{range .Groups}}
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f5f5f5">
+      <div>
+        <a href="/groups/{{.GroupID}}" style="font-size:13px;font-weight:600;color:#1b1b1b;text-decoration:none">{{.GroupTitle}}</a>
+        <span style="font-size:12px;color:#a9aeb1;margin-left:6px">{{if eq .Type "member"}}已加入{{else}}关注中{{end}}</span>
+      </div>
+      {{if eq .Type "watch"}}
+      <button class="us-btn us-btn-outline us-btn-sm" style="font-size:11px"
+        hx-delete="/groups/{{.GroupID}}/watch"
+        hx-swap="none"
+        hx-on:htmx:after-request="htmx.ajax('GET','/preferences',{target:'#modal-content',swap:'innerHTML'})">
+        取消关注
+      </button>
+      {{else}}
+      <button class="us-btn us-btn-outline us-btn-sm" style="font-size:11px"
+        hx-delete="/groups/{{.GroupID}}/join"
+        hx-swap="none"
+        hx-on:htmx:after-request="htmx.ajax('GET','/preferences',{target:'#modal-content',swap:'innerHTML'})">
+        退出
+      </button>
+      {{end}}
+    </div>
+    {{end}}
+  {{else}}
+    <p style="font-size:13px;color:#a9aeb1">还未加入或关注任何功能组。<br>前往<a href="/groups">功能组</a>页面加入或关注。</p>
+  {{end}}
+</div>
+
+<div class="modal-section" style="border-bottom:none">
+  <div class="modal-section-label">我关注的功能（置顶显示）</div>
+  {{if .Features}}
+    {{range .Features}}
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f5f5f5">
+      <span style="font-size:13px;color:#1b1b1b">{{.Title}}</span>
+      <button class="us-btn us-btn-outline us-btn-sm" style="font-size:11px"
+        hx-delete="/features/{{.ID}}/watch"
+        hx-swap="none"
+        hx-on:htmx:after-request="htmx.ajax('GET','/preferences',{target:'#modal-content',swap:'innerHTML'})">
+        取消关注
+      </button>
+    </div>
+    {{end}}
+  {{else}}
+    <p style="font-size:13px;color:#a9aeb1">还未关注任何功能。<br>在功能详情弹窗中点击「☆ 关注」即可置顶。</p>
+  {{end}}
+</div>
+{{end}}

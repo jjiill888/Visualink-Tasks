@@ -107,6 +107,24 @@ func (d *DB) migrate() error {
 	// ALTER TABLE fails if column already exists — error intentionally ignored.
 	_, _ = d.Exec(`ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''`)
 	_, _ = d.Exec(`UPDATE users SET display_name = username WHERE display_name = ''`)
+
+	_, _ = d.Exec(`
+	CREATE TABLE IF NOT EXISTS user_group_subscriptions (
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		group_id   INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+		type       TEXT NOT NULL DEFAULT 'member',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (user_id, group_id)
+	)`)
+
+	_, _ = d.Exec(`
+	CREATE TABLE IF NOT EXISTS user_feature_watches (
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		feature_id INTEGER NOT NULL REFERENCES features(id) ON DELETE CASCADE,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (user_id, feature_id)
+	)`)
+
 	return nil
 }
 
@@ -688,4 +706,252 @@ func (d *DB) MarkNotificationsReadByFeature(userID, featureID int64) error {
 func (d *DB) MarkAllNotificationsRead(userID int64) error {
 	_, err := d.Exec(`UPDATE notifications SET is_read=1 WHERE user_id=?`, userID)
 	return err
+}
+
+// ── Group subscriptions ────────────────────────────────────────────────────
+
+func (d *DB) GetGroupSubscription(userID, groupID int64) (string, error) {
+	var typ string
+	err := d.QueryRow(
+		`SELECT type FROM user_group_subscriptions WHERE user_id=? AND group_id=?`,
+		userID, groupID,
+	).Scan(&typ)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return typ, err
+}
+
+func (d *DB) UpsertGroupSubscription(userID, groupID int64, typ string) error {
+	_, err := d.Exec(
+		`INSERT INTO user_group_subscriptions (user_id, group_id, type) VALUES (?,?,?)
+		 ON CONFLICT(user_id, group_id) DO UPDATE SET type=excluded.type`,
+		userID, groupID, typ,
+	)
+	return err
+}
+
+func (d *DB) DeleteGroupSubscription(userID, groupID int64) error {
+	_, err := d.Exec(
+		`DELETE FROM user_group_subscriptions WHERE user_id=? AND group_id=?`,
+		userID, groupID,
+	)
+	return err
+}
+
+// ListGroupMembers returns all members of a group with their type.
+func (d *DB) ListGroupMembers(groupID int64) ([]*model.GroupMember, error) {
+	rows, err := d.Query(`
+		SELECT u.id, COALESCE(NULLIF(u.display_name,''), u.username), u.role, s.type
+		FROM user_group_subscriptions s
+		JOIN users u ON u.id = s.user_id
+		WHERE s.group_id = ?
+		ORDER BY s.type DESC, u.display_name ASC
+	`, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []*model.GroupMember
+	for rows.Next() {
+		m := &model.GroupMember{}
+		if err := rows.Scan(&m.UserID, &m.DisplayName, &m.Role, &m.Type); err != nil {
+			return nil, err
+		}
+		list = append(list, m)
+	}
+	return list, rows.Err()
+}
+
+// ListAllUsers returns all users for member-picker UI.
+func (d *DB) ListAllUsers() ([]*model.User, error) {
+	rows, err := d.Query(
+		`SELECT id, username, display_name, email, password, role, created_at FROM users ORDER BY display_name ASC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []*model.User
+	for rows.Next() {
+		u := &model.User{}
+		if err := rows.Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.Password, &u.Role, &u.CreatedAt); err != nil {
+			return nil, err
+		}
+		list = append(list, u)
+	}
+	return list, rows.Err()
+}
+
+// ── Feature watches ────────────────────────────────────────────────────────
+
+func (d *DB) WatchFeature(userID, featureID int64) error {
+	_, err := d.Exec(
+		`INSERT OR IGNORE INTO user_feature_watches (user_id, feature_id) VALUES (?,?)`,
+		userID, featureID,
+	)
+	return err
+}
+
+func (d *DB) UnwatchFeature(userID, featureID int64) error {
+	_, err := d.Exec(
+		`DELETE FROM user_feature_watches WHERE user_id=? AND feature_id=?`,
+		userID, featureID,
+	)
+	return err
+}
+
+func (d *DB) IsFeatureWatched(userID, featureID int64) (bool, error) {
+	var n int
+	err := d.QueryRow(
+		`SELECT COUNT(*) FROM user_feature_watches WHERE user_id=? AND feature_id=?`,
+		userID, featureID,
+	).Scan(&n)
+	return n > 0, err
+}
+
+// ListWatchedFeatures returns features watched by user, newest watch first.
+func (d *DB) ListWatchedFeatures(userID int64) ([]*model.Feature, error) {
+	q := `SELECT ` + featureCols + `
+		FROM features f
+		JOIN users u ON u.id = f.created_by
+		LEFT JOIN groups g ON g.id = f.group_id
+		JOIN user_feature_watches w ON w.feature_id = f.id AND w.user_id = ?
+		ORDER BY w.created_at DESC`
+	rows, err := d.Query(q, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []*model.Feature
+	for rows.Next() {
+		f, err := scanFeature(rows)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, f)
+	}
+	return list, rows.Err()
+}
+
+// ListSubscribedGroups returns groups the user has joined or is watching.
+func (d *DB) ListSubscribedGroups(userID int64) ([]*model.GroupSubscription, error) {
+	rows, err := d.Query(`
+		SELECT g.id, g.title, s.type
+		FROM user_group_subscriptions s
+		JOIN groups g ON g.id = s.group_id
+		WHERE s.user_id = ?
+		ORDER BY s.type DESC, g.title ASC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []*model.GroupSubscription
+	for rows.Next() {
+		gs := &model.GroupSubscription{}
+		if err := rows.Scan(&gs.GroupID, &gs.GroupTitle, &gs.Type); err != nil {
+			return nil, err
+		}
+		list = append(list, gs)
+	}
+	return list, rows.Err()
+}
+
+// ListFeaturesPersonal returns features relevant to a user (subscribed groups,
+// commented, created, or watched), with watched ones sorted first.
+func (d *DB) ListFeaturesPersonal(userID int64, priority, status, search string) ([]*model.Feature, error) {
+	q := `SELECT ` + featureCols + `,
+		CASE WHEN w.feature_id IS NOT NULL THEN 1 ELSE 0 END AS is_watched
+		FROM features f
+		JOIN users u ON u.id = f.created_by
+		LEFT JOIN groups g ON g.id = f.group_id
+		LEFT JOIN user_feature_watches w ON w.feature_id = f.id AND w.user_id = ?
+		WHERE f.status != 'archived'
+		AND (
+			f.group_id IN (SELECT group_id FROM user_group_subscriptions WHERE user_id = ?)
+			OR f.id IN (SELECT DISTINCT feature_id FROM comments WHERE user_id = ?)
+			OR f.created_by = ?
+			OR w.feature_id IS NOT NULL
+		)`
+	args := []any{userID, userID, userID, userID}
+	if priority != "" && priority != "all" {
+		q += ` AND f.priority=?`
+		args = append(args, priority)
+	}
+	if status != "" && status != "all" {
+		q += ` AND f.status=?`
+		args = append(args, status)
+	}
+	if search != "" {
+		q += ` AND (f.title LIKE ? OR f.description LIKE ?)`
+		like := "%" + search + "%"
+		args = append(args, like, like)
+	}
+	q += ` ORDER BY is_watched DESC, f.created_at DESC`
+
+	rows, err := d.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []*model.Feature
+	for rows.Next() {
+		f := &model.Feature{}
+		var isWatched int
+		if err := rows.Scan(
+			&f.ID, &f.GroupID, &f.Title, &f.Description, &f.Priority, &f.Status,
+			&f.CreatedBy, &f.AssignedTo, &f.CreatedAt, &f.UpdatedAt,
+			&f.CreatorName, &f.CreatorRole, &f.GroupTitle,
+			&isWatched,
+		); err != nil {
+			return nil, err
+		}
+		f.IsWatched = isWatched == 1
+		list = append(list, f)
+	}
+	return list, rows.Err()
+}
+
+// ListFeaturesWithWatch wraps ListFeatures and annotates IsWatched for a user.
+func (d *DB) ListFeaturesWithWatch(userID int64, priority, status, search string, groupID, assigneeID, creatorID *int64) ([]*model.Feature, error) {
+	features, err := d.ListFeatures(priority, status, search, groupID, assigneeID, creatorID)
+	if err != nil {
+		return nil, err
+	}
+	if len(features) == 0 {
+		return features, nil
+	}
+	// fetch watched IDs in one query
+	ids := make([]any, len(features)+1)
+	ids[0] = userID
+	ph := make([]string, len(features))
+	for i, f := range features {
+		ids[i+1] = f.ID
+		ph[i] = "?"
+	}
+	watched := map[int64]bool{}
+	rows, err := d.Query(
+		`SELECT feature_id FROM user_feature_watches WHERE user_id=? AND feature_id IN (`+strings.Join(ph, ",")+`)`,
+		ids...,
+	)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var fid int64
+			_ = rows.Scan(&fid)
+			watched[fid] = true
+		}
+	}
+	// sort: watched first, then original order (stable)
+	var pinned, rest []*model.Feature
+	for _, f := range features {
+		f.IsWatched = watched[f.ID]
+		if f.IsWatched {
+			pinned = append(pinned, f)
+		} else {
+			rest = append(rest, f)
+		}
+	}
+	return append(pinned, rest...), nil
 }

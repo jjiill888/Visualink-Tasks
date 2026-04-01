@@ -7,26 +7,47 @@
 <div style="margin-bottom:4px">
   <a href="/groups" style="font-size:13px;color:#71767a;text-decoration:none">← 返回功能组</a>
 </div>
-<div class="us-page-title">{{$d.Group.Title}}</div>
-{{if $d.Group.Description}}
-<div class="us-page-sub">{{$d.Group.Description}}</div>
-{{else}}
-<div class="us-page-sub">创建者：{{$d.Group.CreatorName}} &nbsp;·&nbsp; {{$d.Group.FeatureCount}} 条功能</div>
-{{end}}
-
-<div class="us-card">
-  <div class="us-card-head">
-    <span class="us-card-title">功能列表（{{len $d.Features}} 条）</span>
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
+  <div>
+    <div class="us-page-title">{{$d.Group.Title}}</div>
+    {{if $d.Group.Description}}
+    <div class="us-page-sub">{{$d.Group.Description}}</div>
+    {{else}}
+    <div class="us-page-sub">创建者：{{$d.Group.CreatorName}} &nbsp;·&nbsp; {{$d.Group.FeatureCount}} 条功能</div>
+    {{end}}
   </div>
-  {{if $d.Features}}
-    {{range $d.Features}}{{template "feature_row.html" .}}{{end}}
-  {{else}}
-    <div class="us-empty">
-      <div class="us-empty-title">该功能组暂无功能</div>
-      <p style="font-size:13px;color:#71767a">
-        在<a href="/dashboard">看板</a>提交功能时选择此功能组
-      </p>
+  <!-- 加入/关注按钮 -->
+  <div id="group-action-{{$d.Group.ID}}" style="padding-top:6px">
+    {{template "group_action_btn.html" (map "GroupID" $d.Group.ID "SubType" $d.SubType)}}
+  </div>
+</div>
+
+<div class="us-cols">
+  <div>
+    <div class="us-card">
+      <div class="us-card-head">
+        <span class="us-card-title">功能列表（{{len $d.Features}} 条）</span>
+      </div>
+      {{if $d.Features}}
+        {{range $d.Features}}{{template "feature_row.html" .}}{{end}}
+      {{else}}
+        <div class="us-empty">
+          <div class="us-empty-title">该功能组暂无功能</div>
+          <p style="font-size:13px;color:#71767a">
+            在<a href="/dashboard">看板</a>提交功能时选择此功能组
+          </p>
+        </div>
+      {{end}}
     </div>
-  {{end}}
+  </div>
+
+  <!-- 成员列表 -->
+  <div>
+    <div class="us-card">
+      <div id="group-members-{{$d.Group.ID}}">
+        {{template "group_members_partial.html" (map "GroupID" $d.Group.ID "Members" $d.Members "AllUsers" $d.AllUsers "CanManage" $d.CanManage)}}
+      </div>
+    </div>
+  </div>
 </div>
 {{end}}

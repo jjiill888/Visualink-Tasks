@@ -1,0 +1,15 @@
+{{define "feature_watch_btn.html"}}
+{{if .IsWatched}}
+<button class="us-btn us-btn-sm feature-watch-active"
+  hx-delete="/features/{{.ID}}/watch"
+  hx-target="#feature-watch-btn-{{.ID}}"
+  hx-swap="innerHTML"
+  title="取消关注">★ 已关注</button>
+{{else}}
+<button class="us-btn us-btn-outline us-btn-sm"
+  hx-post="/features/{{.ID}}/watch"
+  hx-target="#feature-watch-btn-{{.ID}}"
+  hx-swap="innerHTML"
+  title="关注后置顶显示">☆ 关注</button>
+{{end}}
+{{end}}

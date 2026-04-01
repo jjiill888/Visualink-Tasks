@@ -1,0 +1,44 @@
+{{define "group_members_partial.html"}}
+{{$gid := .GroupID}}
+{{$canManage := .CanManage}}
+<div class="us-card-head"><span class="us-card-title">成员（{{len .Members}} 人）</span></div>
+<div style="padding:8px 16px">
+  {{if .Members}}
+    {{range .Members}}
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f5f5f5">
+      <div>
+        <span style="font-size:13px;font-weight:600">{{.DisplayName}}</span>
+        <span style="font-size:12px;color:#a9aeb1;margin-left:6px">{{if eq .Type "member"}}成员{{else}}关注{{end}}</span>
+      </div>
+      {{if $canManage}}
+      <button class="us-btn us-btn-outline us-btn-sm" style="font-size:11px;padding:2px 8px"
+        hx-delete="/groups/{{$gid}}/members/{{.UserID}}"
+        hx-target="#group-members-{{$gid}}"
+        hx-swap="innerHTML">移除</button>
+      {{end}}
+    </div>
+    {{end}}
+  {{else}}
+    <p style="font-size:13px;color:#a9aeb1;padding:8px 0">暂无成员</p>
+  {{end}}
+
+  {{if $canManage}}
+  <div style="margin-top:12px">
+    <div style="font-size:12px;color:#71767a;margin-bottom:6px">添加成员</div>
+    <form hx-post="/groups/{{$gid}}/members"
+      hx-target="#group-members-{{$gid}}"
+      hx-swap="innerHTML"
+      hx-on:htmx:after-request="this.reset()"
+      style="display:flex;gap:8px;align-items:center">
+      <select name="user_id" class="us-select" style="font-size:13px;flex:1" required>
+        <option value="">选择用户…</option>
+        {{range .AllUsers}}
+        <option value="{{.ID}}">{{.DisplayName}}（{{.Username}}）</option>
+        {{end}}
+      </select>
+      <button type="submit" class="us-btn us-btn-primary us-btn-sm">添加</button>
+    </form>
+  </div>
+  {{end}}
+</div>
+{{end}}

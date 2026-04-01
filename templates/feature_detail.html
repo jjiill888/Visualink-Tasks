@@ -67,7 +67,13 @@
     </div>
     <div style="font-size:12px;color:#a9aeb1;margin-top:2px">提交时间：{{$f.CreatedAtLocal}}</div>
   </div>
-  <button class="modal-close-btn" onclick="window.dispatchEvent(new CustomEvent('close-modal'))">×</button>
+  <div style="display:flex;align-items:center;gap:8px">
+    <div id="feature-watch-btn-{{$f.ID}}"
+      hx-on:htmx:after-request="if(event.detail.successful){ var fl=document.getElementById('feature-list'); if(fl) htmx.trigger(fl,'refresh'); }">
+      {{template "feature_watch_btn.html" $f}}
+    </div>
+    <button class="modal-close-btn" onclick="window.dispatchEvent(new CustomEvent('close-modal'))">×</button>
+  </div>
 </div>
 
 {{if $f.Description}}

@@ -1,0 +1,31 @@
+{{define "group_action_btn.html"}}
+{{$gid := .GroupID}}
+{{$sub := .SubType}}
+<div style="display:flex;gap:8px;align-items:center">
+  {{if eq $sub "member"}}
+  <span style="font-size:13px;color:#1a7a1a;font-weight:600">✓ 已加入</span>
+  <button class="us-btn us-btn-outline us-btn-sm"
+    hx-delete="/groups/{{$gid}}/join"
+    hx-target="#group-action-{{$gid}}"
+    hx-swap="innerHTML">退出</button>
+  {{else if eq $sub "watch"}}
+  <button class="us-btn us-btn-sm" style="background:#e8f5fe;color:#0050d8;border:none"
+    hx-delete="/groups/{{$gid}}/watch"
+    hx-target="#group-action-{{$gid}}"
+    hx-swap="innerHTML">★ 已关注</button>
+  <button class="us-btn us-btn-outline us-btn-sm"
+    hx-post="/groups/{{$gid}}/join"
+    hx-target="#group-action-{{$gid}}"
+    hx-swap="innerHTML">加入</button>
+  {{else}}
+  <button class="us-btn us-btn-outline us-btn-sm"
+    hx-post="/groups/{{$gid}}/watch"
+    hx-target="#group-action-{{$gid}}"
+    hx-swap="innerHTML">☆ 关注</button>
+  <button class="us-btn us-btn-primary us-btn-sm"
+    hx-post="/groups/{{$gid}}/join"
+    hx-target="#group-action-{{$gid}}"
+    hx-swap="innerHTML">加入</button>
+  {{end}}
+</div>
+{{end}}

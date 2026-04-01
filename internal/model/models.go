@@ -41,7 +41,7 @@ type Feature struct {
 	Title       string
 	Description string
 	Priority    string // urgent | high | medium | low
-	Status      string // pending | in_progress | done
+	Status      string // pending | in_progress | done | rejected | archived
 	CreatedBy   int64
 	AssignedTo  *int64
 	CreatedAt   time.Time
@@ -50,6 +50,21 @@ type Feature struct {
 	CreatorName string
 	CreatorRole string
 	GroupTitle  string
+	// Computed
+	IsWatched bool
+}
+
+type GroupMember struct {
+	UserID      int64
+	DisplayName string
+	Role        string
+	Type        string // member | watch
+}
+
+type GroupSubscription struct {
+	GroupID    int64
+	GroupTitle string
+	Type       string // member | watch
 }
 
 func (f Feature) CreatedAtLocal() string {
