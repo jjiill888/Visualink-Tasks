@@ -87,7 +87,7 @@
       hx-vals='{"status":"in_progress"}'
       hx-swap="none"
       hx-disabled-elt="this"
-      hx-on:htmx:after-request="if(event.detail.successful){ htmx.ajax('GET','/features/{{$f.ID}}',{target:'#modal-content',swap:'innerHTML'}); htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'outerHTML'}); }">
+      hx-on:htmx:after-request="if(event.detail.successful){ htmx.ajax('GET','/features/{{$f.ID}}',{target:'#modal-content',swap:'innerHTML'}); htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'outerHTML'}); var row=document.getElementById('feature-{{$f.ID}}'); if(row){ htmx.ajax('GET','/features/{{$f.ID}}/row',{target:'#feature-{{$f.ID}}',swap:'outerHTML'}); } }">
       开始处理
     </button>
     {{else if eq $f.Status "in_progress"}}
@@ -96,7 +96,7 @@
       hx-vals='{"status":"done"}'
       hx-swap="none"
       hx-disabled-elt="this"
-      hx-on:htmx:after-request="if(event.detail.successful){ htmx.ajax('GET','/features/{{$f.ID}}',{target:'#modal-content',swap:'innerHTML'}); htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'outerHTML'}); }">
+      hx-on:htmx:after-request="if(event.detail.successful){ htmx.ajax('GET','/features/{{$f.ID}}',{target:'#modal-content',swap:'innerHTML'}); htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'outerHTML'}); var row=document.getElementById('feature-{{$f.ID}}'); if(row){ htmx.ajax('GET','/features/{{$f.ID}}/row',{target:'#feature-{{$f.ID}}',swap:'outerHTML'}); } }">
       标记完成 ✓
     </button>
     {{else if eq $f.Status "done"}}
