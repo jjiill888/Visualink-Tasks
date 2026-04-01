@@ -8,9 +8,11 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"featuretrack/internal/db"
 	"featuretrack/internal/handler"
+	"featuretrack/internal/hub"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
@@ -131,6 +133,7 @@ func main() {
 		r.Get("/features/{id}/comments", handler.GetComments(database))
 		r.Delete("/features/{id}", handler.RetractFeature(database))
 		r.Patch("/features/{id}/status", handler.UpdateStatus(database))
+		r.Post("/features/{id}/archive", handler.ArchiveFeature(database))
 		r.Post("/features/{id}/comments", handler.AddComment(database))
 
 		r.Get("/notifications/count", handler.GetNotificationBadge(database))
@@ -142,6 +145,21 @@ func main() {
 		r.Post("/groups", handler.CreateGroup(database))
 		r.Get("/groups/{id}", handler.GroupDetail(database))
 	})
+
+	// 自动归档：每小时扫描一次，将 done 超过 24h 的功能归档
+	go func() {
+		for {
+			time.Sleep(1 * time.Hour)
+			n, err := database.AutoArchiveFeatures()
+			if err != nil {
+				log.Println("auto-archive error:", err)
+			} else if n > 0 {
+				log.Printf("auto-archived %d feature(s)", n)
+				hub.Global.Broadcast("feature-list-changed")
+				hub.Global.Broadcast("stats-updated")
+			}
+		}
+	}()
 
 	addr := ":8080"
 	log.Println("Listening on", addr)

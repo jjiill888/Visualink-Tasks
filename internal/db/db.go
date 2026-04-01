@@ -337,6 +337,9 @@ func (d *DB) ListFeatures(priority, status, search string, groupID, assigneeID, 
 	if status != "" && status != "all" {
 		q += ` AND f.status=?`
 		args = append(args, status)
+	} else {
+		// 默认不显示已归档，需显式选择 archived 才可见
+		q += ` AND f.status != 'archived'`
 	}
 	if search != "" {
 		q += ` AND (f.title LIKE ? OR f.description LIKE ?)`
@@ -463,9 +466,22 @@ func (d *DB) GetStats() (*model.Stats, error) {
 			COALESCE(SUM(CASE WHEN status='pending'     THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN status='in_progress' THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN status='done'        THEN 1 ELSE 0 END), 0)
-		FROM features
+		FROM features WHERE status != 'archived'
 	`).Scan(&s.Total, &s.Pending, &s.InProgress, &s.Done)
 	return s, err
+}
+
+// AutoArchiveFeatures 将 done 超过 24h 的功能自动归档，返回归档数量。
+func (d *DB) AutoArchiveFeatures() (int64, error) {
+	res, err := d.Exec(`
+		UPDATE features SET status='archived', updated_at=CURRENT_TIMESTAMP
+		WHERE status='done'
+		  AND updated_at <= datetime('now', '-24 hours')
+	`)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 // ── Groups ─────────────────────────────────────────────────────────────────

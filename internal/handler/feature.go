@@ -176,7 +176,7 @@ func UpdateStatus(database *db.DB) http.HandlerFunc {
 			return
 		}
 		status := r.FormValue("status")
-		if status != "in_progress" && status != "done" && status != "pending" && status != "rejected" {
+		if status != "in_progress" && status != "done" && status != "pending" && status != "rejected" && status != "archived" {
 			http.Error(w, "invalid status", 400)
 			return
 		}
@@ -586,6 +586,45 @@ func MarkNotificationsRead(database *db.DB) http.HandlerFunc {
 		if err := PartialTmpl.ExecuteTemplate(w, "notif_read_response.html", notifs); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
+	}
+}
+
+// ArchiveFeature handles POST /features/{id}/archive — dev/admin 手动归档已完成功能
+func ArchiveFeature(database *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := UserFromContext(r)
+		if !canEditStatus(u.Role) {
+			http.Error(w, "forbidden", 403)
+			return
+		}
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			http.Error(w, "invalid id", 400)
+			return
+		}
+		f, err := database.GetFeature(id)
+		if err != nil || f == nil {
+			http.Error(w, "not found", 404)
+			return
+		}
+		if f.Status != "done" {
+			http.Error(w, "only done features can be archived", 400)
+			return
+		}
+		if err := database.UpdateFeatureStatus(id, "archived"); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		_ = database.CreateFeatureEvent(&model.FeatureEvent{
+			FeatureID:  id,
+			OperatorID: u.ID,
+			Action:     "status_changed",
+			OldValue:   "done",
+			NewValue:   "archived",
+		})
+		hub.Global.Broadcast("feature-list-changed")
+		hub.Global.Broadcast("stats-updated")
+		w.WriteHeader(http.StatusOK)
 	}
 }
 

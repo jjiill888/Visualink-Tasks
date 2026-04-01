@@ -313,6 +313,7 @@ a:visited { color: #4c2c92; }
 .badge-done     { background: #ecf3ec; color: #1a7a1a; }
 .badge-rejected { background: #fce8ec; color: #b42418; }
 .badge-urgent   { background: #fce8ec; color: #9c1020; }
+.badge-archived { background: #f0f0f0; color: #a9aeb1; }
 
 /* ── Buttons ── */
 .us-btn {

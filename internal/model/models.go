@@ -92,6 +92,8 @@ func (f Feature) StatusLabel() string {
 		return "已完成"
 	case "rejected":
 		return "已驳回"
+	case "archived":
+		return "已归档"
 	}
 	return f.Status
 }
@@ -106,6 +108,8 @@ func (f Feature) StatusBadgeClass() string {
 		return "badge-done"
 	case "rejected":
 		return "badge-rejected"
+	case "archived":
+		return "badge-archived"
 	}
 	return ""
 }
@@ -147,6 +151,8 @@ func statusLabel(s string) string {
 		return "已完成"
 	case "rejected":
 		return "已驳回"
+	case "archived":
+		return "已归档"
 	}
 	return s
 }
