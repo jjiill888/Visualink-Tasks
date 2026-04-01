@@ -607,8 +607,8 @@ func ArchiveFeature(database *db.DB) http.HandlerFunc {
 			http.Error(w, "not found", 404)
 			return
 		}
-		if f.Status != "done" {
-			http.Error(w, "only done features can be archived", 400)
+		if f.Status != "done" && f.Status != "rejected" {
+			http.Error(w, "only done or rejected features can be archived", 400)
 			return
 		}
 		if err := database.UpdateFeatureStatus(id, "archived"); err != nil {
@@ -619,7 +619,7 @@ func ArchiveFeature(database *db.DB) http.HandlerFunc {
 			FeatureID:  id,
 			OperatorID: u.ID,
 			Action:     "status_changed",
-			OldValue:   "done",
+			OldValue:   f.Status,
 			NewValue:   "archived",
 		})
 		hub.Global.Broadcast("feature-list-changed")
