@@ -24,7 +24,7 @@ func buildTmplMap() map[string]*template.Template {
 	// Pages that extend base.html and need feature_row partial
 	withRow := []string{"dashboard.html", "mine.html", "group_detail.html"}
 	// Pages that extend base.html, no partials needed
-	plain := []string{"login.html", "register.html", "groups.html"}
+	plain := []string{"login.html", "register.html", "groups.html", "submit_standalone.html"}
 
 	m := make(map[string]*template.Template)
 	for _, page := range withRow {
@@ -53,6 +53,7 @@ func buildPartialTmpl() *template.Template {
 		"templates/comments_partial.html",
 		"templates/feature_detail.html",
 		"templates/stats_partial.html",
+		"templates/submit_form_modal.html",
 	))
 }
 
@@ -101,6 +102,8 @@ func main() {
 		r.Get("/sse", handler.SSE())
 		r.Get("/stats", handler.GetStats(database))
 		r.Get("/features/mine", handler.Mine(database))
+		r.Get("/features/new", handler.FeatureForm(database))
+		r.Get("/features/submit", handler.FeatureSubmitPage(database))
 		r.Get("/features", handler.ListFeatures(database))
 		r.Post("/features", handler.CreateFeature(database))
 		r.Get("/features/{id}", handler.FeatureDetail(database))

@@ -1,0 +1,57 @@
+{{template "base.html" .}}
+
+{{define "title"}}提交新功能 — VisualLink Tasks{{end}}
+
+{{define "content"}}
+{{$d := .Data}}
+<div class="us-page-title">提交新功能</div>
+<div class="us-page-sub">填写功能需求，提交后跳转回看板</div>
+
+<div style="max-width:640px;margin-top:24px">
+  <div class="us-card">
+    <div class="us-card-head">
+      <span class="us-card-title">功能详情</span>
+    </div>
+    <div class="us-card-body">
+      <form method="POST" action="/features">
+        <div class="us-form-group">
+          <label class="us-label" for="fs-group">功能组（可选）</label>
+          <select class="us-select" name="group_id" id="fs-group">
+            <option value="">无（独立功能）</option>
+            {{range $d.Groups}}
+            <option value="{{.ID}}">{{.Title}}</option>
+            {{end}}
+          </select>
+        </div>
+        <div class="us-form-group">
+          <label class="us-label" for="fs-title">功能标题 *</label>
+          <span class="us-hint">用一句话概括这个功能</span>
+          <input class="us-input" type="text" id="fs-title" name="title" required
+            placeholder="例：支持批量导入用户数据" autofocus>
+        </div>
+        <div class="us-form-group">
+          <label class="us-label" for="fs-priority">优先级</label>
+          <select class="us-select" name="priority" id="fs-priority">
+            <option value="urgent">紧急 — 影响主流程，24h 内响应</option>
+            <option value="high" selected>高 — 本迭代必须完成</option>
+            <option value="medium">中 — 下个迭代排期</option>
+            <option value="low">低 — 有空再做</option>
+          </select>
+        </div>
+        <div class="us-form-group">
+          <label class="us-label" for="fs-desc">详细描述</label>
+          <span class="us-hint">背景、用户诉求和验收标准</span>
+          <textarea class="us-textarea" name="description" id="fs-desc"
+            placeholder="背景：&#10;用户诉求：&#10;验收标准："
+            style="min-height:220px;resize:vertical"></textarea>
+        </div>
+        <hr class="us-divider">
+        <div style="display:flex;align-items:center;gap:12px">
+          <button type="submit" class="us-btn us-btn-primary">提交功能</button>
+          <a href="/dashboard" class="us-btn us-btn-outline">返回看板</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{{end}}

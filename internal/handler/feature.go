@@ -177,6 +177,35 @@ func GetStats(database *db.DB) http.HandlerFunc {
 	}
 }
 
+// FeatureSubmitPage handles GET /features/submit — standalone full-page submit form.
+func FeatureSubmitPage(database *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		groups, err := database.ListGroups()
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		pd := pageData(r, "")
+		pd.Data = struct{ Groups []*model.Group }{Groups: groups}
+		render(w, r, "submit_standalone.html", pd)
+	}
+}
+
+// FeatureForm handles GET /features/new — returns the submit form as a modal partial.
+func FeatureForm(database *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		groups, err := database.ListGroups()
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := PartialTmpl.ExecuteTemplate(w, "submit_form_modal.html", groups); err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+	}
+}
+
 // CreateFeature handles POST /features
 func CreateFeature(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -188,6 +217,10 @@ func CreateFeature(database *db.DB) http.HandlerFunc {
 		groupIDStr := r.FormValue("group_id")
 
 		if title == "" {
+			if r.Header.Get("HX-Request") == "true" {
+				http.Error(w, "功能标题不能为空", http.StatusBadRequest)
+				return
+			}
 			http.Redirect(w, r, "/dashboard?error=title_required", http.StatusSeeOther)
 			return
 		}
@@ -222,6 +255,11 @@ func CreateFeature(database *db.DB) http.HandlerFunc {
 		})
 		hub.Global.Broadcast("feature-list-changed")
 		hub.Global.Broadcast("stats-updated")
+		// HTMX request: return 200 so the client-side after-request handler can close the modal
+		if r.Header.Get("HX-Request") == "true" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 		http.Redirect(w, r, "/dashboard?success=1", http.StatusSeeOther)
 	}
 }

@@ -642,6 +642,10 @@ a:visited { color: #4c2c92; }
   box-shadow: 0 8px 32px rgba(0,0,0,0.18);
 }
 
+.modal-box.wide {
+  max-width: 720px;
+}
+
 .modal-header {
   display: flex;
   align-items: flex-start;

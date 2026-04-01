@@ -68,11 +68,11 @@
   <div id="feature-modal"
     x-data="{ open: false }"
     @open-modal.window="open = true"
-    @close-modal.window="open = false"
+    @close-modal.window="open = false; $nextTick(() => { $el.querySelector('.modal-box').classList.remove('wide'); document.getElementById('modal-content').innerHTML = ''; })"
     x-show="open"
     style="display:none"
     class="modal-overlay"
-    @click.self="open = false">
+    @click.self="open = false; $nextTick(() => { $el.querySelector('.modal-box').classList.remove('wide'); document.getElementById('modal-content').innerHTML = ''; })">
     <div class="modal-box">
       <div id="modal-content"></div>
     </div>

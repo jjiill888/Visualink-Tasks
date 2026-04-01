@@ -1,0 +1,78 @@
+{{define "submit_form_modal.html"}}
+<div class="modal-header">
+  <div>
+    <h2 class="modal-title">提交新功能</h2>
+    <div style="font-size:13px;color:#71767a;margin-top:4px">填写后点击提交，页面保持不变</div>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+    <a href="/features/submit" target="_blank"
+      style="font-size:12px;color:#005ea2;text-decoration:none;padding:3px 10px;border:1px solid #d9d9d9;border-radius:4px;white-space:nowrap;line-height:1.8">
+      在新窗口打开 ↗
+    </a>
+    <button class="modal-close-btn" onclick="window.dispatchEvent(new CustomEvent('close-modal'))">×</button>
+  </div>
+</div>
+
+<div class="modal-section" style="border-bottom:none;padding-bottom:20px">
+  <form id="submit-feature-form"
+    hx-post="/features"
+    hx-swap="none"
+    hx-on:htmx:before-request="
+      var btn = document.getElementById('submit-feature-btn');
+      btn.disabled = true; btn.textContent = '提交中…';"
+    hx-on:htmx:after-request="
+      var btn = document.getElementById('submit-feature-btn');
+      btn.disabled = false; btn.textContent = '提交功能';
+      if (event.detail.successful) {
+        this.reset();
+        window.dispatchEvent(new CustomEvent('close-modal'));
+        htmx.trigger(document.getElementById('feature-list'), 'refresh');
+        htmx.ajax('GET', '/stats', {target:'#stats-grid', swap:'outerHTML'});
+      }">
+    <div class="us-form-group">
+      <label class="us-label" for="fm-group">功能组（可选）</label>
+      <select class="us-select" name="group_id" id="fm-group">
+        <option value="">无（独立功能）</option>
+        {{range .}}
+        <option value="{{.ID}}">{{.Title}}</option>
+        {{end}}
+      </select>
+    </div>
+    <div class="us-form-group">
+      <label class="us-label" for="fm-title">功能标题 *</label>
+      <span class="us-hint">用一句话概括这个功能</span>
+      <input class="us-input" type="text" id="fm-title" name="title" required
+        placeholder="例：支持批量导入用户数据" autofocus>
+    </div>
+    <div class="us-form-group">
+      <label class="us-label" for="fm-priority">优先级</label>
+      <select class="us-select" name="priority" id="fm-priority">
+        <option value="urgent">紧急 — 影响主流程，24h 内响应</option>
+        <option value="high" selected>高 — 本迭代必须完成</option>
+        <option value="medium">中 — 下个迭代排期</option>
+        <option value="low">低 — 有空再做</option>
+      </select>
+    </div>
+    <div class="us-form-group">
+      <label class="us-label" for="fm-desc">详细描述</label>
+      <span class="us-hint">背景、用户诉求和验收标准</span>
+      <textarea class="us-textarea" name="description" id="fm-desc"
+        placeholder="背景：&#10;用户诉求：&#10;验收标准："
+        style="min-height:180px;resize:vertical"></textarea>
+    </div>
+    <hr class="us-divider">
+    <div style="display:flex;align-items:center;gap:12px">
+      <button id="submit-feature-btn" type="submit" class="us-btn us-btn-primary">提交功能</button>
+      <button type="button" class="us-btn us-btn-outline"
+        onclick="window.dispatchEvent(new CustomEvent('close-modal'))">取消</button>
+    </div>
+  </form>
+</div>
+
+<script>
+  (function(){
+    var box = document.querySelector('#feature-modal .modal-box');
+    if (box) box.classList.add('wide');
+  })();
+</script>
+{{end}}

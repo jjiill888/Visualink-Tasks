@@ -27,15 +27,18 @@
   </div>
 </div>
 
-<div x-data="{ priority: 'all', status: 'all', showForm: false }">
+<div x-data="{ priority: 'all', status: 'all' }">
 <div class="us-cols">
   <!-- Left: feature list with filters -->
   <div>
     <div class="us-card">
       <div class="us-card-head">
         <span class="us-card-title">功能列表</span>
-        <button class="us-btn us-btn-primary us-btn-sm" @click="showForm = !showForm"
-          x-text="showForm ? '取消' : '+ 提交功能'">
+        <button class="us-btn us-btn-primary us-btn-sm"
+          hx-get="/features/new"
+          hx-target="#modal-content"
+          hx-swap="innerHTML"
+          hx-on:htmx:after-request="window.dispatchEvent(new CustomEvent('open-modal'))">
           + 提交功能
         </button>
       </div>
@@ -89,52 +92,8 @@
     </div>
   </div>
 
-  <!-- Right: submit form + legend + recent done -->
+  <!-- Right: legend + recent done -->
   <div>
-    <!-- Submit form (hidden by default, controlled by showForm) -->
-    <div class="us-card" x-show="showForm" style="display:none;margin-bottom:16px">
-      <div class="us-card-head">
-        <span class="us-card-title">提交新功能</span>
-      </div>
-      <div class="us-card-body">
-        <form method="POST" action="/features" x-data="{ submitting: false }" @submit="submitting = true">
-          <div class="us-form-group">
-            <label class="us-label" for="f-group">功能组（可选）</label>
-            <select class="us-select" name="group_id" id="f-group">
-              <option value="">无（独立功能）</option>
-              {{range $d.Groups}}
-              <option value="{{.ID}}">{{.Title}}</option>
-              {{end}}
-            </select>
-          </div>
-          <div class="us-form-group">
-            <label class="us-label" for="f-title">功能标题 *</label>
-            <span class="us-hint">用一句话概括这个功能</span>
-            <input class="us-input" type="text" id="f-title" name="title" required
-              placeholder="例：支持批量导入用户数据">
-          </div>
-          <div class="us-form-group">
-            <label class="us-label" for="f-priority">优先级</label>
-            <select class="us-select" name="priority" id="f-priority">
-              <option value="urgent">紧急 — 影响主流程，24h 内响应</option>
-              <option value="high" selected>高 — 本迭代必须完成</option>
-              <option value="medium">中 — 下个迭代排期</option>
-              <option value="low">低 — 有空再做</option>
-            </select>
-          </div>
-          <div class="us-form-group">
-            <label class="us-label" for="f-desc">详细描述</label>
-            <span class="us-hint">背景、用户诉求和验收标准</span>
-            <textarea class="us-textarea" name="description" id="f-desc"
-              placeholder="背景：&#10;用户诉求：&#10;验收标准："></textarea>
-          </div>
-          <hr class="us-divider">
-          <button type="submit" class="us-btn us-btn-primary" :disabled="submitting"
-            x-text="submitting ? '提交中…' : '提交功能'">提交功能</button>
-        </form>
-      </div>
-    </div>
-
     <div style="display:flex;flex-direction:column;gap:16px;align-items:stretch;min-width:260px;max-width:420px;width:100%;">
       <!-- Priority legend -->
       <div class="us-card" style="width:100%;">
