@@ -109,6 +109,12 @@
         document.body.dispatchEvent(new Event('notif-refresh'));
       }
     });
+    src.addEventListener('feature-row-updated', function(e) {
+      var id = e.data.trim();
+      if (document.getElementById('status-actions-' + id)) {
+        htmx.ajax('GET', '/features/' + id, {target:'#modal-content', swap:'innerHTML'});
+      }
+    });
     src.addEventListener('error', function() { src.close(); });
   })();
   </script>

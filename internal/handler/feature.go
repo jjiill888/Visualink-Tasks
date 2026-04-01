@@ -186,6 +186,15 @@ func UpdateStatus(database *db.DB) http.HandlerFunc {
 			return
 		}
 		oldStatus := f.Status
+		if oldStatus == status {
+			// 状态未变，直接返回当前行，不写事件记录（防止重复点击产生冗余历史）
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			row := featureRowData{Feature: f, CanEditStatus: true}
+			if err := PartialTmpl.ExecuteTemplate(w, "feature_row.html", row); err != nil {
+				http.Error(w, err.Error(), 500)
+			}
+			return
+		}
 		if err := database.UpdateFeatureStatus(id, status); err != nil {
 			http.Error(w, err.Error(), 500)
 			return

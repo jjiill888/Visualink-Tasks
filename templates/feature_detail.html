@@ -47,6 +47,7 @@
             hx-vals='{"status":"rejected"}'
             hx-target="#feature-{{$f.ID}}"
             hx-swap="outerHTML"
+            hx-disabled-elt="this"
             hx-on:htmx:after-request="if(event.detail.successful){ htmx.ajax('GET','/features/{{$f.ID}}',{target:'#modal-content',swap:'innerHTML'}); htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'outerHTML'}); }"
             style="font-size:12px;color:#fff;background:#b42418;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;line-height:1.6">
             确认驳回
@@ -84,18 +85,18 @@
     <button class="us-btn us-btn-outline us-btn-sm"
       hx-patch="/features/{{$f.ID}}/status"
       hx-vals='{"status":"in_progress"}'
-      hx-target="#feature-{{$f.ID}}"
-      hx-swap="outerHTML"
-      hx-on:htmx:after-request="if(event.detail.successful){ htmx.ajax('GET', '/features/{{$f.ID}}', {target:'#modal-content', swap:'innerHTML'}); htmx.ajax('GET', '/stats', {target:'#stats-grid', swap:'outerHTML'}); }">
+      hx-swap="none"
+      hx-disabled-elt="this"
+      hx-on:htmx:after-request="if(event.detail.successful){ htmx.ajax('GET','/features/{{$f.ID}}',{target:'#modal-content',swap:'innerHTML'}); htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'outerHTML'}); }">
       开始处理
     </button>
     {{else if eq $f.Status "in_progress"}}
     <button class="us-btn us-btn-primary us-btn-sm"
       hx-patch="/features/{{$f.ID}}/status"
       hx-vals='{"status":"done"}'
-      hx-target="#feature-{{$f.ID}}"
-      hx-swap="outerHTML"
-      hx-on:htmx:after-request="if(event.detail.successful){ htmx.ajax('GET', '/features/{{$f.ID}}', {target:'#modal-content', swap:'innerHTML'}); htmx.ajax('GET', '/stats', {target:'#stats-grid', swap:'outerHTML'}); }">
+      hx-swap="none"
+      hx-disabled-elt="this"
+      hx-on:htmx:after-request="if(event.detail.successful){ htmx.ajax('GET','/features/{{$f.ID}}',{target:'#modal-content',swap:'innerHTML'}); htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'outerHTML'}); }">
       标记完成 ✓
     </button>
     {{else if eq $f.Status "done"}}
