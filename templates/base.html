@@ -58,7 +58,7 @@
   <div class="us-banner">
     <div class="us-banner-dot"></div>
     <span>
-      当前用户：{{.CurrentUser.Username}}
+      当前用户：{{.CurrentUser.DisplayName}}
       （{{if eq .CurrentUser.Role "pm"}}产品经理{{else if eq .CurrentUser.Role "dev"}}开发工程师{{else}}管理员{{end}}）
       {{if .BannerMessage}}<span id="banner-pending">&nbsp;·&nbsp;{{.BannerMessage}}</span>{{end}}
     </span>

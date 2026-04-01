@@ -16,8 +16,12 @@
       {{end}}
       <form method="POST" action="/register">
         <div class="us-form-group">
-          <label class="us-label" for="username">用户名</label>
-          <input class="us-input" type="text" id="username" name="username" autocomplete="username" required>
+          <label class="us-label" for="username">用户名 <span class="us-hint">（仅限字母、数字和下划线，用于 @提及）</span></label>
+          <input class="us-input" type="text" id="username" name="username" autocomplete="username" required pattern="[\p{L}\p{N}_]+" title="只能包含字母、数字和下划线">
+        </div>
+        <div class="us-form-group">
+          <label class="us-label" for="display_name">显示名称 <span class="us-hint">（可选，留空则与用户名相同）</span></label>
+          <input class="us-input" type="text" id="display_name" name="display_name" autocomplete="name" placeholder="可以包含中文、空格等">
         </div>
         <div class="us-form-group">
           <label class="us-label" for="email">邮箱</label>

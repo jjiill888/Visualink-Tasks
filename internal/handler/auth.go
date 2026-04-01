@@ -4,6 +4,7 @@ import (
 	"context"
 	"html/template"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"featuretrack/internal/db"
@@ -12,6 +13,9 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 )
+
+// usernameRe validates that a username contains only letters, digits, and underscores (no spaces).
+var usernameRe = regexp.MustCompile(`^[\p{L}\p{N}_]+$`)
 
 // ── shared template helper ─────────────────────────────────────────────────
 
@@ -128,6 +132,7 @@ func RegisterPage(database *db.DB) http.HandlerFunc {
 func Register(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username := strings.TrimSpace(r.FormValue("username"))
+		displayName := strings.TrimSpace(r.FormValue("display_name"))
 		email := strings.TrimSpace(r.FormValue("email"))
 		password := r.FormValue("password")
 		role := r.FormValue("role")
@@ -136,12 +141,19 @@ func Register(database *db.DB) http.HandlerFunc {
 			render(w, r, "register.html", withFlash(&model.PageData{}, "error", "请填写所有必填项"))
 			return
 		}
+		if !usernameRe.MatchString(username) {
+			render(w, r, "register.html", withFlash(&model.PageData{}, "error", "用户名只能包含字母、数字和下划线，不能含有空格"))
+			return
+		}
 		if len(password) < 6 {
 			render(w, r, "register.html", withFlash(&model.PageData{}, "error", "密码至少需要6位"))
 			return
 		}
 		if role != "pm" && role != "dev" {
 			role = "pm"
+		}
+		if displayName == "" {
+			displayName = username
 		}
 
 		exists, _ := database.UsernameExists(username)
@@ -160,7 +172,7 @@ func Register(database *db.DB) http.HandlerFunc {
 			render(w, r, "register.html", withFlash(&model.PageData{}, "error", "服务器错误，请重试"))
 			return
 		}
-		u := &model.User{Username: username, Email: email, Password: string(hash), Role: role}
+		u := &model.User{Username: username, DisplayName: displayName, Email: email, Password: string(hash), Role: role}
 		if err := database.CreateUser(u); err != nil {
 			render(w, r, "register.html", withFlash(&model.PageData{}, "error", "注册失败，请重试"))
 			return

@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"featuretrack/internal/model"
@@ -28,17 +29,19 @@ func Open(path string) (*DB, error) {
 }
 
 func (d *DB) migrate() error {
-	_, err := d.Exec(`
-	PRAGMA journal_mode=WAL;
-	PRAGMA foreign_keys=ON;
-
+	_, err := d.Exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;`)
+	if err != nil {
+		return err
+	}
+	_, err = d.Exec(`
 	CREATE TABLE IF NOT EXISTS users (
-		id         INTEGER PRIMARY KEY AUTOINCREMENT,
-		username   TEXT UNIQUE NOT NULL,
-		email      TEXT UNIQUE NOT NULL,
-		password   TEXT NOT NULL,
-		role       TEXT NOT NULL DEFAULT 'pm',
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		id           INTEGER PRIMARY KEY AUTOINCREMENT,
+		username     TEXT UNIQUE NOT NULL,
+		display_name TEXT NOT NULL DEFAULT '',
+		email        TEXT UNIQUE NOT NULL,
+		password     TEXT NOT NULL,
+		role         TEXT NOT NULL DEFAULT 'pm',
+		created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 
 	CREATE TABLE IF NOT EXISTS groups (
@@ -97,15 +100,25 @@ func (d *DB) migrate() error {
 		created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+	// For existing databases without display_name: add column and backfill.
+	// ALTER TABLE fails if column already exists — error intentionally ignored.
+	_, _ = d.Exec(`ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''`)
+	_, _ = d.Exec(`UPDATE users SET display_name = username WHERE display_name = ''`)
+	return nil
 }
 
 // ── Users ──────────────────────────────────────────────────────────────────
 
 func (d *DB) CreateUser(u *model.User) error {
+	if u.DisplayName == "" {
+		u.DisplayName = u.Username
+	}
 	res, err := d.Exec(
-		`INSERT INTO users (username, email, password, role) VALUES (?,?,?,?)`,
-		u.Username, u.Email, u.Password, u.Role,
+		`INSERT INTO users (username, display_name, email, password, role) VALUES (?,?,?,?,?)`,
+		u.Username, u.DisplayName, u.Email, u.Password, u.Role,
 	)
 	if err != nil {
 		return err
@@ -117,9 +130,9 @@ func (d *DB) CreateUser(u *model.User) error {
 func (d *DB) GetUserByUsername(username string) (*model.User, error) {
 	u := &model.User{}
 	err := d.QueryRow(
-		`SELECT id, username, email, password, role, created_at FROM users WHERE username=?`,
+		`SELECT id, username, display_name, email, password, role, created_at FROM users WHERE username=?`,
 		username,
-	).Scan(&u.ID, &u.Username, &u.Email, &u.Password, &u.Role, &u.CreatedAt)
+	).Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.Password, &u.Role, &u.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -129,12 +142,117 @@ func (d *DB) GetUserByUsername(username string) (*model.User, error) {
 func (d *DB) GetUserByID(id int64) (*model.User, error) {
 	u := &model.User{}
 	err := d.QueryRow(
-		`SELECT id, username, email, password, role, created_at FROM users WHERE id=?`, id,
-	).Scan(&u.ID, &u.Username, &u.Email, &u.Password, &u.Role, &u.CreatedAt)
+		`SELECT id, username, display_name, email, password, role, created_at FROM users WHERE id=?`, id,
+	).Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.Password, &u.Role, &u.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	return u, err
+}
+
+// UsernameDisplayMap returns a username→display_name map for the given usernames.
+// Used to resolve @mention handles to display names at render time.
+func (d *DB) UsernameDisplayMap(usernames []string) (map[string]string, error) {
+	if len(usernames) == 0 {
+		return map[string]string{}, nil
+	}
+	placeholders := make([]string, len(usernames))
+	args := make([]any, len(usernames))
+	for i, u := range usernames {
+		placeholders[i] = "?"
+		args[i] = u
+	}
+	q := `SELECT username, COALESCE(NULLIF(display_name,''), username) FROM users WHERE username IN (` +
+		strings.Join(placeholders, ",") + `)`
+	rows, err := d.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	m := map[string]string{}
+	for rows.Next() {
+		var username, dn string
+		if err := rows.Scan(&username, &dn); err != nil {
+			return nil, err
+		}
+		m[username] = dn
+	}
+	return m, rows.Err()
+}
+
+// DisplayNameUsernameMap returns a display_name→username map for the given display names.
+// Used to resolve @display_name mentions to usernames for notification lookup.
+func (d *DB) DisplayNameUsernameMap(displayNames []string) (map[string]string, error) {
+	if len(displayNames) == 0 {
+		return map[string]string{}, nil
+	}
+	placeholders := make([]string, len(displayNames))
+	args := make([]any, len(displayNames))
+	for i, dn := range displayNames {
+		placeholders[i] = "?"
+		args[i] = dn
+	}
+	q := `SELECT COALESCE(NULLIF(display_name,''), username), username FROM users WHERE display_name IN (` +
+		strings.Join(placeholders, ",") + `)`
+	rows, err := d.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	m := map[string]string{}
+	for rows.Next() {
+		var dn, username string
+		if err := rows.Scan(&dn, &username); err != nil {
+			return nil, err
+		}
+		m[dn] = username
+	}
+	return m, rows.Err()
+}
+
+func (d *DB) GetUserByDisplayName(displayName string) (*model.User, error) {
+	u := &model.User{}
+	err := d.QueryRow(
+		`SELECT id, username, display_name, email, password, role, created_at FROM users WHERE display_name=?`,
+		displayName,
+	).Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.Password, &u.Role, &u.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return u, err
+}
+
+// MentionDisplayMap returns token→display_name for tokens matching either username or display_name.
+// Used at render time so both @handle and @displayname show as @displayname.
+func (d *DB) MentionDisplayMap(tokens []string) (map[string]string, error) {
+	if len(tokens) == 0 {
+		return map[string]string{}, nil
+	}
+	ph := make([]string, len(tokens))
+	args := make([]any, len(tokens)*2)
+	for i, t := range tokens {
+		ph[i] = "?"
+		args[i] = t
+		args[len(tokens)+i] = t
+	}
+	inClause := strings.Join(ph, ",")
+	q := `SELECT username, COALESCE(NULLIF(display_name,''), username) FROM users WHERE username IN (` + inClause + `)
+	      UNION
+	      SELECT display_name, COALESCE(NULLIF(display_name,''), username) FROM users WHERE display_name IN (` + inClause + `)`
+	rows, err := d.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	m := map[string]string{}
+	for rows.Next() {
+		var token, dn string
+		if err := rows.Scan(&token, &dn); err != nil {
+			return nil, err
+		}
+		m[token] = dn
+	}
+	return m, rows.Err()
 }
 
 func (d *DB) UsernameExists(username string) (bool, error) {
@@ -188,7 +306,7 @@ func (d *DB) DeleteSession(token string) error {
 const featureCols = `
 	f.id, f.group_id, f.title, f.description, f.priority, f.status,
 	f.created_by, f.assigned_to, f.created_at, f.updated_at,
-	u.username, u.role, COALESCE(g.title,'')
+	COALESCE(NULLIF(u.display_name,''), u.username), u.role, COALESCE(g.title,'')
 `
 
 func scanFeature(row interface {
@@ -355,7 +473,7 @@ func (d *DB) GetStats() (*model.Stats, error) {
 func (d *DB) ListGroups() ([]*model.Group, error) {
 	rows, err := d.Query(`
 		SELECT g.id, g.title, g.description, g.created_by, g.created_at,
-		       u.username,
+		       COALESCE(NULLIF(u.display_name,''), u.username),
 		       COUNT(f.id)
 		FROM groups g
 		JOIN users u ON u.id = g.created_by
@@ -435,7 +553,8 @@ func (d *DB) ListFeaturesInGroup(groupID int64) ([]*model.Feature, error) {
 
 func (d *DB) ListComments(featureID int64) ([]*model.Comment, error) {
 	rows, err := d.Query(`
-		SELECT c.id, c.feature_id, c.user_id, c.content, c.created_at, u.username, u.role
+		SELECT c.id, c.feature_id, c.user_id, c.content, c.created_at,
+		       COALESCE(NULLIF(u.display_name,''), u.username), u.role
 		FROM comments c
 		JOIN users u ON u.id = c.user_id
 		WHERE c.feature_id = ?
@@ -474,7 +593,7 @@ func (d *DB) CreateFeatureEvent(e *model.FeatureEvent) error {
 func (d *DB) ListFeatureEvents(featureID int64) ([]*model.FeatureEvent, error) {
 	rows, err := d.Query(`
 		SELECT fe.id, fe.feature_id, fe.operator_id, fe.action, fe.old_value, fe.new_value,
-		       fe.created_at, u.username, u.role
+		       fe.created_at, COALESCE(NULLIF(u.display_name,''), u.username), u.role
 		FROM feature_events fe
 		JOIN users u ON u.id = fe.operator_id
 		WHERE fe.feature_id = ?

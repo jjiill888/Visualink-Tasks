@@ -7,7 +7,7 @@
       <span class="comment-author">{{.Username}}（{{.UserRoleLabel}}）</span>
       <span class="comment-time" data-utc="{{.CreatedAt.UTC.Format "2006-01-02T15:04:05Z"}}">{{.CreatedAt.Format "01-02 15:04"}}</span>
     </div>
-    <p class="comment-body">{{.Content | highlightMentions}}</p>
+    <p class="comment-body">{{.RenderedContent}}</p>
   </div>
   {{end}}
 {{else}}

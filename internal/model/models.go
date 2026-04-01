@@ -15,12 +15,13 @@ func init() {
 }
 
 type User struct {
-	ID        int64
-	Username  string
-	Email     string
-	Password  string
-	Role      string // pm | dev | admin
-	CreatedAt time.Time
+	ID          int64
+	Username    string // @mention handle, no spaces allowed
+	DisplayName string // display name shown in UI, can have spaces
+	Email       string
+	Password    string
+	Role        string // pm | dev | admin
+	CreatedAt   time.Time
 }
 
 type Group struct {

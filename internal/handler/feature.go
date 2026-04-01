@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"html/template"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -15,6 +16,52 @@ import (
 )
 
 var mentionRe = regexp.MustCompile(`@([\p{L}\p{N}_]+)`)
+
+// commentView wraps a Comment with pre-rendered HTML content (mentions resolved to display names).
+type commentView struct {
+	*model.Comment
+	RenderedContent template.HTML
+}
+
+// renderMentions converts @username handles in content to highlighted @displayname spans.
+func renderMentions(content string, displayMap map[string]string) template.HTML {
+	var buf strings.Builder
+	last := 0
+	for _, m := range mentionRe.FindAllStringSubmatchIndex(content, -1) {
+		username := content[m[2]:m[3]]
+		displayName, ok := displayMap[username]
+		if !ok {
+			displayName = username
+		}
+		buf.WriteString(template.HTMLEscapeString(content[last:m[0]]))
+		buf.WriteString(`<span class="mention">@`)
+		buf.WriteString(template.HTMLEscapeString(displayName))
+		buf.WriteString(`</span>`)
+		last = m[1]
+	}
+	buf.WriteString(template.HTMLEscapeString(content[last:]))
+	return template.HTML(buf.String())
+}
+
+// renderCommentViews resolves @username handles in all comments to display names in one batch query.
+func renderCommentViews(comments []*model.Comment, database *db.DB) []commentView {
+	seen := map[string]bool{}
+	var usernames []string
+	for _, c := range comments {
+		for _, u := range parseMentions(c.Content) {
+			if !seen[u] {
+				seen[u] = true
+				usernames = append(usernames, u)
+			}
+		}
+	}
+	displayMap, _ := database.MentionDisplayMap(usernames)
+	views := make([]commentView, len(comments))
+	for i, c := range comments {
+		views[i] = commentView{Comment: c, RenderedContent: renderMentions(c.Content, displayMap)}
+	}
+	return views
+}
 
 type dashboardData struct {
 	Stats      *model.Stats
@@ -297,7 +344,7 @@ type featureRowData struct {
 
 type featureDetailData struct {
 	Feature       *model.Feature
-	Comments      []*model.Comment
+	Comments      []commentView
 	Events        []*model.FeatureEvent
 	CanEditStatus bool
 	CanRetract    bool
@@ -335,7 +382,7 @@ func FeatureDetail(database *db.DB) http.HandlerFunc {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if err := PartialTmpl.ExecuteTemplate(w, "feature_detail.html", featureDetailData{
 			Feature:       f,
-			Comments:      comments,
+			Comments:      renderCommentViews(comments, database),
 			Events:        events,
 			CanEditStatus: canEditStatus(u.Role),
 			CanRetract:    f.Status == "pending" && u.ID == f.CreatedBy,
@@ -404,8 +451,12 @@ func AddComment(database *db.DB) http.HandlerFunc {
 
 		// Parse @mentions and create notifications
 		f, _ := database.GetFeature(id)
-		for _, username := range parseMentions(content) {
-			mentioned, _ := database.GetUserByUsername(username)
+		for _, token := range parseMentions(content) {
+			mentioned, _ := database.GetUserByUsername(token)
+			if mentioned == nil {
+				// token may be a display_name (e.g. @哈几米 where username differs)
+				mentioned, _ = database.GetUserByDisplayName(token)
+			}
 			if mentioned == nil {
 				continue
 			}
@@ -413,11 +464,15 @@ func AddComment(database *db.DB) http.HandlerFunc {
 			if f != nil {
 				featureTitle = f.Title
 			}
+			fromUser := u.DisplayName
+			if fromUser == "" {
+				fromUser = u.Username
+			}
 			_ = database.CreateNotification(&model.Notification{
 				UserID:       mentioned.ID,
 				FeatureID:    id,
 				CommentID:    c.ID,
-				FromUser:     u.Username,
+				FromUser:     fromUser,
 				FeatureTitle: featureTitle,
 			})
 			hub.Global.Broadcast(fmt.Sprintf("mention-added:%d", mentioned.ID))
@@ -430,7 +485,7 @@ func AddComment(database *db.DB) http.HandlerFunc {
 		}
 		hub.Global.Broadcast("comment-added:" + chi.URLParam(r, "id"))
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := PartialTmpl.ExecuteTemplate(w, "comments_partial.html", comments); err != nil {
+		if err := PartialTmpl.ExecuteTemplate(w, "comments_partial.html", renderCommentViews(comments, database)); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}
@@ -561,7 +616,7 @@ func GetComments(database *db.DB) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := PartialTmpl.ExecuteTemplate(w, "comments_partial.html", comments); err != nil {
+		if err := PartialTmpl.ExecuteTemplate(w, "comments_partial.html", renderCommentViews(comments, database)); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}
