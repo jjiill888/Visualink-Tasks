@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/static/css/style.css?v=4">
   {{block "head" .}}{{end}}
 </head>
-<body hx-ext="morph">
+<body hx-ext="morph,loading-states,response-targets">
 
 
   <!-- 顶部导航栏 -->
@@ -100,6 +100,8 @@
   <script src="/static/js/htmx.min.js"></script>
   <script src="/static/js/htmx-ext-sse.js"></script>
   <script src="/static/js/idiomorph-ext.min.js"></script>
+  <script src="/static/js/htmx-ext-loading-states.js"></script>
+  <script src="/static/js/htmx-ext-response-targets.js"></script>
   <script defer src="/static/js/alpine.min.js"></script>
   {{if .CurrentUser}}
   <script>
@@ -122,6 +124,20 @@
   </script>
   {{end}}
   {{block "scripts" .}}{{end}}
+
+  <!-- 全局错误提示 Toast -->
+  <div id="htmx-error-toast" onclick="this.textContent=''"></div>
+  <script>
+  document.addEventListener('htmx:afterRequest', function(e) {
+    if (e.detail.successful) return;
+    var xhr = e.detail.xhr;
+    if (!xhr || xhr.status === 0) return;
+    var toast = document.getElementById('htmx-error-toast');
+    toast.textContent = xhr.responseText.trim() || '操作失败，请重试';
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(function() { toast.textContent = ''; }, 4000);
+  });
+  </script>
 </body>
 </html>
 {{end}}

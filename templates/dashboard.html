@@ -53,12 +53,14 @@
             hx-target="#modal-content"
             hx-swap="morph:innerHTML"
             hx-on:htmx:after-request="window.dispatchEvent(new CustomEvent('open-modal'))"
+            data-loading-disable
             title="个人偏好设置">⚙ 偏好</button>
           <button class="us-btn us-btn-primary us-btn-sm"
             hx-get="/features/new"
             hx-target="#modal-content"
             hx-swap="morph:innerHTML"
-            hx-on:htmx:after-request="document.querySelector('#feature-modal .modal-box').classList.add('wide'); window.dispatchEvent(new CustomEvent('open-modal'))">
+            hx-on:htmx:after-request="document.querySelector('#feature-modal .modal-box').classList.add('wide'); window.dispatchEvent(new CustomEvent('open-modal'))"
+            data-loading-disable>
             + 提交功能
           </button>
         </div>
@@ -103,7 +105,8 @@
         hx-trigger="load, refresh"
         hx-include="#feature-search-form"
         hx-swap="morph:innerHTML"
-        :hx-vals='JSON.stringify({view: view})'>
+        :hx-vals='JSON.stringify({view: view})'
+        data-loading-class="us-htmx-loading">
         {{if $d.Features}}
           {{range $d.Features}}{{template "feature_row.html" .}}{{end}}
         {{else}}

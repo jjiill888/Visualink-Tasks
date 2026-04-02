@@ -17,12 +17,7 @@
   <form id="submit-feature-form"
     hx-post="/features"
     hx-swap="none"
-    hx-on:htmx:before-request="
-      var btn = document.getElementById('submit-feature-btn');
-      btn.disabled = true; btn.textContent = '提交中…';"
     hx-on:htmx:after-request="
-      var btn = document.getElementById('submit-feature-btn');
-      btn.disabled = false; btn.textContent = '提交功能';
       if (event.detail.successful) {
         this.reset();
         window.dispatchEvent(new CustomEvent('close-modal'));
@@ -62,7 +57,8 @@
     </div>
     <hr class="us-divider">
     <div style="display:flex;align-items:center;gap:12px">
-      <button id="submit-feature-btn" type="submit" class="us-btn us-btn-primary">提交功能</button>
+      <button id="submit-feature-btn" type="submit" class="us-btn us-btn-primary"
+        data-loading-disable data-loading="提交中…">提交功能</button>
       <button type="button" class="us-btn us-btn-outline"
         onclick="window.dispatchEvent(new CustomEvent('close-modal'))">取消</button>
     </div>

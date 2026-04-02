@@ -848,3 +848,33 @@ a:visited { color: #4c2c92; }
   padding: 20px 0;
   margin: 0;
 }
+
+/* ── HTMX loading state ── */
+.us-htmx-loading {
+  opacity: 0.55;
+  cursor: wait;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+/* ── HTMX 错误 Toast ── */
+#htmx-error-toast {
+  display: none;
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 500;
+  min-width: 220px;
+  max-width: 480px;
+  background: #fce8ec;
+  border-left: 4px solid #e31c3d;
+  color: #6c1020;
+  padding: 12px 20px;
+  border-radius: 4px;
+  font-size: 14px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  cursor: pointer;
+  white-space: pre-wrap;
+}
+#htmx-error-toast:not(:empty) { display: block; }

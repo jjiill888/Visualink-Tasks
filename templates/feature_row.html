@@ -5,7 +5,8 @@
     hx-get="/features/{{.ID}}"
     hx-target="#modal-content"
     hx-swap="morph:innerHTML"
-    hx-on:htmx:after-request="if(event.detail.successful) window.dispatchEvent(new CustomEvent('open-modal'))">
+    hx-on:htmx:after-request="if(event.detail.successful) window.dispatchEvent(new CustomEvent('open-modal'))"
+    data-loading-class="us-htmx-loading">
     <div class="us-priority-dot {{.PriorityDotClass}}"></div>
     <div class="us-feature-meta">
       <div class="us-feature-title">{{.Title}}</div>
@@ -29,7 +30,8 @@
         hx-vals='{"status":"in_progress"}'
         hx-target="#feature-{{.ID}}"
         hx-swap="outerHTML"
-        hx-on:htmx:after-request="if(event.detail.successful) htmx.ajax('GET', '/stats', {target:'#stats-grid', swap:'morph:outerHTML'})">
+        hx-on:htmx:after-request="if(event.detail.successful) htmx.ajax('GET', '/stats', {target:'#stats-grid', swap:'morph:outerHTML'})"
+        data-loading-disable>
         开始处理
       </button>
       {{else if eq .Status "in_progress"}}
@@ -38,7 +40,8 @@
         hx-vals='{"status":"done"}'
         hx-target="#feature-{{.ID}}"
         hx-swap="outerHTML"
-        hx-on:htmx:after-request="if(event.detail.successful) htmx.ajax('GET', '/stats', {target:'#stats-grid', swap:'morph:outerHTML'})">
+        hx-on:htmx:after-request="if(event.detail.successful) htmx.ajax('GET', '/stats', {target:'#stats-grid', swap:'morph:outerHTML'})"
+        data-loading-disable>
         标记完成 ✓
       </button>
       {{end}}
