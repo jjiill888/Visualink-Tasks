@@ -1,0 +1,14 @@
+{{define "messages_preview.html"}}
+<div class="notif-dropdown-title">{{if gt .Count 0}}未读消息{{else}}最近消息{{end}}</div>
+{{if .Items}}
+  {{range .Items}}
+  <div class="notif-item" onclick="window.messageUI.openCenter('{{if eq .Kind "system"}}/messages/center?kind=system{{else}}/messages/center?kind=user&id={{.UserID}}{{end}}'); window.dispatchEvent(new Event('message-preview-close'));">
+    <div class="notif-item-from">{{.Title}}</div>
+    <div class="notif-item-title">{{.Preview}}</div>
+    <div class="notif-item-time">{{.LastAtLabel}}{{if gt .UnreadCount 0}} · {{.UnreadCount}} 条未读{{end}}</div>
+  </div>
+  {{end}}
+{{else}}
+  <p class="notif-empty">暂无消息</p>
+{{end}}
+{{end}}

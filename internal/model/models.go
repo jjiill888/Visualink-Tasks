@@ -237,6 +237,63 @@ type Notification struct {
 	CreatedAt    time.Time
 }
 
+func (n Notification) CreatedAtLocal() string {
+	return n.CreatedAt.In(shanghaiLoc).Format("01-02 15:04")
+}
+
+func (n Notification) PreviewText() string {
+	if n.FeatureTitle == "" {
+		return "你收到了一条系统通知"
+	}
+	return "在「" + n.FeatureTitle + "」里提到了你"
+}
+
+type DirectMessage struct {
+	ID            int64
+	SenderID      int64
+	RecipientID   int64
+	Content       string
+	IsRead        bool
+	CreatedAt     time.Time
+	SenderName    string
+	RecipientName string
+}
+
+func (m DirectMessage) CreatedAtLocal() string {
+	return m.CreatedAt.In(shanghaiLoc).Format("01-02 15:04")
+}
+
+type MessageContact struct {
+	Kind        string
+	UserID      int64
+	Title       string
+	Secondary   string
+	Preview     string
+	UnreadCount int
+	LastAt      time.Time
+	Active      bool
+	Empty       bool
+}
+
+func (c MessageContact) Key() string {
+	if c.Kind == "system" {
+		return "system"
+	}
+	return c.Kind
+}
+
+func (c MessageContact) LastAtLabel() string {
+	if c.LastAt.IsZero() {
+		return ""
+	}
+	return c.LastAt.In(shanghaiLoc).Format("01-02 15:04")
+}
+
+type MessagePreview struct {
+	Count int
+	Items []*MessageContact
+}
+
 type Stats struct {
 	Total      int
 	Pending    int

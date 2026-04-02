@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{block "title" .}}VisualLink Tasks{{end}}</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%234f46e5'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-weight='bold' font-size='16' fill='white'>VT</text></svg>">
-  <link rel="stylesheet" href="/static/css/style.css?v=4">
+  <link rel="stylesheet" href="/static/css/style.css?v=14">
   {{block "head" .}}{{end}}
 </head>
 <body hx-ext="morph,loading-states,response-targets">
@@ -27,17 +27,16 @@
           <a href="/admin" {{if eq .ActiveNav "admin"}}class="active"{{end}}>管理</a>
           {{end}}
           <!-- 消息通知 -->
-          <div x-data="{ open: false }" style="position:relative;display:inline-flex;align-items:center">
+          <div x-data="{ open: false }" @message-preview-close.window="open = false" @mouseenter="open = true; htmx.ajax('GET','/messages/preview',{target:'#notif-dropdown-list',swap:'innerHTML'})" @mouseleave="open = false" style="position:relative;display:inline-flex;align-items:center">
             <button class="notif-bell-btn"
-              @click="open=!open; if(open) htmx.ajax('GET','/notifications',{target:'#notif-dropdown-list',swap:'morph:innerHTML'})">
+              @click.prevent="open = false; window.messageUI.openCenter('/messages/center')">
               消息
               <span id="notif-badge"
-                hx-get="/notifications/count"
-                hx-trigger="load, notif-refresh from:body"
+                hx-get="/messages/count"
+                hx-trigger="load, message-refresh from:body"
                 hx-swap="outerHTML"></span>
             </button>
-            <div x-show="open" x-transition @click.outside="open=false" class="notif-dropdown" style="display:none">
-              <div class="notif-dropdown-title">未读消息</div>
+            <div x-show="open" x-transition class="notif-dropdown" style="display:none">
               <div id="notif-dropdown-list">
                 <p class="notif-empty">加载中…</p>
               </div>
@@ -85,13 +84,13 @@
   <!-- 全局功能详情弹窗 -->
   <div id="feature-modal"
     x-data="{ open: false }"
-    @open-modal.window="open = true"
-    @close-modal.window="open = false; $nextTick(() => { $el.querySelector('.modal-box').classList.remove('wide'); document.getElementById('modal-content').innerHTML = ''; })"
+    @open-modal.window="open = true; document.body.classList.add('modal-open')"
+    @close-modal.window="open = false; document.body.classList.remove('modal-open'); $nextTick(() => { $el.querySelector('.modal-box').classList.remove('wide', 'message-modal'); document.getElementById('modal-content').innerHTML = ''; })"
     x-show="open"
     style="display:none"
     class="modal-overlay"
-    @click.self="open = false; $nextTick(() => { $el.querySelector('.modal-box').classList.remove('wide'); document.getElementById('modal-content').innerHTML = ''; })"
-    @keydown.escape.window="if(open){ open = false; $nextTick(() => { $el.querySelector('.modal-box').classList.remove('wide'); document.getElementById('modal-content').innerHTML = ''; }) }">
+    @click.self="open = false; document.body.classList.remove('modal-open'); $nextTick(() => { $el.querySelector('.modal-box').classList.remove('wide', 'message-modal'); document.getElementById('modal-content').innerHTML = ''; })"
+    @keydown.escape.window="if(open){ open = false; document.body.classList.remove('modal-open'); $nextTick(() => { $el.querySelector('.modal-box').classList.remove('wide', 'message-modal'); document.getElementById('modal-content').innerHTML = ''; }) }">
     <div class="modal-box">
       <div id="modal-content"></div>
     </div>
@@ -146,14 +145,52 @@
       }
     };
 
+    window.messageUI = {
+      refreshBadge: function() {
+        document.body.dispatchEvent(new Event('message-refresh'));
+      },
+      refreshPreview: function() {
+        var panel = document.getElementById('notif-dropdown-list');
+        if (!panel) return;
+        var dropdown = panel.closest('.notif-dropdown');
+        if (!dropdown || dropdown.style.display === 'none') return;
+        htmx.ajax('GET', '/messages/preview', {target:'#notif-dropdown-list', swap:'innerHTML'});
+      },
+      openCenter: function(url) {
+        var box = document.querySelector('#feature-modal .modal-box');
+        if (box) box.classList.add('wide', 'message-modal');
+        window.dispatchEvent(new CustomEvent('open-modal'));
+        htmx.ajax('GET', url || '/messages/center', {target:'#modal-content', swap:'innerHTML'});
+      },
+      refreshOpenCenter: function() {
+        var root = document.getElementById('message-center-root');
+        if (!root) return;
+        var kind = root.getAttribute('data-kind') || 'system';
+        var userID = root.getAttribute('data-user-id') || '';
+        var search = root.getAttribute('data-search') || '';
+        var url = '/messages/center?kind=' + encodeURIComponent(kind);
+        if (userID) url += '&id=' + encodeURIComponent(userID);
+        if (search) url += '&q=' + encodeURIComponent(search);
+        this.openCenter(url);
+      }
+    };
+
     var uid = '{{.CurrentUser.ID}}';
     var src = new EventSource('/sse');
     var statsTimer;
 
     src.addEventListener('mention-added', function(e) {
       if (e.data.trim() === uid) {
-        document.body.dispatchEvent(new Event('notif-refresh'));
+        window.messageUI.refreshBadge();
+        window.messageUI.refreshPreview();
       }
+    });
+
+    src.addEventListener('mailbox-updated', function(e) {
+      if (e.data.trim() !== uid) return;
+      window.messageUI.refreshBadge();
+      window.messageUI.refreshPreview();
+      window.messageUI.refreshOpenCenter();
     });
 
     src.addEventListener('stats-updated', function() {

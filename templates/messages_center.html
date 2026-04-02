@@ -1,0 +1,159 @@
+{{define "messages_center.html"}}
+<div id="message-center-root" class="message-center" data-kind="{{.ActiveKind}}" data-user-id="{{.ActiveUserID}}" data-search="{{.Search}}">
+  <div class="modal-header message-center-header">
+    <div class="message-header-block">
+      <h2 class="modal-title">消息中心</h2>
+    </div>
+    <button class="modal-close-btn message-close-btn" onclick="window.dispatchEvent(new CustomEvent('close-modal'))">×</button>
+  </div>
+
+  <div class="message-center-shell">
+    <aside class="message-sidebar">
+      <div class="message-sidebar-top">
+        <form id="message-search-form"
+          hx-get="/messages/center"
+          hx-target="#modal-content"
+          hx-swap="innerHTML"
+          hx-trigger="message-search, keyup changed delay:250ms from:#message-contact-search">
+          <input class="us-input message-search-input" id="message-contact-search" type="text" name="q" value="{{.Search}}" placeholder="搜索联系人">
+        </form>
+
+      </div>
+
+      <div class="message-contact-list">
+        {{if .Contacts}}
+          {{range .Contacts}}
+          <div class="message-contact{{if .Active}} active{{end}}{{if eq .Kind "system"}} system{{end}}"
+            hx-get="{{if eq .Kind "system"}}/messages/center?kind=system{{else}}/messages/center?kind=user&id={{.UserID}}{{end}}"
+            hx-target="#modal-content"
+            hx-swap="innerHTML">
+            <div class="message-contact-top">
+              <span class="message-contact-name">{{.Title}}</span>
+              <span class="message-contact-time">{{.LastAtLabel}}</span>
+            </div>
+            {{if and .Secondary (ne .Kind "system")}}<div class="message-contact-sub sr-only">{{.Secondary}}</div>{{end}}
+            <div class="message-contact-preview-row">
+              <div class="message-contact-preview">{{.Preview}}</div>
+              {{if gt .UnreadCount 0}}<span class="message-contact-badge">{{.UnreadCount}}</span>{{end}}
+            </div>
+          </div>
+          {{end}}
+        {{else}}
+          <p class="notif-empty">没有找到联系人</p>
+        {{end}}
+      </div>
+    </aside>
+
+    <section class="message-thread-panel">
+      <div class="message-thread-head">
+        <div class="message-thread-head-inner">
+          <div class="message-thread-title">
+            {{.ActiveTitle}}{{if and (ne .ActiveKind "system") .ActiveRole}}<span class="message-thread-role">（{{.ActiveRole}}）</span>{{end}}
+          </div>
+          {{if eq .ActiveKind "system"}}
+          {{if .ActiveSubline}}<div class="message-thread-sub">{{.ActiveSubline}}</div>{{end}}
+          {{end}}
+        </div>
+      </div>
+
+      <div class="message-thread-body">
+        {{if eq .ActiveKind "system"}}
+          {{if .Notifications}}
+            {{range .Notifications}}
+            <div class="message-time-divider"><span>{{.CreatedAtLocal}}</span></div>
+            <div class="message-system-item{{if not .IsRead}} unread{{end}}">
+              <div class="message-system-meta">
+                <span class="message-system-from">@{{.FromUser}}</span>
+                <span class="message-system-time">{{.CreatedAtLocal}}</span>
+              </div>
+              <div class="message-system-title">{{.PreviewText}}</div>
+              <div class="message-system-actions">
+                <button class="us-btn us-btn-outline us-btn-sm"
+                  hx-get="/features/{{.FeatureID}}"
+                  hx-target="#modal-content"
+                  hx-swap="innerHTML"
+                  hx-on:htmx:after-request="document.querySelector('#feature-modal .modal-box').classList.remove('message-modal');">
+                  查看详情
+                </button>
+              </div>
+            </div>
+            {{end}}
+          {{else}}
+            <div class="message-empty message-empty-card">{{.EmptyState}}</div>
+          {{end}}
+        {{else}}
+          {{if .MessageItems}}
+            {{range .MessageItems}}
+            {{if .ShowDivider}}<div class="message-time-divider inline"><span>{{.DividerText}}</span></div>{{end}}
+            <div class="message-bubble-row{{if .Own}} own{{end}}{{if .Compact}} continued{{end}}">
+              <div class="message-bubble{{if .Own}} own{{end}}">
+                <div class="message-bubble-content">{{.Content}}</div>
+                {{if .ShowTime}}<div class="message-bubble-time">{{.CreatedAt.Format "15:04"}}</div>{{end}}
+              </div>
+            </div>
+            {{end}}
+          {{else}}
+            <div class="message-empty message-empty-card">{{.EmptyState}}</div>
+          {{end}}
+        {{end}}
+      </div>
+
+      {{if and (eq .ActiveKind "user") (gt .ActiveUserID 0)}}
+      <form class="message-compose"
+        hx-post="/messages/send"
+        hx-target="#modal-content"
+        hx-swap="innerHTML">
+        <input type="hidden" name="recipient_id" value="{{.ActiveUserID}}">
+        <input type="hidden" name="q" value="{{.Search}}">
+        <div class="message-compose-row">
+          <textarea class="us-textarea message-compose-input" name="content" placeholder="输入消息，Enter 发送 · Shift+Enter 换行" required></textarea>
+          <button type="submit" class="us-btn us-btn-primary us-btn-sm message-send-btn">发送</button>
+        </div>
+      </form>
+      {{end}}
+    </section>
+  </div>
+</div>
+<script>
+(function(){
+  var box = document.querySelector('#feature-modal .modal-box');
+  if (box) box.classList.add('wide', 'message-modal');
+  var root = document.getElementById('message-center-root');
+  var searchForm = document.getElementById('message-search-form');
+  var searchInput = document.getElementById('message-contact-search');
+  if (searchForm) {
+    searchForm.addEventListener('submit', function(e){
+      e.preventDefault();
+      htmx.trigger(searchForm, 'message-search');
+    });
+  }
+  if (searchInput) {
+    searchInput.addEventListener('keydown', function(e){
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (searchForm) htmx.trigger(searchForm, 'message-search');
+      }
+    });
+  }
+  var threadBody = root ? root.querySelector('.message-thread-body') : null;
+  if (threadBody) {
+    threadBody.scrollTop = threadBody.scrollHeight;
+  }
+  var input = root ? root.querySelector('.message-compose-input') : null;
+  if (window.messageUI) {
+    window.messageUI.refreshBadge();
+    window.messageUI.refreshPreview();
+  }
+  if (input) {
+    input.focus();
+    input.addEventListener('keydown', function(e){
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        var form = input.closest('form');
+        if (form) htmx.trigger(form, 'submit');
+      }
+    });
+  }
+})();
+</script>
+{{end}}

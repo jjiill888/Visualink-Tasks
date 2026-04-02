@@ -21,7 +21,7 @@ import (
 var mentionHighlightRe = regexp.MustCompile(`@([\p{L}\p{N}_]+)`)
 
 var funcMap = template.FuncMap{
-	"add":   func(a, b int) int { return a + b },
+	"add": func(a, b int) int { return a + b },
 	"deref": func(p *int64) int64 {
 		if p == nil {
 			return 0
@@ -95,6 +95,9 @@ func buildPartialTmpl() *template.Template {
 		"templates/notif_badge.html",
 		"templates/notif_list.html",
 		"templates/notif_read_response.html",
+		"templates/message_badge.html",
+		"templates/messages_preview.html",
+		"templates/messages_center.html",
 		"templates/preferences_partial.html",
 		"templates/feature_draft_edit.html",
 		"templates/group_action_btn.html",
@@ -171,6 +174,10 @@ func main() {
 		r.Get("/notifications", handler.GetNotificationList(database))
 		r.Post("/notifications/read", handler.MarkNotificationsRead(database))
 		r.Post("/notifications/read-all", handler.MarkAllNotificationsRead(database))
+		r.Get("/messages/count", handler.GetMessageBadge(database))
+		r.Get("/messages/preview", handler.GetMessagePreview(database))
+		r.Get("/messages/center", handler.GetMessageCenter(database))
+		r.Post("/messages/send", handler.SendMessage(database))
 
 		r.Get("/preferences", handler.Preferences(database))
 

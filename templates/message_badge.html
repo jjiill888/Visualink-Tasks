@@ -1,0 +1,8 @@
+{{define "message_badge.html"}}
+<span id="notif-badge"
+  hx-get="/messages/count"
+  hx-trigger="message-refresh from:body"
+  hx-swap="outerHTML">
+  {{if gt .Count 0}}<span class="notif-dot">{{if gt .Count 99}}99+{{else}}{{.Count}}{{end}}</span>{{end}}
+</span>
+{{end}}

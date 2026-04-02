@@ -229,6 +229,7 @@ func UpdateStatus(database *db.DB) http.HandlerFunc {
 					FeatureTitle: f.Title,
 				})
 				hub.Global.Broadcast(fmt.Sprintf("mention-added:%d", mentioned.ID))
+				hub.Global.Broadcast(fmt.Sprintf("mailbox-updated:%d", mentioned.ID))
 			}
 		}
 		f, err = database.GetFeature(id)
@@ -620,6 +621,7 @@ func AddComment(database *db.DB) http.HandlerFunc {
 				FeatureTitle: featureTitle,
 			})
 			hub.Global.Broadcast(fmt.Sprintf("mention-added:%d", mentioned.ID))
+			hub.Global.Broadcast(fmt.Sprintf("mailbox-updated:%d", mentioned.ID))
 		}
 
 		comments, err := database.ListComments(id)
@@ -938,6 +940,7 @@ func UpdateDraft(database *db.DB) http.HandlerFunc {
 						FeatureTitle: ftitle,
 					})
 					hub.Global.Broadcast(fmt.Sprintf("mention-added:%d", mentioned.ID))
+					hub.Global.Broadcast(fmt.Sprintf("mailbox-updated:%d", mentioned.ID))
 				}
 			}
 			hub.Global.Broadcast("feature-list-changed")
