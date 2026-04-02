@@ -51,14 +51,14 @@
           <button class="us-btn us-btn-outline us-btn-sm"
             hx-get="/preferences"
             hx-target="#modal-content"
-            hx-swap="innerHTML"
+            hx-swap="morph:innerHTML"
             hx-on:htmx:after-request="window.dispatchEvent(new CustomEvent('open-modal'))"
             title="个人偏好设置">⚙ 偏好</button>
           <button class="us-btn us-btn-primary us-btn-sm"
             hx-get="/features/new"
             hx-target="#modal-content"
-            hx-swap="innerHTML"
-            hx-on:htmx:after-request="window.dispatchEvent(new CustomEvent('open-modal'))">
+            hx-swap="morph:innerHTML"
+            hx-on:htmx:after-request="document.querySelector('#feature-modal .modal-box').classList.add('wide'); window.dispatchEvent(new CustomEvent('open-modal'))">
             + 提交功能
           </button>
         </div>
@@ -102,7 +102,7 @@
         hx-get="/features"
         hx-trigger="load, refresh"
         hx-include="#feature-search-form"
-        hx-swap="innerHTML"
+        hx-swap="morph:innerHTML"
         :hx-vals='JSON.stringify({view: view})'>
         {{if $d.Features}}
           {{range $d.Features}}{{template "feature_row.html" .}}{{end}}
@@ -171,7 +171,7 @@
     src.addEventListener('stats-updated', function() {
       clearTimeout(statsTimer);
       statsTimer = setTimeout(function() {
-        htmx.ajax('GET', '/stats', {target:'#stats-grid', swap:'outerHTML'});
+        htmx.ajax('GET', '/stats', {target:'#stats-grid', swap:'morph:outerHTML'});
       }, 400);
     });
 
@@ -180,7 +180,7 @@
       const id = e.data.trim();
       const row = document.getElementById('feature-' + id);
       if (row) {
-        htmx.ajax('GET', '/features/' + id + '/row', {target:'#feature-' + id, swap:'outerHTML'});
+        htmx.ajax('GET', '/features/' + id + '/row', {target:'#feature-' + id, swap:'morph:outerHTML'});
       }
     });
 
@@ -194,7 +194,7 @@
       const id = e.data.trim();
       const el = document.getElementById('comments-' + id);
       if (el) {
-        htmx.ajax('GET', '/features/' + id + '/comments', {target:'#comments-' + id, swap:'innerHTML'});
+        htmx.ajax('GET', '/features/' + id + '/comments', {target:'#comments-' + id, swap:'morph:innerHTML'});
       }
     });
 

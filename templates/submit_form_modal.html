@@ -27,7 +27,7 @@
         this.reset();
         window.dispatchEvent(new CustomEvent('close-modal'));
         htmx.trigger(document.getElementById('feature-list'), 'refresh');
-        htmx.ajax('GET', '/stats', {target:'#stats-grid', swap:'outerHTML'});
+        htmx.ajax('GET', '/stats', {target:'#stats-grid', swap:'morph:outerHTML'});
       }">
     <div class="us-form-group">
       <label class="us-label" for="fm-group">功能组（可选）</label>
@@ -69,10 +69,4 @@
   </form>
 </div>
 
-<script>
-  (function(){
-    var box = document.querySelector('#feature-modal .modal-box');
-    if (box) box.classList.add('wide');
-  })();
-</script>
 {{end}}

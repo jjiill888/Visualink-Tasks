@@ -20,7 +20,7 @@
               if(event.detail.successful){
                 window.dispatchEvent(new CustomEvent('close-modal'));
                 htmx.trigger('#feature-list','refresh');
-                htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'outerHTML'});
+                htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'morph:outerHTML'});
               } else {
                 htmx.ajax('GET','/features/{{$f.ID}}',{target:'#modal-content',swap:'innerHTML'});
               }"
@@ -48,7 +48,7 @@
             hx-target="#feature-{{$f.ID}}"
             hx-swap="outerHTML"
             hx-disabled-elt="this"
-            hx-on:htmx:after-request="if(event.detail.successful){ htmx.ajax('GET','/features/{{$f.ID}}',{target:'#modal-content',swap:'innerHTML'}); htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'outerHTML'}); }"
+            hx-on:htmx:after-request="if(event.detail.successful){ htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'morph:outerHTML'}); }"
             style="font-size:12px;color:#fff;background:#b42418;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;line-height:1.6">
             确认驳回
           </button>
@@ -93,7 +93,7 @@
       hx-vals='{"status":"in_progress"}'
       hx-swap="none"
       hx-disabled-elt="this"
-      hx-on:htmx:after-request="if(event.detail.successful){ htmx.ajax('GET','/features/{{$f.ID}}',{target:'#modal-content',swap:'innerHTML'}); htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'outerHTML'}); var row=document.getElementById('feature-{{$f.ID}}'); if(row){ htmx.ajax('GET','/features/{{$f.ID}}/row',{target:'#feature-{{$f.ID}}',swap:'outerHTML'}); } }">
+      hx-on:htmx:after-request="if(event.detail.successful){ htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'morph:outerHTML'}); var row=document.getElementById('feature-{{$f.ID}}'); if(row){ htmx.ajax('GET','/features/{{$f.ID}}/row',{target:'#feature-{{$f.ID}}',swap:'morph:outerHTML'}); } }">
       开始处理
     </button>
     {{else if eq $f.Status "in_progress"}}
@@ -102,7 +102,7 @@
       hx-vals='{"status":"done"}'
       hx-swap="none"
       hx-disabled-elt="this"
-      hx-on:htmx:after-request="if(event.detail.successful){ htmx.ajax('GET','/features/{{$f.ID}}',{target:'#modal-content',swap:'innerHTML'}); htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'outerHTML'}); var row=document.getElementById('feature-{{$f.ID}}'); if(row){ htmx.ajax('GET','/features/{{$f.ID}}/row',{target:'#feature-{{$f.ID}}',swap:'outerHTML'}); } }">
+      hx-on:htmx:after-request="if(event.detail.successful){ htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'morph:outerHTML'}); var row=document.getElementById('feature-{{$f.ID}}'); if(row){ htmx.ajax('GET','/features/{{$f.ID}}/row',{target:'#feature-{{$f.ID}}',swap:'morph:outerHTML'}); } }">
       标记完成 ✓
     </button>
     {{else if eq $f.Status "done"}}
@@ -118,7 +118,7 @@
           hx-post="/features/{{$f.ID}}/archive"
           hx-swap="none"
           hx-disabled-elt="this"
-          hx-on:htmx:after-request="if(event.detail.successful){ htmx.ajax('GET','/features/{{$f.ID}}',{target:'#modal-content',swap:'innerHTML'}); htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'outerHTML'}); var row=document.getElementById('feature-{{$f.ID}}'); if(row){ htmx.ajax('GET','/features/{{$f.ID}}/row',{target:'#feature-{{$f.ID}}',swap:'outerHTML'}); } }"
+          hx-on:htmx:after-request="if(event.detail.successful){ htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'morph:outerHTML'}); var row=document.getElementById('feature-{{$f.ID}}'); if(row){ htmx.ajax('GET','/features/{{$f.ID}}/row',{target:'#feature-{{$f.ID}}',swap:'morph:outerHTML'}); } }"
           style="font-size:12px;color:#fff;background:#3d4551;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;line-height:1.6">
           确认归档
         </button>
@@ -141,7 +141,7 @@
           hx-post="/features/{{$f.ID}}/archive"
           hx-swap="none"
           hx-disabled-elt="this"
-          hx-on:htmx:after-request="if(event.detail.successful){ htmx.ajax('GET','/features/{{$f.ID}}',{target:'#modal-content',swap:'innerHTML'}); htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'outerHTML'}); var row=document.getElementById('feature-{{$f.ID}}'); if(row){ htmx.ajax('GET','/features/{{$f.ID}}/row',{target:'#feature-{{$f.ID}}',swap:'outerHTML'}); } }"
+          hx-on:htmx:after-request="if(event.detail.successful){ htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'morph:outerHTML'}); var row=document.getElementById('feature-{{$f.ID}}'); if(row){ htmx.ajax('GET','/features/{{$f.ID}}/row',{target:'#feature-{{$f.ID}}',swap:'morph:outerHTML'}); } }"
           style="font-size:12px;color:#fff;background:#3d4551;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;line-height:1.6">
           确认归档
         </button>

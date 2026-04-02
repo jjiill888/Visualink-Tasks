@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/static/css/style.css?v=4">
   {{block "head" .}}{{end}}
 </head>
-<body>
+<body hx-ext="morph">
 
 
   <!-- 顶部导航栏 -->
@@ -28,7 +28,7 @@
           <!-- 消息通知 -->
           <div x-data="{ open: false }" style="position:relative;display:inline-flex;align-items:center">
             <button class="notif-bell-btn"
-              @click="open=!open; if(open) htmx.ajax('GET','/notifications',{target:'#notif-dropdown-list',swap:'innerHTML'})">
+              @click="open=!open; if(open) htmx.ajax('GET','/notifications',{target:'#notif-dropdown-list',swap:'morph:innerHTML'})">
               消息
               <span id="notif-badge"
                 hx-get="/notifications/count"
@@ -89,7 +89,8 @@
     x-show="open"
     style="display:none"
     class="modal-overlay"
-    @click.self="open = false; $nextTick(() => { $el.querySelector('.modal-box').classList.remove('wide'); document.getElementById('modal-content').innerHTML = ''; })">
+    @click.self="open = false; $nextTick(() => { $el.querySelector('.modal-box').classList.remove('wide'); document.getElementById('modal-content').innerHTML = ''; })"
+    @keydown.escape.window="if(open){ open = false; $nextTick(() => { $el.querySelector('.modal-box').classList.remove('wide'); document.getElementById('modal-content').innerHTML = ''; }) }">
     <div class="modal-box">
       <div id="modal-content"></div>
     </div>
@@ -98,6 +99,7 @@
   <!-- HTMX + Alpine.js 本地托管，避免 CDN 在中国不稳定 -->
   <script src="/static/js/htmx.min.js"></script>
   <script src="/static/js/htmx-ext-sse.js"></script>
+  <script src="/static/js/idiomorph-ext.min.js"></script>
   <script defer src="/static/js/alpine.min.js"></script>
   {{if .CurrentUser}}
   <script>
