@@ -5,7 +5,7 @@
 {{define "content"}}
 {{$d := .Data}}
 <div style="margin-bottom:4px">
-  <a href="/groups" style="font-size:13px;color:#71767a;text-decoration:none">← 返回功能组</a>
+  <a href="/groups" style="font-size:13px;color:#71767a;text-decoration:none">← 返回讨论组</a>
 </div>
 <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
   <div>
@@ -32,9 +32,9 @@
         {{range $d.Features}}{{template "feature_row.html" .}}{{end}}
       {{else}}
         <div class="us-empty">
-          <div class="us-empty-title">该功能组暂无功能</div>
+          <div class="us-empty-title">该讨论组暂无功能</div>
           <p style="font-size:13px;color:#71767a">
-            在<a href="/dashboard">看板</a>提交功能时选择此功能组
+            在<a href="/dashboard">看板</a>提交功能时选择此讨论组
           </p>
         </div>
       {{end}}

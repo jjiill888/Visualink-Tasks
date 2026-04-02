@@ -1,5 +1,5 @@
 {{define "feature_row.html"}}
-<div id="feature-{{.ID}}" class="us-feature-item{{if .IsWatched}} feature-watched{{end}}" data-priority="{{.Priority}}" data-status="{{.Status}}">
+<div id="feature-{{.ID}}" class="us-feature-item{{if .IsWatched}} feature-watched{{end}}" data-priority="{{.Priority}}" data-status="{{.Status}}"{{if .OOBSwap}} hx-swap-oob="{{.OOBSwap}}"{{end}}>
   <!-- 左侧：点击区域 → 打开弹窗 -->
   <div style="display:flex;gap:12px;align-items:flex-start;flex:1;min-width:0;cursor:pointer"
     hx-get="/features/{{.ID}}"
@@ -30,7 +30,7 @@
         hx-vals='{"status":"in_progress"}'
         hx-target="#feature-{{.ID}}"
         hx-swap="outerHTML"
-        hx-on:htmx:after-request="if(event.detail.successful) htmx.ajax('GET', '/stats', {target:'#stats-grid', swap:'morph:outerHTML'})"
+        hx-on:htmx:after-request="if(event.detail.successful) window.featureUI.afterFeatureMutation('{{.ID}}', {refreshModal:true, refreshStats:true})"
         data-loading-disable>
         开始处理
       </button>
@@ -40,7 +40,7 @@
         hx-vals='{"status":"done"}'
         hx-target="#feature-{{.ID}}"
         hx-swap="outerHTML"
-        hx-on:htmx:after-request="if(event.detail.successful) htmx.ajax('GET', '/stats', {target:'#stats-grid', swap:'morph:outerHTML'})"
+        hx-on:htmx:after-request="if(event.detail.successful) window.featureUI.afterFeatureMutation('{{.ID}}', {refreshModal:true, refreshStats:true})"
         data-loading-disable>
         标记完成 ✓
       </button>

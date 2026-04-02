@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{block "title" .}}VisualLink Tasks{{end}}</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%234f46e5'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-weight='bold' font-size='16' fill='white'>VT</text></svg>">
   <link rel="stylesheet" href="/static/css/style.css?v=4">
   {{block "head" .}}{{end}}
 </head>
@@ -21,7 +22,7 @@
         {{if .CurrentUser}}
           <a href="/dashboard" {{if eq .ActiveNav "dashboard"}}class="active"{{end}}>看板</a>
           <a href="/features/mine" {{if eq .ActiveNav "mine"}}class="active"{{end}}>我的提交</a>
-          <a href="/groups" {{if eq .ActiveNav "groups"}}class="active"{{end}}>功能组</a>
+          <a href="/groups" {{if eq .ActiveNav "groups"}}class="active"{{end}}>讨论组</a>
           {{if eq .CurrentUser.Role "admin"}}
           <a href="/admin" {{if eq .ActiveNav "admin"}}class="active"{{end}}>管理</a>
           {{end}}
@@ -97,28 +98,90 @@
   </div>
 
   <!-- HTMX + Alpine.js 本地托管，避免 CDN 在中国不稳定 -->
-  <script src="/static/js/htmx.min.js"></script>
-  <script src="/static/js/htmx-ext-sse.js"></script>
-  <script src="/static/js/idiomorph-ext.min.js"></script>
-  <script src="/static/js/htmx-ext-loading-states.js"></script>
-  <script src="/static/js/htmx-ext-response-targets.js"></script>
-  <script defer src="/static/js/alpine.min.js"></script>
+  <script defer src="/static/js/htmx.min.js?v=1"></script>
+  <script defer src="/static/js/htmx-ext-sse.js?v=1"></script>
+  <script defer src="/static/js/idiomorph-ext.min.js?v=1"></script>
+  <script defer src="/static/js/htmx-ext-bundle.min.js?v=1"></script>
+  <script defer src="/static/js/alpine.min.js?v=1"></script>
   {{if .CurrentUser}}
   <script>
   (function(){
+    window.featureUI = {
+      openFeatureId: function() {
+        var el = document.querySelector('#modal-content [data-feature-id]');
+        return el ? el.getAttribute('data-feature-id') : '';
+      },
+      refreshFeatureModal: function(id) {
+        var featureID = String(id || this.openFeatureId() || '').trim();
+        if (!featureID || !document.getElementById('modal-content')) return;
+        htmx.ajax('GET', '/features/' + featureID, {target:'#modal-content', swap:'innerHTML'});
+      },
+      refreshFeatureRow: function(id) {
+        var featureID = String(id || '').trim();
+        if (!featureID) return;
+        var row = document.getElementById('feature-' + featureID);
+        if (!row) return;
+        htmx.ajax('GET', '/features/' + featureID + '/row', {target:'#feature-' + featureID, swap:'morph:outerHTML'});
+      },
+      refreshFeatureList: function() {
+        var list = document.getElementById('feature-list');
+        if (list) htmx.trigger(list, 'refresh');
+      },
+      refreshStats: function() {
+        if (document.getElementById('stats-grid')) {
+          htmx.ajax('GET', '/stats', {target:'#stats-grid', swap:'morph:outerHTML'});
+        }
+      },
+      afterFeatureMutation: function(id, opts) {
+        var options = opts || {};
+        var featureID = String(id || '').trim();
+        if (options.closeModal) {
+          window.dispatchEvent(new CustomEvent('close-modal'));
+        } else if ((options.refreshModal !== false) && featureID && this.openFeatureId() === featureID) {
+          this.refreshFeatureModal(featureID);
+        }
+        if (options.refreshRow) this.refreshFeatureRow(featureID);
+        if (options.refreshList) this.refreshFeatureList();
+        if (options.refreshStats) this.refreshStats();
+      }
+    };
+
     var uid = '{{.CurrentUser.ID}}';
     var src = new EventSource('/sse');
+    var statsTimer;
+
     src.addEventListener('mention-added', function(e) {
       if (e.data.trim() === uid) {
         document.body.dispatchEvent(new Event('notif-refresh'));
       }
     });
+
+    src.addEventListener('stats-updated', function() {
+      if (!document.getElementById('stats-grid')) return;
+      clearTimeout(statsTimer);
+      statsTimer = setTimeout(function() {
+        window.featureUI.refreshStats();
+      }, 300);
+    });
+
     src.addEventListener('feature-row-updated', function(e) {
       var id = e.data.trim();
-      if (document.getElementById('status-actions-' + id)) {
-        htmx.ajax('GET', '/features/' + id, {target:'#modal-content', swap:'innerHTML'});
+      window.featureUI.refreshFeatureRow(id);
+      if (window.featureUI.openFeatureId() === id) window.featureUI.refreshFeatureModal(id);
+    });
+
+    src.addEventListener('feature-list-changed', function() {
+      window.featureUI.refreshFeatureList();
+    });
+
+    src.addEventListener('comment-added', function(e) {
+      var id = e.data.trim();
+      var el = document.getElementById('comments-' + id);
+      if (el) {
+        htmx.ajax('GET', '/features/' + id + '/comments', {target:'#comments-' + id, swap:'morph:innerHTML'});
       }
     });
+
     src.addEventListener('error', function() { src.close(); });
   })();
   </script>

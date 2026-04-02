@@ -1,0 +1,173 @@
+{{define "feature_draft_edit.html"}}
+{{$f := .Feature}}
+<div data-feature-id="{{$f.ID}}">
+<div class="modal-header">
+  <div>
+    <h2 class="modal-title">编辑草稿</h2>
+    <div style="font-size:13px;color:#71767a;margin-top:4px">修改后点击保存，草稿不会公开</div>
+  </div>
+  <button class="modal-close-btn" onclick="window.dispatchEvent(new CustomEvent('close-modal'))">×</button>
+</div>
+
+<div class="modal-section" style="border-bottom:none;padding-bottom:20px">
+  <form id="draft-edit-form"
+    hx-post="/features/{{$f.ID}}/edit"
+    hx-target="#modal-content"
+    hx-swap="innerHTML">
+    <div class="us-form-group">
+      <label class="us-label" for="de-group">讨论组（可选）</label>
+      <select class="us-select" name="group_id" id="de-group">
+        <option value="">无（独立功能）</option>
+        {{range .Groups}}
+        <option value="{{.ID}}"{{if and $f.GroupID (eq .ID (deref $f.GroupID))}} selected{{end}}>{{.Title}}</option>
+        {{end}}
+      </select>
+    </div>
+    <div class="us-form-group">
+      <label class="us-label" for="de-title">功能标题 *</label>
+      <input class="us-input" type="text" id="de-title" name="title" required value="{{$f.Title}}">
+    </div>
+    <div class="us-form-group">
+      <label class="us-label" for="de-priority">优先级</label>
+      <select class="us-select" name="priority" id="de-priority">
+        <option value="urgent"{{if eq $f.Priority "urgent"}} selected{{end}}>紧急 — 影响主流程，24h 内响应</option>
+        <option value="high"{{if eq $f.Priority "high"}} selected{{end}}>高 — 本迭代必须完成</option>
+        <option value="medium"{{if eq $f.Priority "medium"}} selected{{end}}>中 — 下个迭代排期</option>
+        <option value="low"{{if eq $f.Priority "low"}} selected{{end}}>低 — 有空再做</option>
+      </select>
+    </div>
+    <div class="us-form-group" style="position:relative">
+      <label class="us-label" for="de-desc">详细描述</label>
+      <span class="us-hint">输入 @ 可提及成员</span>
+      <textarea class="us-textarea" name="description" id="de-desc"
+        style="min-height:180px;resize:vertical">{{$f.Description}}</textarea>
+      <ul id="de-mention-dropdown" style="display:none;position:fixed;z-index:9999;background:#fff;border:1px solid #d9d9d9;border-radius:6px;list-style:none;margin:0;padding:4px 0;min-width:200px;max-height:220px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.12)"></ul>
+    </div>
+    <hr class="us-divider">
+    <div style="display:flex;align-items:center;gap:12px">
+      <button type="button" class="us-btn us-btn-primary"
+        hx-post="/features/{{$f.ID}}/edit"
+        hx-include="#draft-edit-form"
+        hx-vals='{"action":"publish"}'
+        hx-swap="none"
+        hx-disabled-elt="this"
+        hx-on:htmx:after-request="
+          if(event.detail.successful){
+            window.featureUI.afterFeatureMutation('{{$f.ID}}', {refreshList:true, refreshModal:true, refreshStats:true});
+          }">提交功能</button>
+      <button type="submit" class="us-btn us-btn-outline"
+        data-loading-disable data-loading="保存中…">保存/预览</button>
+      <button type="button" class="us-btn us-btn-outline"
+        onclick="window.dispatchEvent(new CustomEvent('close-modal'))">取消</button>
+      <div style="flex:1"></div>
+      <span x-data="{ confirming: false }" style="display:inline-flex;align-items:center;gap:6px">
+        <button type="button" x-show="!confirming" @click="confirming=true"
+          style="font-size:12px;color:#b42418;background:none;border:1px solid #b42418;border-radius:4px;padding:4px 10px;cursor:pointer;line-height:1.6">删除草稿</button>
+        <span x-show="confirming" style="display:inline-flex;align-items:center;gap:6px;font-size:12px">
+          <span style="color:#3d4551">确认删除？</span>
+          <button type="button"
+            hx-delete="/features/{{$f.ID}}"
+            hx-swap="none"
+            hx-disabled-elt="this"
+            hx-on:htmx:after-request="
+              if(event.detail.successful){
+                window.featureUI.afterFeatureMutation('{{$f.ID}}', {refreshList:true, refreshStats:true, closeModal:true});
+              }"
+            style="font-size:12px;color:#fff;background:#b42418;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;line-height:1.6">确认</button>
+          <button type="button" @click="confirming=false"
+            style="font-size:12px;color:#3d4551;background:none;border:1px solid #d9d9d9;border-radius:4px;padding:4px 10px;cursor:pointer;line-height:1.6">取消</button>
+        </span>
+      </span>
+    </div>
+  </form>
+</div>
+<script>
+(function(){
+  var users = [{{range .Users}}{"d":{{.DisplayName | js}},"u":{{.Username | js}}},{{end}}];
+  var ta = document.getElementById('de-desc');
+  var dd = document.getElementById('de-mention-dropdown');
+  var mentionStart = -1;
+
+  function hide() { dd.style.display = 'none'; mentionStart = -1; }
+
+  function position() {
+    var r = ta.getBoundingClientRect();
+    dd.style.left = r.left + 'px';
+    dd.style.top  = (r.bottom + 4) + 'px';
+  }
+
+  function render(list) {
+    dd.innerHTML = '';
+    if (!list.length) { hide(); return; }
+    list.forEach(function(u) {
+      var li = document.createElement('li');
+      li.style.cssText = 'padding:7px 14px;cursor:pointer;font-size:13px;color:#1b1b1b;white-space:nowrap';
+      li.textContent = u.d + (u.u !== u.d ? '  @' + u.u : '');
+      li.addEventListener('mouseenter', function(){ li.style.background='#f0f4ff'; });
+      li.addEventListener('mouseleave', function(){ li.style.background=''; });
+      li.addEventListener('mousedown', function(e){
+        e.preventDefault();
+        insert(u.d);
+      });
+      dd.appendChild(li);
+    });
+    position();
+    dd.style.display = 'block';
+  }
+
+  function insert(name) {
+    var v = ta.value;
+    var after = v.slice(ta.selectionStart);
+    ta.value = v.slice(0, mentionStart) + '@' + name + ' ' + after;
+    var p = mentionStart + name.length + 2;
+    ta.setSelectionRange(p, p);
+    ta.focus();
+    hide();
+  }
+
+  ta.addEventListener('input', function(){
+    var pos = ta.selectionStart, v = ta.value;
+    var at = v.lastIndexOf('@', pos - 1);
+    if (at < 0) { hide(); return; }
+    var frag = v.slice(at + 1, pos);
+    if (/\s/.test(frag) || (at > 0 && /\w/.test(v[at-1]))) { hide(); return; }
+    mentionStart = at;
+    var q = frag.toLowerCase();
+    render(users.filter(function(u){
+      return u.d.toLowerCase().indexOf(q) >= 0 || u.u.toLowerCase().indexOf(q) >= 0;
+    }).slice(0, 8));
+  });
+
+  ta.addEventListener('keydown', function(e){
+    if (dd.style.display === 'none') return;
+    var items = dd.querySelectorAll('li');
+    var cur = dd.querySelector('li.sel');
+    var idx = cur ? Array.prototype.indexOf.call(items, cur) : -1;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (cur) { cur.classList.remove('sel'); cur.style.background=''; }
+      var next = items[(idx+1) % items.length];
+      next.classList.add('sel'); next.style.background='#f0f4ff';
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (cur) { cur.classList.remove('sel'); cur.style.background=''; }
+      var prev = items[(idx-1+items.length) % items.length];
+      prev.classList.add('sel'); prev.style.background='#f0f4ff';
+    } else if ((e.key === 'Enter' || e.key === 'Tab') && cur) {
+      e.preventDefault();
+      cur.dispatchEvent(new Event('mousedown'));
+    } else if (e.key === 'Escape') {
+      hide();
+    }
+  });
+
+  document.addEventListener('click', function(e){
+    if (e.target !== ta && !dd.contains(e.target)) hide();
+  });
+
+  ta.addEventListener('scroll', position);
+  window.addEventListener('scroll', position, true);
+})();
+</script>
+</div>
+{{end}}

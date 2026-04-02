@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"bytes"
 	"fmt"
 	"html/template"
+	"io"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -74,12 +76,13 @@ type dashboardData struct {
 
 func Dashboard(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		u := UserFromContext(r)
 		stats, err := database.GetStats()
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		features, err := database.ListFeatures("", "", "", nil, nil, nil)
+		features, err := database.ListFeatures(u.ID, "", "", "", nil, nil, nil)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -89,8 +92,6 @@ func Dashboard(database *db.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-
-		u := UserFromContext(r)
 		pd := pageData(r, "dashboard")
 		pd.BannerMessage = fmt.Sprintf("共 %d 条待处理功能", stats.Pending)
 		canEdit := canEditStatus(u.Role)
@@ -172,10 +173,6 @@ func ListFeatures(database *db.DB) http.HandlerFunc {
 func UpdateStatus(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := UserFromContext(r)
-		if !canEditStatus(u.Role) {
-			http.Error(w, "forbidden", 403)
-			return
-		}
 		idStr := chi.URLParam(r, "id")
 		id, err := strconv.ParseInt(idStr, 10, 64)
 		if err != nil {
@@ -192,12 +189,17 @@ func UpdateStatus(database *db.DB) http.HandlerFunc {
 			http.Error(w, "not found", 404)
 			return
 		}
+		// 创建者可以将自己的草稿发布为 pending；其他状态变更需要 dev/admin
+		isPublishingDraft := status == "pending" && f.Status == "draft" && f.CreatedBy == u.ID
+		if !isPublishingDraft && !canEditStatus(u.Role) {
+			http.Error(w, "forbidden", 403)
+			return
+		}
 		oldStatus := f.Status
+		modalResponse := wantsModalResponse(r)
 		if oldStatus == status {
-			// 状态未变，直接返回当前行，不写事件记录（防止重复点击产生冗余历史）
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			row := featureRowData{Feature: f, CanEditStatus: true}
-			if err := PartialTmpl.ExecuteTemplate(w, "feature_row.html", row); err != nil {
+			// 状态未变，直接返回当前视图，不写事件记录（防止重复点击产生冗余历史）
+			if err := writeFeatureMutationResponse(database, w, r, id, modalResponse); err != nil {
 				http.Error(w, err.Error(), 500)
 			}
 			return
@@ -205,6 +207,29 @@ func UpdateStatus(database *db.DB) http.HandlerFunc {
 		if err := database.UpdateFeatureStatus(id, status); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
+		}
+		// 草稿发布时，对描述里的 @mention 发送通知
+		if isPublishingDraft && f.Description != "" {
+			fromUser := u.DisplayName
+			if fromUser == "" {
+				fromUser = u.Username
+			}
+			for _, token := range parseMentions(f.Description) {
+				mentioned, _ := database.GetUserByUsername(token)
+				if mentioned == nil {
+					mentioned, _ = database.GetUserByDisplayName(token)
+				}
+				if mentioned == nil || mentioned.ID == u.ID {
+					continue
+				}
+				_ = database.CreateNotification(&model.Notification{
+					UserID:       mentioned.ID,
+					FeatureID:    f.ID,
+					FromUser:     fromUser,
+					FeatureTitle: f.Title,
+				})
+				hub.Global.Broadcast(fmt.Sprintf("mention-added:%d", mentioned.ID))
+			}
 		}
 		f, err = database.GetFeature(id)
 		if err != nil || f == nil {
@@ -220,9 +245,7 @@ func UpdateStatus(database *db.DB) http.HandlerFunc {
 		})
 		hub.Global.Broadcast("feature-row-updated:" + idStr)
 		hub.Global.Broadcast("stats-updated")
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		row := featureRowData{Feature: f, CanEditStatus: true}
-		if err := PartialTmpl.ExecuteTemplate(w, "feature_row.html", row); err != nil {
+		if err := writeFeatureMutationResponse(database, w, r, id, modalResponse); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}
@@ -294,11 +317,16 @@ func CreateFeature(database *db.DB) http.HandlerFunc {
 			priority = "medium"
 		}
 
+		status := "pending"
+		if r.FormValue("action") == "draft" {
+			status = "draft"
+		}
+
 		f := &model.Feature{
 			Title:       title,
 			Description: description,
 			Priority:    priority,
-			Status:      "pending",
+			Status:      status,
 			CreatedBy:   u.ID,
 		}
 		if groupIDStr != "" && groupIDStr != "0" {
@@ -311,16 +339,17 @@ func CreateFeature(database *db.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		// 写入创建事件
-		_ = database.CreateFeatureEvent(&model.FeatureEvent{
-			FeatureID:  f.ID,
-			OperatorID: u.ID,
-			Action:     "created",
-			OldValue:   "",
-			NewValue:   "",
-		})
-		hub.Global.Broadcast("feature-list-changed")
-		hub.Global.Broadcast("stats-updated")
+		if f.Status != "draft" {
+			_ = database.CreateFeatureEvent(&model.FeatureEvent{
+				FeatureID:  f.ID,
+				OperatorID: u.ID,
+				Action:     "created",
+				OldValue:   "",
+				NewValue:   "",
+			})
+			hub.Global.Broadcast("feature-list-changed")
+			hub.Global.Broadcast("stats-updated")
+		}
 		// HTMX request: return 200 so the client-side after-request handler can close the modal
 		if r.Header.Get("HX-Request") == "true" {
 			w.WriteHeader(http.StatusOK)
@@ -356,19 +385,112 @@ func Mine(database *db.DB) http.HandlerFunc {
 type featureRowData struct {
 	*model.Feature
 	CanEditStatus bool
+	OOBSwap       string
 }
 
 type featureDetailData struct {
-	Feature       *model.Feature
-	Comments      []commentView
-	Events        []*model.FeatureEvent
-	CanEditStatus bool
-	CanRetract    bool
-	CanReject     bool
+	Feature         *model.Feature
+	Comments        []commentView
+	Events          []*model.FeatureEvent
+	CanEditStatus   bool
+	CanRetract      bool
+	CanReject       bool
+	CanPublishDraft bool
 }
 
 func canEditStatus(role string) bool {
 	return role == "dev" || role == "admin"
+}
+
+func wantsModalResponse(r *http.Request) bool {
+	if r.FormValue("response") == "detail" {
+		return true
+	}
+	return strings.TrimSpace(r.Header.Get("HX-Target")) == "modal-content"
+}
+
+func buildFeatureDetailData(database *db.DB, u *model.User, f *model.Feature) (featureDetailData, error) {
+	comments, err := database.ListComments(f.ID)
+	if err != nil {
+		return featureDetailData{}, err
+	}
+	events, err := database.ListFeatureEvents(f.ID)
+	if err != nil {
+		return featureDetailData{}, err
+	}
+	f.IsWatched, _ = database.IsFeatureWatched(u.ID, f.ID)
+	return featureDetailData{
+		Feature:         f,
+		Comments:        renderCommentViews(comments, database),
+		Events:          events,
+		CanEditStatus:   canEditStatus(u.Role),
+		CanRetract:      (f.Status == "pending" || f.Status == "draft") && u.ID == f.CreatedBy,
+		CanReject:       canEditStatus(u.Role) && f.Status == "pending" && u.ID != f.CreatedBy,
+		CanPublishDraft: f.Status == "draft" && u.ID == f.CreatedBy,
+	}, nil
+}
+
+func writeFeatureRow(database *db.DB, w io.Writer, r *http.Request, featureID int64, oobSwap string) error {
+	f, err := database.GetFeature(featureID)
+	if err != nil {
+		return err
+	}
+	if f == nil {
+		return fmt.Errorf("feature %d not found", featureID)
+	}
+	u := UserFromContext(r)
+	f.IsWatched, _ = database.IsFeatureWatched(u.ID, featureID)
+	row := featureRowData{Feature: f, CanEditStatus: canEditStatus(u.Role), OOBSwap: oobSwap}
+	return PartialTmpl.ExecuteTemplate(w, "feature_row.html", row)
+}
+
+func writeFeatureDetail(database *db.DB, w io.Writer, r *http.Request, featureID int64) error {
+	f, err := database.GetFeature(featureID)
+	if err != nil {
+		return err
+	}
+	if f == nil {
+		return fmt.Errorf("feature %d not found", featureID)
+	}
+	u := UserFromContext(r)
+	if f.Status == "draft" && f.CreatedBy == u.ID {
+		groups, err := database.ListGroups()
+		if err != nil {
+			return err
+		}
+		users, err := database.ListAllUsers()
+		if err != nil {
+			return err
+		}
+		return PartialTmpl.ExecuteTemplate(w, "feature_draft_edit.html", draftEditData{Feature: f, Groups: groups, Users: users})
+	}
+	detail, err := buildFeatureDetailData(database, u, f)
+	if err != nil {
+		return err
+	}
+	return PartialTmpl.ExecuteTemplate(w, "feature_detail.html", detail)
+}
+
+func writeFeatureMutationResponse(database *db.DB, w http.ResponseWriter, r *http.Request, featureID int64, modalResponse bool) error {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if !modalResponse {
+		return writeFeatureRow(database, w, r, featureID, "")
+	}
+
+	var detailBuf bytes.Buffer
+	if err := writeFeatureDetail(database, &detailBuf, r, featureID); err != nil {
+		return err
+	}
+	if _, err := w.Write(detailBuf.Bytes()); err != nil {
+		return err
+	}
+
+	var rowBuf bytes.Buffer
+	if err := writeFeatureRow(database, &rowBuf, r, featureID, "morph:outerHTML"); err != nil {
+		return err
+	}
+	_, err := w.Write(rowBuf.Bytes())
+	return err
 }
 
 // FeatureDetail returns the modal content partial via HTMX GET /features/{id}
@@ -384,27 +506,32 @@ func FeatureDetail(database *db.DB) http.HandlerFunc {
 			http.Error(w, "not found", 404)
 			return
 		}
-		comments, err := database.ListComments(id)
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-			return
-		}
-		events, err := database.ListFeatureEvents(id)
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-			return
-		}
 		u := UserFromContext(r)
-		f.IsWatched, _ = database.IsFeatureWatched(u.ID, id)
+		// 草稿默认进入编辑模式
+		if f.Status == "draft" && f.CreatedBy == u.ID {
+			groups, err := database.ListGroups()
+			if err != nil {
+				http.Error(w, err.Error(), 500)
+				return
+			}
+			users, err := database.ListAllUsers()
+			if err != nil {
+				http.Error(w, err.Error(), 500)
+				return
+			}
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			if err := PartialTmpl.ExecuteTemplate(w, "feature_draft_edit.html", draftEditData{Feature: f, Groups: groups, Users: users}); err != nil {
+				http.Error(w, err.Error(), 500)
+			}
+			return
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := PartialTmpl.ExecuteTemplate(w, "feature_detail.html", featureDetailData{
-			Feature:       f,
-			Comments:      renderCommentViews(comments, database),
-			Events:        events,
-			CanEditStatus: canEditStatus(u.Role),
-			CanRetract:    f.Status == "pending" && u.ID == f.CreatedBy,
-			CanReject:     canEditStatus(u.Role) && f.Status == "pending" && u.ID != f.CreatedBy,
-		}); err != nil {
+		detail, err := buildFeatureDetailData(database, u, f)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		if err := PartialTmpl.ExecuteTemplate(w, "feature_detail.html", detail); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}
@@ -432,8 +559,8 @@ func RetractFeature(database *db.DB) http.HandlerFunc {
 			http.Error(w, fmt.Sprintf("无权撤回：该功能由用户 ID %d 提交，当前用户 ID %d", f.CreatedBy, u.ID), 403)
 			return
 		}
-		if f.Status != "pending" {
-			http.Error(w, fmt.Sprintf("无法撤回：当前状态为「%s」，只有待处理状态可撤回", f.Status), 403)
+		if f.Status != "pending" && f.Status != "draft" {
+			http.Error(w, fmt.Sprintf("无法撤回：当前状态为「%s」，只有待处理或草稿状态可撤回", f.Status), 403)
 			return
 		}
 		if err := database.DeleteFeature(id, u.ID); err != nil {
@@ -644,16 +771,8 @@ func GetFeatureRow(database *db.DB) http.HandlerFunc {
 			http.Error(w, "invalid id", 400)
 			return
 		}
-		f, err := database.GetFeature(id)
-		if err != nil || f == nil {
-			http.Error(w, "not found", 404)
-			return
-		}
-		u := UserFromContext(r)
-		f.IsWatched, _ = database.IsFeatureWatched(u.ID, id)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		row := featureRowData{Feature: f, CanEditStatus: canEditStatus(u.Role)}
-		if err := PartialTmpl.ExecuteTemplate(w, "feature_row.html", row); err != nil {
+		if err := writeFeatureRow(database, w, r, id, ""); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}
@@ -706,6 +825,139 @@ func UnwatchFeature(database *db.DB) http.HandlerFunc {
 		f.IsWatched = false
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if err := PartialTmpl.ExecuteTemplate(w, "feature_watch_btn.html", f); err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+	}
+}
+
+type draftEditData struct {
+	Feature *model.Feature
+	Groups  []*model.Group
+	Users   []*model.User
+}
+
+// DraftEditForm handles GET /features/{id}/edit — returns edit form modal partial for drafts.
+func DraftEditForm(database *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := UserFromContext(r)
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			http.Error(w, "invalid id", 400)
+			return
+		}
+		f, err := database.GetFeature(id)
+		if err != nil || f == nil {
+			http.Error(w, "not found", 404)
+			return
+		}
+		if f.Status != "draft" || f.CreatedBy != u.ID {
+			http.Error(w, "forbidden", 403)
+			return
+		}
+		groups, err := database.ListGroups()
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		users, err := database.ListAllUsers()
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		data := draftEditData{Feature: f, Groups: groups, Users: users}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := PartialTmpl.ExecuteTemplate(w, "feature_draft_edit.html", data); err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+	}
+}
+
+// UpdateDraft handles POST /features/{id}/edit — saves draft field changes.
+func UpdateDraft(database *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := UserFromContext(r)
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			http.Error(w, "invalid id", 400)
+			return
+		}
+		title := strings.TrimSpace(r.FormValue("title"))
+		if title == "" {
+			http.Error(w, "标题不能为空", 400)
+			return
+		}
+		description := strings.TrimSpace(r.FormValue("description"))
+		priority := r.FormValue("priority")
+		if priority != "urgent" && priority != "high" && priority != "medium" && priority != "low" {
+			priority = "medium"
+		}
+		var groupID *int64
+		if v := r.FormValue("group_id"); v != "" && v != "0" {
+			if gid, err2 := strconv.ParseInt(v, 10, 64); err2 == nil && gid > 0 {
+				groupID = &gid
+			}
+		}
+		if err := database.UpdateFeatureDraft(id, u.ID, title, description, priority, groupID); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		// action=publish: 保存后直接发布为 pending
+		if r.FormValue("action") == "publish" {
+			if err := database.UpdateFeatureStatus(id, "pending"); err != nil {
+				http.Error(w, err.Error(), 500)
+				return
+			}
+			_ = database.CreateFeatureEvent(&model.FeatureEvent{
+				FeatureID:  id,
+				OperatorID: u.ID,
+				Action:     "created",
+			})
+			// 解析描述中的 @mention 发通知
+			if description != "" {
+				fromUser := u.DisplayName
+				if fromUser == "" {
+					fromUser = u.Username
+				}
+				for _, token := range parseMentions(description) {
+					mentioned, _ := database.GetUserByUsername(token)
+					if mentioned == nil {
+						mentioned, _ = database.GetUserByDisplayName(token)
+					}
+					if mentioned == nil || mentioned.ID == u.ID {
+						continue
+					}
+					f2, _ := database.GetFeature(id)
+					ftitle := title
+					if f2 != nil {
+						ftitle = f2.Title
+					}
+					_ = database.CreateNotification(&model.Notification{
+						UserID:       mentioned.ID,
+						FeatureID:    id,
+						FromUser:     fromUser,
+						FeatureTitle: ftitle,
+					})
+					hub.Global.Broadcast(fmt.Sprintf("mention-added:%d", mentioned.ID))
+				}
+			}
+			hub.Global.Broadcast("feature-list-changed")
+			hub.Global.Broadcast("stats-updated")
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		// Return updated detail view
+		f, err := database.GetFeature(id)
+		if err != nil || f == nil {
+			http.Error(w, "not found", 404)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := PartialTmpl.ExecuteTemplate(w, "feature_detail.html", featureDetailData{
+			Feature:         f,
+			CanEditStatus:   canEditStatus(u.Role),
+			CanRetract:      f.Status == "draft" && f.CreatedBy == u.ID,
+			CanPublishDraft: f.Status == "draft" && f.CreatedBy == u.ID,
+		}); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}

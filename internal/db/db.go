@@ -341,7 +341,8 @@ func scanFeature(row interface {
 
 // search: 标题/描述模糊搜索
 // groupID, assigneeID, creatorID: 精确筛选
-func (d *DB) ListFeatures(priority, status, search string, groupID, assigneeID, creatorID *int64) ([]*model.Feature, error) {
+// currentUserID: 用于让草稿对创建者可见（传 0 则所有草稿都不可见）
+func (d *DB) ListFeatures(currentUserID int64, priority, status, search string, groupID, assigneeID, creatorID *int64) ([]*model.Feature, error) {
 	q := `SELECT ` + featureCols + `
 	       FROM features f
 	       JOIN users u ON u.id = f.created_by
@@ -356,8 +357,14 @@ func (d *DB) ListFeatures(priority, status, search string, groupID, assigneeID, 
 		q += ` AND f.status=?`
 		args = append(args, status)
 	} else {
-		// 默认不显示已归档，需显式选择 archived 才可见
+		// 默认不显示已归档；草稿只对创建者可见
 		q += ` AND f.status != 'archived'`
+		if currentUserID > 0 {
+			q += ` AND (f.status != 'draft' OR f.created_by = ?)`
+			args = append(args, currentUserID)
+		} else {
+			q += ` AND f.status != 'draft'`
+		}
 	}
 	if search != "" {
 		q += ` AND (f.title LIKE ? OR f.description LIKE ?)`
@@ -455,7 +462,7 @@ func (d *DB) DeleteFeature(id int64, createdBy int64) error {
 	}
 
 	res, err := tx.Exec(
-		`DELETE FROM features WHERE id=? AND created_by=? AND status='pending'`,
+		`DELETE FROM features WHERE id=? AND created_by=? AND (status='pending' OR status='draft')`,
 		id, createdBy,
 	)
 	if err != nil {
@@ -466,6 +473,22 @@ func (d *DB) DeleteFeature(id int64, createdBy int64) error {
 		return fmt.Errorf("feature not found or cannot be retracted")
 	}
 	return tx.Commit()
+}
+
+func (d *DB) UpdateFeatureDraft(id, userID int64, title, description, priority string, groupID *int64) error {
+	res, err := d.Exec(
+		`UPDATE features SET title=?, description=?, priority=?, group_id=?, updated_at=CURRENT_TIMESTAMP
+		 WHERE id=? AND created_by=? AND status='draft'`,
+		title, description, priority, groupID, id, userID,
+	)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("draft not found or permission denied")
+	}
+	return nil
 }
 
 func (d *DB) UpdateFeatureStatus(id int64, status string) error {
@@ -484,7 +507,7 @@ func (d *DB) GetStats() (*model.Stats, error) {
 			COALESCE(SUM(CASE WHEN status='pending'     THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN status='in_progress' THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN status='done'        THEN 1 ELSE 0 END), 0)
-		FROM features WHERE status != 'archived'
+		FROM features WHERE status != 'archived' AND status != 'draft'
 	`).Scan(&s.Total, &s.Pending, &s.InProgress, &s.Done)
 	return s, err
 }
@@ -563,7 +586,7 @@ func (d *DB) ListFeaturesInGroup(groupID int64) ([]*model.Feature, error) {
 		FROM features f
 		JOIN users u ON u.id = f.created_by
 		LEFT JOIN groups g ON g.id = f.group_id
-		WHERE f.group_id=?
+		WHERE f.group_id=? AND f.status != 'draft'
 		ORDER BY
 			CASE f.priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END,
 			f.created_at DESC`
@@ -868,13 +891,14 @@ func (d *DB) ListFeaturesPersonal(userID int64, priority, status, search string)
 		LEFT JOIN groups g ON g.id = f.group_id
 		LEFT JOIN user_feature_watches w ON w.feature_id = f.id AND w.user_id = ?
 		WHERE f.status != 'archived'
+		AND (f.status != 'draft' OR f.created_by = ?)
 		AND (
 			f.group_id IN (SELECT group_id FROM user_group_subscriptions WHERE user_id = ?)
 			OR f.id IN (SELECT DISTINCT feature_id FROM comments WHERE user_id = ?)
 			OR f.created_by = ?
 			OR w.feature_id IS NOT NULL
 		)`
-	args := []any{userID, userID, userID, userID}
+	args := []any{userID, userID, userID, userID, userID}
 	if priority != "" && priority != "all" {
 		q += ` AND f.priority=?`
 		args = append(args, priority)
@@ -915,7 +939,7 @@ func (d *DB) ListFeaturesPersonal(userID int64, priority, status, search string)
 
 // ListFeaturesWithWatch wraps ListFeatures and annotates IsWatched for a user.
 func (d *DB) ListFeaturesWithWatch(userID int64, priority, status, search string, groupID, assigneeID, creatorID *int64) ([]*model.Feature, error) {
-	features, err := d.ListFeatures(priority, status, search, groupID, assigneeID, creatorID)
+	features, err := d.ListFeatures(userID, priority, status, search, groupID, assigneeID, creatorID)
 	if err != nil {
 		return nil, err
 	}

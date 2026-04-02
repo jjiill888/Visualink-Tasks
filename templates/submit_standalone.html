@@ -15,7 +15,7 @@
     <div class="us-card-body">
       <form method="POST" action="/features">
         <div class="us-form-group">
-          <label class="us-label" for="fs-group">功能组（可选）</label>
+          <label class="us-label" for="fs-group">讨论组（可选）</label>
           <select class="us-select" name="group_id" id="fs-group">
             <option value="">无（独立功能）</option>
             {{range $d.Groups}}
@@ -47,7 +47,8 @@
         </div>
         <hr class="us-divider">
         <div style="display:flex;align-items:center;gap:12px">
-          <button type="submit" class="us-btn us-btn-primary">提交功能</button>
+          <button type="submit" name="action" value="submit" class="us-btn us-btn-primary">提交功能</button>
+          <button type="submit" name="action" value="draft" class="us-btn us-btn-outline">保存草稿</button>
           <a href="/dashboard" class="us-btn us-btn-outline">返回看板</a>
         </div>
       </form>

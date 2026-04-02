@@ -99,6 +99,8 @@ func (f Feature) PriorityLabel() string {
 
 func (f Feature) StatusLabel() string {
 	switch f.Status {
+	case "draft":
+		return "草稿"
 	case "pending":
 		return "待处理"
 	case "in_progress":
@@ -115,6 +117,8 @@ func (f Feature) StatusLabel() string {
 
 func (f Feature) StatusBadgeClass() string {
 	switch f.Status {
+	case "draft":
+		return "badge-draft"
 	case "pending":
 		return "badge-pending"
 	case "in_progress":
@@ -158,6 +162,8 @@ type FeatureEvent struct {
 
 func statusLabel(s string) string {
 	switch s {
+	case "draft":
+		return "草稿"
 	case "pending":
 		return "待处理"
 	case "in_progress":

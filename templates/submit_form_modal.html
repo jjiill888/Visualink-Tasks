@@ -25,7 +25,7 @@
         htmx.ajax('GET', '/stats', {target:'#stats-grid', swap:'morph:outerHTML'});
       }">
     <div class="us-form-group">
-      <label class="us-label" for="fm-group">功能组（可选）</label>
+      <label class="us-label" for="fm-group">讨论组（可选）</label>
       <select class="us-select" name="group_id" id="fm-group">
         <option value="">无（独立功能）</option>
         {{range .}}
@@ -59,6 +59,18 @@
     <div style="display:flex;align-items:center;gap:12px">
       <button id="submit-feature-btn" type="submit" class="us-btn us-btn-primary"
         data-loading-disable data-loading="提交中…">提交功能</button>
+      <button type="button" class="us-btn us-btn-outline"
+        hx-post="/features"
+        hx-include="#submit-feature-form"
+        hx-vals='{"action":"draft"}'
+        hx-swap="none"
+        hx-disabled-elt="this"
+        hx-on:htmx:after-request="
+          if(event.detail.successful){
+            document.getElementById('submit-feature-form').reset();
+            window.dispatchEvent(new CustomEvent('close-modal'));
+            htmx.trigger(document.getElementById('feature-list'),'refresh');
+          }">保存草稿</button>
       <button type="button" class="us-btn us-btn-outline"
         onclick="window.dispatchEvent(new CustomEvent('close-modal'))">取消</button>
     </div>

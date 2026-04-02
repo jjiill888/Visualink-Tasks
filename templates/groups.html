@@ -1,11 +1,11 @@
 {{template "base.html" .}}
 
-{{define "title"}}功能组 — FeatureTrack{{end}}
+{{define "title"}}讨论组 — FeatureTrack{{end}}
 
 {{define "content"}}
 {{$d := .Data}}
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-  <div class="us-page-title">功能组</div>
+  <div class="us-page-title">讨论组</div>
 </div>
 <div class="us-page-sub">将相关功能归组管理，便于版本规划</div>
 
@@ -13,7 +13,7 @@
   <div>
     <div class="us-card">
       <div class="us-card-head">
-        <span class="us-card-title">所有功能组（{{len $d.Groups}} 个）</span>
+        <span class="us-card-title">所有讨论组（{{len $d.Groups}} 个）</span>
       </div>
       {{if $d.Groups}}
         {{range $d.Groups}}
@@ -34,8 +34,8 @@
         {{end}}
       {{else}}
         <div class="us-empty">
-          <div class="us-empty-title">暂无功能组</div>
-          <p style="font-size:13px;color:#71767a">在右侧创建第一个功能组</p>
+          <div class="us-empty-title">暂无讨论组</div>
+          <p style="font-size:13px;color:#71767a">在右侧创建第一个讨论组</p>
         </div>
       {{end}}
     </div>
@@ -44,7 +44,7 @@
   <div>
     <div class="us-card">
       <div class="us-card-head">
-        <span class="us-card-title">新建功能组</span>
+        <span class="us-card-title">新建讨论组</span>
       </div>
       <div class="us-card-body">
         <form method="POST" action="/groups">
@@ -58,7 +58,7 @@
             <textarea class="us-textarea" id="g-desc" name="description"
               placeholder="这一组功能的目标或背景说明" style="min-height:70px"></textarea>
           </div>
-          <button type="submit" class="us-btn us-btn-primary">创建功能组</button>
+          <button type="submit" class="us-btn us-btn-primary">创建讨论组</button>
         </form>
       </div>
     </div>

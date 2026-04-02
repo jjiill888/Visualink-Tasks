@@ -1,5 +1,6 @@
 {{define "feature_detail.html"}}
 {{$f := .Feature}}
+<div data-feature-id="{{$f.ID}}">
 <div class="modal-header">
   <div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
@@ -10,17 +11,15 @@
       <span x-data="{ confirming: false }" style="display:inline-flex;align-items:center;gap:6px">
         <button x-show="!confirming" @click="confirming = true"
           style="font-size:12px;color:#b42418;background:none;border:1px solid #b42418;border-radius:4px;padding:2px 8px;cursor:pointer;line-height:1.6">
-          撤回
+          {{if eq $f.Status "draft"}}删除草稿{{else}}撤回{{end}}
         </button>
         <span x-show="confirming" style="display:inline-flex;align-items:center;gap:6px;font-size:12px">
-          <span style="color:#3d4551">确认撤回「{{$f.Title}}」提交？</span>
+          <span style="color:#3d4551">{{if eq $f.Status "draft"}}确认删除草稿「{{$f.Title}}」？{{else}}确认撤回「{{$f.Title}}」提交？{{end}}</span>
           <button
             hx-delete="/features/{{$f.ID}}"
             hx-on:htmx:after-request="
               if(event.detail.successful){
-                window.dispatchEvent(new CustomEvent('close-modal'));
-                htmx.trigger('#feature-list','refresh');
-                htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'morph:outerHTML'});
+                window.featureUI.afterFeatureMutation('{{$f.ID}}', {refreshList:true, refreshStats:true, closeModal:true});
               } else {
                 htmx.ajax('GET','/features/{{$f.ID}}',{target:'#modal-content',swap:'innerHTML'});
               }"
@@ -45,10 +44,11 @@
           <button
             hx-patch="/features/{{$f.ID}}/status"
             hx-vals='{"status":"rejected"}'
-            hx-target="#feature-{{$f.ID}}"
-            hx-swap="outerHTML"
+            hx-target="#modal-content"
+            hx-swap="innerHTML"
             hx-disabled-elt="this"
-            hx-on:htmx:after-request="if(event.detail.successful){ htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'morph:outerHTML'}); }"
+            hx-include="closest #status-actions-{{$f.ID}}"
+            hx-on:htmx:after-request="if(event.detail.successful){ window.featureUI.afterFeatureMutation('{{$f.ID}}', {refreshStats:true}); }"
             style="font-size:12px;color:#fff;background:#b42418;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;line-height:1.6">
             确认驳回
           </button>
@@ -63,7 +63,7 @@
     <h2 class="modal-title">{{$f.Title}}</h2>
     <div style="font-size:13px;color:#71767a;margin-top:4px">
       提交者：{{$f.CreatorName}}（{{$f.CreatorRoleLabel}}）
-      {{if $f.GroupTitle}} &nbsp;·&nbsp; 功能组：{{$f.GroupTitle}}{{end}}
+      {{if $f.GroupTitle}} &nbsp;·&nbsp; 讨论组：{{$f.GroupTitle}}{{end}}
     </div>
     <div style="font-size:12px;color:#a9aeb1;margin-top:2px">提交时间：{{$f.CreatedAtLocal}}</div>
   </div>
@@ -86,23 +86,47 @@
 <!-- 状态操作 -->
 <div class="modal-section" style="border-bottom:none;padding-bottom:4px">
   <div id="status-actions-{{$f.ID}}">
+    <input type="hidden" name="response" value="detail">
     {{if .CanEditStatus}}
-    {{if eq $f.Status "pending"}}
+    {{if eq $f.Status "draft"}}
+    <span style="font-size:13px;color:#71767a;font-weight:700">草稿</span>
+    {{if .CanPublishDraft}}
+    <button class="us-btn us-btn-outline us-btn-sm"
+      hx-get="/features/{{$f.ID}}/edit"
+      hx-target="#modal-content"
+      hx-swap="innerHTML"
+      hx-disabled-elt="this">编辑</button>
+    <button class="us-btn us-btn-primary us-btn-sm"
+      hx-patch="/features/{{$f.ID}}/status"
+      hx-vals='{"status":"pending"}'
+      hx-target="#modal-content"
+      hx-swap="innerHTML"
+      hx-disabled-elt="this"
+      hx-include="closest #status-actions-{{$f.ID}}"
+      hx-on:htmx:after-request="if(event.detail.successful){ window.featureUI.afterFeatureMutation('{{$f.ID}}', {refreshList:true, refreshStats:true}); }">
+      提交
+    </button>
+    {{end}}
+    {{else if eq $f.Status "pending"}}
     <button class="us-btn us-btn-outline us-btn-sm"
       hx-patch="/features/{{$f.ID}}/status"
       hx-vals='{"status":"in_progress"}'
-      hx-swap="none"
+      hx-target="#modal-content"
+      hx-swap="innerHTML"
       hx-disabled-elt="this"
-      hx-on:htmx:after-request="if(event.detail.successful){ htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'morph:outerHTML'}); var row=document.getElementById('feature-{{$f.ID}}'); if(row){ htmx.ajax('GET','/features/{{$f.ID}}/row',{target:'#feature-{{$f.ID}}',swap:'morph:outerHTML'}); } }">
+      hx-include="closest #status-actions-{{$f.ID}}"
+      hx-on:htmx:after-request="if(event.detail.successful){ window.featureUI.afterFeatureMutation('{{$f.ID}}', {refreshStats:true}); }">
       开始处理
     </button>
     {{else if eq $f.Status "in_progress"}}
     <button class="us-btn us-btn-primary us-btn-sm"
       hx-patch="/features/{{$f.ID}}/status"
       hx-vals='{"status":"done"}'
-      hx-swap="none"
+      hx-target="#modal-content"
+      hx-swap="innerHTML"
       hx-disabled-elt="this"
-      hx-on:htmx:after-request="if(event.detail.successful){ htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'morph:outerHTML'}); var row=document.getElementById('feature-{{$f.ID}}'); if(row){ htmx.ajax('GET','/features/{{$f.ID}}/row',{target:'#feature-{{$f.ID}}',swap:'morph:outerHTML'}); } }">
+      hx-include="closest #status-actions-{{$f.ID}}"
+      hx-on:htmx:after-request="if(event.detail.successful){ window.featureUI.afterFeatureMutation('{{$f.ID}}', {refreshStats:true}); }">
       标记完成 ✓
     </button>
     {{else if eq $f.Status "done"}}
@@ -118,7 +142,7 @@
           hx-post="/features/{{$f.ID}}/archive"
           hx-swap="none"
           hx-disabled-elt="this"
-          hx-on:htmx:after-request="if(event.detail.successful){ htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'morph:outerHTML'}); var row=document.getElementById('feature-{{$f.ID}}'); if(row){ htmx.ajax('GET','/features/{{$f.ID}}/row',{target:'#feature-{{$f.ID}}',swap:'morph:outerHTML'}); } }"
+          hx-on:htmx:after-request="if(event.detail.successful){ window.featureUI.afterFeatureMutation('{{$f.ID}}', {refreshRow:true, refreshModal:true, refreshStats:true, refreshList:true}); }"
           style="font-size:12px;color:#fff;background:#3d4551;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;line-height:1.6">
           确认归档
         </button>
@@ -141,7 +165,7 @@
           hx-post="/features/{{$f.ID}}/archive"
           hx-swap="none"
           hx-disabled-elt="this"
-          hx-on:htmx:after-request="if(event.detail.successful){ htmx.ajax('GET','/stats',{target:'#stats-grid',swap:'morph:outerHTML'}); var row=document.getElementById('feature-{{$f.ID}}'); if(row){ htmx.ajax('GET','/features/{{$f.ID}}/row',{target:'#feature-{{$f.ID}}',swap:'morph:outerHTML'}); } }"
+          hx-on:htmx:after-request="if(event.detail.successful){ window.featureUI.afterFeatureMutation('{{$f.ID}}', {refreshRow:true, refreshModal:true, refreshStats:true, refreshList:true}); }"
           style="font-size:12px;color:#fff;background:#3d4551;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;line-height:1.6">
           确认归档
         </button>
@@ -155,7 +179,24 @@
     <span style="font-size:13px;color:#71767a;font-weight:700">已归档</span>
     {{end}}
     {{else}}
-    {{if eq $f.Status "done"}}
+    {{if eq $f.Status "draft"}}
+    <span style="font-size:13px;color:#71767a;font-weight:700">草稿</span>
+    {{if .CanPublishDraft}}
+    <button class="us-btn us-btn-outline us-btn-sm"
+      hx-get="/features/{{$f.ID}}/edit"
+      hx-target="#modal-content"
+      hx-swap="innerHTML"
+      hx-disabled-elt="this">编辑</button>
+    <button class="us-btn us-btn-primary us-btn-sm"
+      hx-patch="/features/{{$f.ID}}/status"
+      hx-vals='{"status":"pending"}'
+      hx-swap="none"
+      hx-disabled-elt="this"
+      hx-on:htmx:after-request="if(event.detail.successful){ window.featureUI.afterFeatureMutation('{{$f.ID}}', {refreshList:true, refreshModal:true, refreshStats:true}); }">
+      提交
+    </button>
+    {{end}}
+    {{else if eq $f.Status "done"}}
     <span style="font-size:13px;color:#1a7a1a;font-weight:700">✓ 已完成</span>
     {{else if eq $f.Status "rejected"}}
     <span style="font-size:13px;color:#b42418;font-weight:700">✕ 已驳回</span>
@@ -201,5 +242,6 @@
       placeholder="添加评论…" required style="min-height:64px"></textarea>
     <button type="submit" class="us-btn us-btn-primary us-btn-sm" style="margin-top:8px">发送</button>
   </form>
+</div>
 </div>
 {{end}}

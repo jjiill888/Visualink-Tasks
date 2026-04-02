@@ -13,15 +13,21 @@
     <a href="/dashboard" class="us-btn us-btn-outline us-btn-sm">返回看板</a>
   </div>
 
-  {{if $d.Features}}
-    {{range $d.Features}}{{template "feature_row.html" .}}{{end}}
-  {{else}}
-    <div class="us-empty">
-      <div class="us-empty-title">你还没有提交过功能</div>
-      <p style="font-size:13px;color:#71767a">
-        前往<a href="/dashboard">看板</a>，点击「+ 提交功能」开始
-      </p>
-    </div>
-  {{end}}
+  <div id="feature-list"
+    hx-get="/features?view=personal"
+    hx-trigger="refresh"
+    hx-swap="morph:innerHTML"
+    data-loading-class="us-htmx-loading">
+    {{if $d.Features}}
+      {{range $d.Features}}{{template "feature_row.html" .}}{{end}}
+    {{else}}
+      <div class="us-empty">
+        <div class="us-empty-title">你还没有提交过功能</div>
+        <p style="font-size:13px;color:#71767a">
+          前往<a href="/dashboard">看板</a>，点击「+ 提交功能」开始
+        </p>
+      </div>
+    {{end}}
+  </div>
 </div>
 {{end}}

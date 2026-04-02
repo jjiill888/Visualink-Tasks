@@ -165,46 +165,5 @@
     const p = new URLSearchParams(location.search);
     if (p.get('success')) history.replaceState({}, '', '/dashboard');
   })();
-
-  (function(){
-    const src = new EventSource('/sse');
-
-    // Stats: debounce 400ms to batch rapid consecutive updates
-    let statsTimer;
-    src.addEventListener('stats-updated', function() {
-      clearTimeout(statsTimer);
-      statsTimer = setTimeout(function() {
-        htmx.ajax('GET', '/stats', {target:'#stats-grid', swap:'morph:outerHTML'});
-      }, 400);
-    });
-
-    // Only the changed row gets re-fetched and swapped
-    src.addEventListener('feature-row-updated', function(e) {
-      const id = e.data.trim();
-      const row = document.getElementById('feature-' + id);
-      if (row) {
-        htmx.ajax('GET', '/features/' + id + '/row', {target:'#feature-' + id, swap:'morph:outerHTML'});
-      }
-    });
-
-    // New feature or deletion: refresh entire list (preserves active filters)
-    src.addEventListener('feature-list-changed', function() {
-      htmx.trigger(document.getElementById('feature-list'), 'refresh');
-    });
-
-    // Comment added: only update if that feature's modal is currently open
-    src.addEventListener('comment-added', function(e) {
-      const id = e.data.trim();
-      const el = document.getElementById('comments-' + id);
-      if (el) {
-        htmx.ajax('GET', '/features/' + id + '/comments', {target:'#comments-' + id, swap:'morph:innerHTML'});
-      }
-    });
-
-    src.addEventListener('error', function() {
-      src.close();
-      setTimeout(function() { location.reload(); }, 3000);
-    });
-  })();
 </script>
 {{end}}

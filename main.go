@@ -21,7 +21,13 @@ import (
 var mentionHighlightRe = regexp.MustCompile(`@([\p{L}\p{N}_]+)`)
 
 var funcMap = template.FuncMap{
-	"add": func(a, b int) int { return a + b },
+	"add":   func(a, b int) int { return a + b },
+	"deref": func(p *int64) int64 {
+		if p == nil {
+			return 0
+		}
+		return *p
+	},
 	"map": func(kvs ...any) map[string]any {
 		m := make(map[string]any, len(kvs)/2)
 		for i := 0; i+1 < len(kvs); i += 2 {
@@ -90,6 +96,7 @@ func buildPartialTmpl() *template.Template {
 		"templates/notif_list.html",
 		"templates/notif_read_response.html",
 		"templates/preferences_partial.html",
+		"templates/feature_draft_edit.html",
 		"templates/group_action_btn.html",
 		"templates/group_members_partial.html",
 	))
@@ -117,7 +124,11 @@ func main() {
 	r.Use(chimw.Compress(5)) // gzip — saves ~70% on HTML/CSS transfers
 
 	// Static files with long cache (JS/CSS never change between deploys)
-	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+	staticFS := http.StripPrefix("/static/", http.FileServer(http.Dir("static")))
+	r.Handle("/static/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		staticFS.ServeHTTP(w, r)
+	}))
 
 	// Public routes — default landing is /login
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
@@ -145,6 +156,8 @@ func main() {
 		r.Get("/features", handler.ListFeatures(database))
 		r.Post("/features", handler.CreateFeature(database))
 		r.Get("/features/{id}", handler.FeatureDetail(database))
+		r.Get("/features/{id}/edit", handler.DraftEditForm(database))
+		r.Post("/features/{id}/edit", handler.UpdateDraft(database))
 		r.Get("/features/{id}/row", handler.GetFeatureRow(database))
 		r.Get("/features/{id}/comments", handler.GetComments(database))
 		r.Delete("/features/{id}", handler.RetractFeature(database))
