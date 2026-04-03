@@ -184,6 +184,10 @@ func (e *FeatureEvent) ActionDesc() string {
 		return "提交了此功能"
 	case "status_changed":
 		return "将状态从「" + statusLabel(e.OldValue) + "」改为「" + statusLabel(e.NewValue) + "」"
+	case "edited":
+		return "修改了提案内容"
+	case "resubmitted":
+		return "修改内容并重新提交了提案"
 	}
 	return e.Action
 }

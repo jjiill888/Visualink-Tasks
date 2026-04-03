@@ -453,6 +453,7 @@ type featureDetailData struct {
 	CanRetract      bool
 	CanReject       bool
 	CanPublishDraft bool
+	CanEditContent  bool
 	FromMessages    bool
 }
 
@@ -485,6 +486,7 @@ func buildFeatureDetailData(database *db.DB, u *model.User, f *model.Feature) (f
 		CanRetract:      (f.Status == "pending" || f.Status == "draft") && u.ID == f.CreatedBy,
 		CanReject:       canEditStatus(u.Role) && f.Status == "pending" && u.ID != f.CreatedBy,
 		CanPublishDraft: f.Status == "draft" && u.ID == f.CreatedBy,
+		CanEditContent:  (f.Status == "pending" || f.Status == "rejected") && u.ID == f.CreatedBy,
 	}, nil
 }
 
@@ -1029,6 +1031,125 @@ func UpdateDraft(database *db.DB) http.HandlerFunc {
 			CanRetract:      f.Status == "draft" && f.CreatedBy == u.ID,
 			CanPublishDraft: f.Status == "draft" && f.CreatedBy == u.ID,
 		}); err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+	}
+}
+
+// ModifyContentForm handles GET /features/{id}/modify — returns edit form for pending/rejected features.
+func ModifyContentForm(database *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := UserFromContext(r)
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			http.Error(w, "invalid id", 400)
+			return
+		}
+		f, err := database.GetFeature(id)
+		if err != nil || f == nil {
+			http.Error(w, "not found", 404)
+			return
+		}
+		if (f.Status != "pending" && f.Status != "rejected") || f.CreatedBy != u.ID {
+			http.Error(w, "forbidden", 403)
+			return
+		}
+		groups, err := database.ListGroups()
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		users, err := database.ListAllUsers()
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		data := draftEditData{Feature: f, Groups: groups, Users: users}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := PartialTmpl.ExecuteTemplate(w, "feature_modify.html", data); err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+	}
+}
+
+// UpdateFeatureContent handles POST /features/{id}/modify — saves content changes for pending/rejected features.
+func UpdateFeatureContent(database *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := UserFromContext(r)
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			http.Error(w, "invalid id", 400)
+			return
+		}
+		title := strings.TrimSpace(r.FormValue("title"))
+		if title == "" {
+			http.Error(w, "标题不能为空", 400)
+			return
+		}
+		description := strings.TrimSpace(r.FormValue("description"))
+		priority := r.FormValue("priority")
+		if priority != "urgent" && priority != "high" && priority != "medium" && priority != "low" {
+			priority = "medium"
+		}
+		var groupID *int64
+		if v := r.FormValue("group_id"); v != "" && v != "0" {
+			if gid, err2 := strconv.ParseInt(v, 10, 64); err2 == nil && gid > 0 {
+				groupID = &gid
+			}
+		}
+
+		// Read old status before updating
+		fOld, err := database.GetFeature(id)
+		if err != nil || fOld == nil {
+			http.Error(w, "not found", 404)
+			return
+		}
+		if (fOld.Status != "pending" && fOld.Status != "rejected") || fOld.CreatedBy != u.ID {
+			http.Error(w, "forbidden", 403)
+			return
+		}
+		oldStatus := fOld.Status
+
+		if err := database.UpdateFeatureContent(id, u.ID, title, description, priority, groupID); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+
+		// If the proposal was rejected, revert it to pending for re-review
+		if oldStatus == "rejected" {
+			if err := database.UpdateFeatureStatus(id, "pending"); err != nil {
+				http.Error(w, err.Error(), 500)
+				return
+			}
+			_ = database.CreateFeatureEvent(&model.FeatureEvent{
+				FeatureID:  id,
+				OperatorID: u.ID,
+				Action:     "resubmitted",
+			})
+		} else {
+			_ = database.CreateFeatureEvent(&model.FeatureEvent{
+				FeatureID:  id,
+				OperatorID: u.ID,
+				Action:     "edited",
+			})
+		}
+
+		hub.Global.Broadcast("feature-row-updated:" + strconv.FormatInt(id, 10))
+		hub.Global.Broadcast("feature-list-changed")
+		hub.Global.Broadcast("stats-updated")
+
+		f, err := database.GetFeature(id)
+		if err != nil || f == nil {
+			http.Error(w, "not found", 404)
+			return
+		}
+		detail, err := buildFeatureDetailData(database, u, f)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := PartialTmpl.ExecuteTemplate(w, "feature_detail.html", detail); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}

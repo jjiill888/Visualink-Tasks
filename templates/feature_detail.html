@@ -33,6 +33,16 @@
         </span>
       </span>
       {{end}}
+      {{if .CanEditContent}}
+      <button
+        hx-get="/features/{{$f.ID}}/modify"
+        hx-target="#modal-content"
+        hx-swap="innerHTML"
+        hx-disabled-elt="this"
+        style="font-size:12px;color:#1a56db;background:none;border:1px solid #1a56db;border-radius:4px;padding:2px 8px;cursor:pointer;line-height:1.6">
+        修改
+      </button>
+      {{end}}
       {{if .CanReject}}
       <span x-data="{ confirming: false }" style="display:inline-flex;align-items:center;gap:6px">
         <button x-show="!confirming" @click="confirming = true"
@@ -43,12 +53,11 @@
           <span style="color:#3d4551">确认驳回「{{$f.Title}}」？</span>
           <button
             hx-patch="/features/{{$f.ID}}/status"
-            hx-vals='{"status":"rejected"}'
+            hx-vals='{"status":"rejected","response":"detail"}'
             hx-target="#modal-content"
             hx-swap="innerHTML"
             hx-disabled-elt="this"
-            hx-include="closest #status-actions-{{$f.ID}}"
-            hx-on:htmx:after-request="if(event.detail.successful){ window.featureUI.afterFeatureMutation('{{$f.ID}}', {refreshStats:true}); }"
+            hx-on:htmx:after-request="if(event.detail.successful){ window.featureUI.afterFeatureMutation('{{$f.ID}}', {refreshStats:true, refreshList:true}); }"
             style="font-size:12px;color:#fff;background:#b42418;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;line-height:1.6">
             确认驳回
           </button>
@@ -245,9 +254,11 @@
     hx-swap="innerHTML"
     hx-on:htmx:after-request="this.reset()">
     <textarea class="us-textarea comment-input" name="content"
-      placeholder="添加评论…" required style="min-height:64px"></textarea>
+      placeholder="添加评论，Enter 发送 · Shift+Enter 换行" required style="min-height:64px"></textarea>
     <button type="submit" class="us-btn us-btn-primary us-btn-sm" style="margin-top:8px">发送</button>
   </form>
+</div>
+<script src="/static/js/comment-enter-submit.js"></script>
 </div>
 </div>
 {{if .FromMessages}}

@@ -102,6 +102,7 @@ func buildPartialTmpl() *template.Template {
 		"templates/messages_center.html",
 		"templates/preferences_partial.html",
 		"templates/feature_draft_edit.html",
+		"templates/feature_modify.html",
 		"templates/group_action_btn.html",
 		"templates/group_members_partial.html",
 	))
@@ -163,6 +164,8 @@ func main() {
 		r.Get("/features/{id}", handler.FeatureDetail(database))
 		r.Get("/features/{id}/edit", handler.DraftEditForm(database))
 		r.Post("/features/{id}/edit", handler.UpdateDraft(database))
+		r.Get("/features/{id}/modify", handler.ModifyContentForm(database))
+		r.Post("/features/{id}/modify", handler.UpdateFeatureContent(database))
 		r.Get("/features/{id}/row", handler.GetFeatureRow(database))
 		r.Get("/features/{id}/comments", handler.GetComments(database))
 		r.Delete("/features/{id}", handler.RetractFeature(database))

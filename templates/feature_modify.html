@@ -1,0 +1,151 @@
+{{define "feature_modify.html"}}
+{{$f := .Feature}}
+<div data-feature-id="{{$f.ID}}">
+<div class="modal-header">
+  <div>
+    <h2 class="modal-title">修改提案</h2>
+    <div style="font-size:13px;color:#71767a;margin-top:4px">
+      {{if eq $f.Status "rejected"}}保存后将重新提交为「待处理」，等待重新受理{{else}}保存后内容立即更新，提案继续待处理{{end}}
+    </div>
+  </div>
+  <button class="modal-close-btn" onclick="window.dispatchEvent(new CustomEvent('close-modal'))">×</button>
+</div>
+
+<div class="modal-section" style="border-bottom:none;padding-bottom:20px">
+  <form id="modify-form"
+    hx-post="/features/{{$f.ID}}/modify"
+    hx-target="#modal-content"
+    hx-swap="innerHTML"
+    hx-on:htmx:after-request="if(event.detail.successful){ window.featureUI.afterFeatureMutation('{{$f.ID}}', {refreshList:true, refreshStats:true}); }">
+    <div class="us-form-group">
+      <label class="us-label" for="mo-group">讨论组（可选）</label>
+      <select class="us-select" name="group_id" id="mo-group">
+        <option value="">无（独立功能）</option>
+        {{range .Groups}}
+        <option value="{{.ID}}"{{if and $f.GroupID (eq .ID (deref $f.GroupID))}} selected{{end}}>{{.Title}}</option>
+        {{end}}
+      </select>
+    </div>
+    <div class="us-form-group">
+      <label class="us-label" for="mo-title">功能标题 *</label>
+      <input class="us-input" type="text" id="mo-title" name="title" required value="{{$f.Title}}">
+    </div>
+    <div class="us-form-group">
+      <label class="us-label" for="mo-priority">优先级</label>
+      <select class="us-select" name="priority" id="mo-priority">
+        <option value="urgent"{{if eq $f.Priority "urgent"}} selected{{end}}>紧急 — 影响主流程，24h 内响应</option>
+        <option value="high"{{if eq $f.Priority "high"}} selected{{end}}>高 — 本迭代必须完成</option>
+        <option value="medium"{{if eq $f.Priority "medium"}} selected{{end}}>中 — 下个迭代排期</option>
+        <option value="low"{{if eq $f.Priority "low"}} selected{{end}}>低 — 有空再做</option>
+      </select>
+    </div>
+    <div class="us-form-group" style="position:relative">
+      <label class="us-label" for="mo-desc">详细描述</label>
+      <span class="us-hint">输入 @ 可提及成员</span>
+      <textarea class="us-textarea" name="description" id="mo-desc"
+        style="min-height:180px;resize:vertical">{{$f.Description}}</textarea>
+      <ul id="mo-mention-dropdown" style="display:none;position:fixed;z-index:9999;background:#fff;border:1px solid #d9d9d9;border-radius:6px;list-style:none;margin:0;padding:4px 0;min-width:200px;max-height:220px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.12)"></ul>
+    </div>
+    <hr class="us-divider">
+    <div style="display:flex;align-items:center;gap:12px">
+      <button type="submit" class="us-btn us-btn-primary"
+        data-loading-disable data-loading="保存中…">
+        {{if eq $f.Status "rejected"}}保存并重新提交{{else}}保存修改{{end}}
+      </button>
+      <button type="button" class="us-btn us-btn-outline"
+        hx-get="/features/{{$f.ID}}"
+        hx-target="#modal-content"
+        hx-swap="innerHTML">取消</button>
+    </div>
+  </form>
+</div>
+<script>
+(function(){
+  var users = [{{range .Users}}{"d":{{.DisplayName | js}},"u":{{.Username | js}}},{{end}}];
+  var ta = document.getElementById('mo-desc');
+  var dd = document.getElementById('mo-mention-dropdown');
+  var mentionStart = -1;
+
+  function hide() { dd.style.display = 'none'; mentionStart = -1; }
+
+  function position() {
+    var r = ta.getBoundingClientRect();
+    dd.style.left = r.left + 'px';
+    dd.style.top  = (r.bottom + 4) + 'px';
+  }
+
+  function render(list) {
+    dd.innerHTML = '';
+    if (!list.length) { hide(); return; }
+    list.forEach(function(u) {
+      var li = document.createElement('li');
+      li.style.cssText = 'padding:7px 14px;cursor:pointer;font-size:13px;color:#1b1b1b;white-space:nowrap';
+      li.textContent = u.d + (u.u !== u.d ? '  @' + u.u : '');
+      li.addEventListener('mouseenter', function(){ li.style.background='#f0f4ff'; });
+      li.addEventListener('mouseleave', function(){ li.style.background=''; });
+      li.addEventListener('mousedown', function(e){
+        e.preventDefault();
+        insert(u.d);
+      });
+      dd.appendChild(li);
+    });
+    position();
+    dd.style.display = 'block';
+  }
+
+  function insert(name) {
+    var v = ta.value;
+    var after = v.slice(ta.selectionStart);
+    ta.value = v.slice(0, mentionStart) + '@' + name + ' ' + after;
+    var p = mentionStart + name.length + 2;
+    ta.setSelectionRange(p, p);
+    ta.focus();
+    hide();
+  }
+
+  ta.addEventListener('input', function(){
+    var pos = ta.selectionStart, v = ta.value;
+    var at = v.lastIndexOf('@', pos - 1);
+    if (at < 0) { hide(); return; }
+    var frag = v.slice(at + 1, pos);
+    if (/\s/.test(frag) || (at > 0 && /\w/.test(v[at-1]))) { hide(); return; }
+    mentionStart = at;
+    var q = frag.toLowerCase();
+    render(users.filter(function(u){
+      return u.d.toLowerCase().indexOf(q) >= 0 || u.u.toLowerCase().indexOf(q) >= 0;
+    }).slice(0, 8));
+  });
+
+  ta.addEventListener('keydown', function(e){
+    if (dd.style.display === 'none') return;
+    var items = dd.querySelectorAll('li');
+    var cur = dd.querySelector('li.sel');
+    var idx = cur ? Array.prototype.indexOf.call(items, cur) : -1;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (cur) { cur.classList.remove('sel'); cur.style.background=''; }
+      var next = items[(idx+1) % items.length];
+      next.classList.add('sel'); next.style.background='#f0f4ff';
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (cur) { cur.classList.remove('sel'); cur.style.background=''; }
+      var prev = items[(idx-1+items.length) % items.length];
+      prev.classList.add('sel'); prev.style.background='#f0f4ff';
+    } else if ((e.key === 'Enter' || e.key === 'Tab') && cur) {
+      e.preventDefault();
+      cur.dispatchEvent(new Event('mousedown'));
+    } else if (e.key === 'Escape') {
+      hide();
+    }
+  });
+
+  document.addEventListener('click', function(e){
+    if (e.target !== ta && !dd.contains(e.target)) hide();
+  });
+
+  ta.addEventListener('scroll', position);
+  window.addEventListener('scroll', position, true);
+})();
+</script>
+</div>
+{{end}}

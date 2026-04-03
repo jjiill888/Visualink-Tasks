@@ -609,6 +609,22 @@ func (d *DB) UpdateFeatureDraft(id, userID int64, title, description, priority s
 	return nil
 }
 
+func (d *DB) UpdateFeatureContent(id, userID int64, title, description, priority string, groupID *int64) error {
+	res, err := d.Exec(
+		`UPDATE features SET title=?, description=?, priority=?, group_id=?, updated_at=CURRENT_TIMESTAMP
+		 WHERE id=? AND created_by=? AND (status='pending' OR status='rejected')`,
+		title, description, priority, groupID, id, userID,
+	)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("feature not found or permission denied")
+	}
+	return nil
+}
+
 func (d *DB) UpdateFeatureStatus(id int64, status string) error {
 	_, err := d.Exec(
 		`UPDATE features SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
