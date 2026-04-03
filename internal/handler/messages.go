@@ -198,6 +198,9 @@ func buildMessageCenterData(database *db.DB, u *model.User, kind string, targetU
 		if err != nil {
 			return messageCenterData{}, err
 		}
+		sort.Slice(notifications, func(i, j int) bool {
+			return notifications[i].CreatedAt.Before(notifications[j].CreatedAt)
+		})
 		data.Notifications = notifications
 		if len(notifications) == 0 {
 			data.EmptyState = "暂无系统通知"

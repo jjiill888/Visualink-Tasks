@@ -233,6 +233,7 @@ type Notification struct {
 	CommentID    int64
 	FromUser     string
 	FeatureTitle string
+	Message      string
 	IsRead       bool
 	CreatedAt    time.Time
 }
@@ -242,10 +243,42 @@ func (n Notification) CreatedAtLocal() string {
 }
 
 func (n Notification) PreviewText() string {
+	if n.Message != "" {
+		return n.Message
+	}
 	if n.FeatureTitle == "" {
 		return "你收到了一条系统通知"
 	}
 	return "在「" + n.FeatureTitle + "」里提到了你"
+}
+
+func MentionNotificationText(featureTitle string) string {
+	if featureTitle == "" {
+		return "提到了你"
+	}
+	return "在「" + featureTitle + "」里提到了你"
+}
+
+func FeatureStatusNotificationText(featureTitle, status string, automatic bool) string {
+	target := "你提交的功能"
+	if featureTitle != "" {
+		target += "「" + featureTitle + "」"
+	}
+	switch status {
+	case "in_progress":
+		return "已受理" + target
+	case "rejected":
+		return "驳回了" + target
+	case "done":
+		return "已完成" + target
+	case "archived":
+		if automatic {
+			return "已自动归档" + target
+		}
+		return "已归档" + target
+	default:
+		return "更新了" + target + "的状态为「" + statusLabel(status) + "」"
+	}
 }
 
 type DirectMessage struct {

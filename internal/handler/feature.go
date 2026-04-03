@@ -65,6 +65,66 @@ func renderCommentViews(comments []*model.Comment, database *db.DB) []commentVie
 	return views
 }
 
+func notificationSenderName(u *model.User) string {
+	if u == nil {
+		return "系统"
+	}
+	if u.DisplayName != "" {
+		return u.DisplayName
+	}
+	if u.Username != "" {
+		return u.Username
+	}
+	return "系统"
+}
+
+func createMentionNotification(database *db.DB, recipientID, featureID, commentID int64, fromUser, featureTitle string) {
+	if recipientID <= 0 {
+		return
+	}
+	if err := database.CreateNotification(&model.Notification{
+		UserID:       recipientID,
+		FeatureID:    featureID,
+		CommentID:    commentID,
+		FromUser:     fromUser,
+		FeatureTitle: featureTitle,
+		Message:      model.MentionNotificationText(featureTitle),
+	}); err == nil {
+		hub.Global.Broadcast(fmt.Sprintf("mention-added:%d", recipientID))
+		hub.Global.Broadcast(fmt.Sprintf("mailbox-updated:%d", recipientID))
+	}
+}
+
+func createFeatureStatusNotification(database *db.DB, recipientID int64, feature *model.Feature, fromUser string, status string, automatic bool) {
+	if recipientID <= 0 || feature == nil {
+		return
+	}
+	if err := database.CreateNotification(&model.Notification{
+		UserID:       recipientID,
+		FeatureID:    feature.ID,
+		FromUser:     fromUser,
+		FeatureTitle: feature.Title,
+		Message:      model.FeatureStatusNotificationText(feature.Title, status, automatic),
+	}); err == nil {
+		hub.Global.Broadcast(fmt.Sprintf("mailbox-updated:%d", recipientID))
+	}
+}
+
+func shouldNotifyFeatureCreatorOnStatusChange(feature *model.Feature, operatorID int64, status string) bool {
+	if feature == nil || feature.CreatedBy <= 0 {
+		return false
+	}
+	if feature.CreatedBy == operatorID {
+		return false
+	}
+	switch status {
+	case "in_progress", "rejected", "done", "archived":
+		return true
+	default:
+		return false
+	}
+}
+
 type dashboardData struct {
 	Stats      *model.Stats
 	Features   []featureRowData
@@ -222,15 +282,11 @@ func UpdateStatus(database *db.DB) http.HandlerFunc {
 				if mentioned == nil || mentioned.ID == u.ID {
 					continue
 				}
-				_ = database.CreateNotification(&model.Notification{
-					UserID:       mentioned.ID,
-					FeatureID:    f.ID,
-					FromUser:     fromUser,
-					FeatureTitle: f.Title,
-				})
-				hub.Global.Broadcast(fmt.Sprintf("mention-added:%d", mentioned.ID))
-				hub.Global.Broadcast(fmt.Sprintf("mailbox-updated:%d", mentioned.ID))
+				createMentionNotification(database, mentioned.ID, f.ID, 0, fromUser, f.Title)
 			}
+		}
+		if shouldNotifyFeatureCreatorOnStatusChange(f, u.ID, status) {
+			createFeatureStatusNotification(database, f.CreatedBy, f, notificationSenderName(u), status, false)
 		}
 		f, err = database.GetFeature(id)
 		if err != nil || f == nil {
@@ -615,15 +671,7 @@ func AddComment(database *db.DB) http.HandlerFunc {
 			if fromUser == "" {
 				fromUser = u.Username
 			}
-			_ = database.CreateNotification(&model.Notification{
-				UserID:       mentioned.ID,
-				FeatureID:    id,
-				CommentID:    c.ID,
-				FromUser:     fromUser,
-				FeatureTitle: featureTitle,
-			})
-			hub.Global.Broadcast(fmt.Sprintf("mention-added:%d", mentioned.ID))
-			hub.Global.Broadcast(fmt.Sprintf("mailbox-updated:%d", mentioned.ID))
+			createMentionNotification(database, mentioned.ID, id, c.ID, fromUser, featureTitle)
 		}
 
 		comments, err := database.ListComments(id)
@@ -753,6 +801,9 @@ func ArchiveFeature(database *db.DB) http.HandlerFunc {
 		if err := database.UpdateFeatureStatus(id, "archived"); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
+		}
+		if shouldNotifyFeatureCreatorOnStatusChange(f, u.ID, "archived") {
+			createFeatureStatusNotification(database, f.CreatedBy, f, notificationSenderName(u), "archived", false)
 		}
 		_ = database.CreateFeatureEvent(&model.FeatureEvent{
 			FeatureID:  id,
@@ -935,14 +986,7 @@ func UpdateDraft(database *db.DB) http.HandlerFunc {
 					if f2 != nil {
 						ftitle = f2.Title
 					}
-					_ = database.CreateNotification(&model.Notification{
-						UserID:       mentioned.ID,
-						FeatureID:    id,
-						FromUser:     fromUser,
-						FeatureTitle: ftitle,
-					})
-					hub.Global.Broadcast(fmt.Sprintf("mention-added:%d", mentioned.ID))
-					hub.Global.Broadcast(fmt.Sprintf("mailbox-updated:%d", mentioned.ID))
+					createMentionNotification(database, mentioned.ID, id, 0, fromUser, ftitle)
 				}
 			}
 			hub.Global.Broadcast("feature-list-changed")

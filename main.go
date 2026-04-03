@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"featuretrack/internal/db"
 	"featuretrack/internal/handler"
 	"featuretrack/internal/hub"
+	"featuretrack/internal/model"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
@@ -196,11 +198,28 @@ func main() {
 	go func() {
 		for {
 			time.Sleep(1 * time.Hour)
-			n, err := database.AutoArchiveFeatures()
+			archived, err := database.AutoArchiveFeatures()
 			if err != nil {
 				log.Println("auto-archive error:", err)
-			} else if n > 0 {
-				log.Printf("auto-archived %d feature(s)", n)
+			} else if len(archived) > 0 {
+				seen := map[int64]bool{}
+				for _, f := range archived {
+					if err := database.CreateNotification(&model.Notification{
+						UserID:       f.CreatedBy,
+						FeatureID:    f.ID,
+						FromUser:     "系统",
+						FeatureTitle: f.Title,
+						Message:      model.FeatureStatusNotificationText(f.Title, "archived", true),
+					}); err != nil {
+						log.Printf("auto-archive notification error for feature %d: %v", f.ID, err)
+						continue
+					}
+					if !seen[f.CreatedBy] {
+						seen[f.CreatedBy] = true
+						hub.Global.Broadcast(fmt.Sprintf("mailbox-updated:%d", f.CreatedBy))
+					}
+				}
+				log.Printf("auto-archived %d feature(s)", len(archived))
 				hub.Global.Broadcast("feature-list-changed")
 				hub.Global.Broadcast("stats-updated")
 			}

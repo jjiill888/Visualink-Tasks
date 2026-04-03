@@ -14,7 +14,7 @@
          swap: 'outerHTML'});
       document.getElementById('notif-dropdown-list').closest('[x-data]').__x.$data.open = false;">
     <div class="notif-item-from">@{{.FromUser}}</div>
-    <div class="notif-item-title">在「{{.FeatureTitle}}」提到了你</div>
+    <div class="notif-item-title">{{.PreviewText}}</div>
     <div class="notif-item-time">{{.CreatedAt.Format "01-02 15:04"}}</div>
   </div>
   {{end}}

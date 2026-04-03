@@ -100,14 +100,18 @@ func (d *DB) migrate() error {
 		id            INTEGER PRIMARY KEY AUTOINCREMENT,
 		user_id       INTEGER NOT NULL REFERENCES users(id),
 		feature_id    INTEGER NOT NULL REFERENCES features(id) ON DELETE CASCADE,
-		comment_id    INTEGER NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
-		from_user     TEXT NOT NULL,
-		feature_title TEXT NOT NULL,
+		comment_id    INTEGER REFERENCES comments(id) ON DELETE CASCADE,
+		from_user     TEXT NOT NULL DEFAULT '',
+		feature_title TEXT NOT NULL DEFAULT '',
+		message       TEXT NOT NULL DEFAULT '',
 		is_read       INTEGER NOT NULL DEFAULT 0,
 		created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 	`)
 	if err != nil {
+		return err
+	}
+	if err := d.migrateNotifications(); err != nil {
 		return err
 	}
 	// For existing databases without display_name: add column and backfill.
@@ -145,6 +149,92 @@ func (d *DB) migrate() error {
 	_, _ = d.Exec(`CREATE INDEX IF NOT EXISTS idx_direct_messages_recipient_read ON direct_messages(recipient_id, is_read, created_at DESC)`)
 
 	return nil
+}
+
+func (d *DB) migrateNotifications() error {
+	type notificationColumn struct {
+		name    string
+		notNull bool
+	}
+
+	rows, err := d.Query(`PRAGMA table_info(notifications)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	columns := map[string]notificationColumn{}
+	for rows.Next() {
+		var cid int
+		var name, dataType string
+		var notNull int
+		var defaultValue sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk); err != nil {
+			return err
+		}
+		columns[name] = notificationColumn{name: name, notNull: notNull == 1}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	commentIDColumn, hasCommentID := columns["comment_id"]
+	_, hasMessage := columns["message"]
+	if hasCommentID && commentIDColumn.notNull {
+		return d.rebuildNotificationsTable(hasMessage)
+	}
+	if !hasMessage {
+		_, err := d.Exec(`ALTER TABLE notifications ADD COLUMN message TEXT NOT NULL DEFAULT ''`)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *DB) rebuildNotificationsTable(hasMessage bool) error {
+	tx, err := d.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`ALTER TABLE notifications RENAME TO notifications_legacy`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`
+		CREATE TABLE notifications (
+			id            INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id       INTEGER NOT NULL REFERENCES users(id),
+			feature_id    INTEGER NOT NULL REFERENCES features(id) ON DELETE CASCADE,
+			comment_id    INTEGER REFERENCES comments(id) ON DELETE CASCADE,
+			from_user     TEXT NOT NULL DEFAULT '',
+			feature_title TEXT NOT NULL DEFAULT '',
+			message       TEXT NOT NULL DEFAULT '',
+			is_read       INTEGER NOT NULL DEFAULT 0,
+			created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`); err != nil {
+		return err
+	}
+
+	messageExpr := `''`
+	if hasMessage {
+		messageExpr = `COALESCE(message, '')`
+	}
+	copyQuery := `
+		INSERT INTO notifications (id, user_id, feature_id, comment_id, from_user, feature_title, message, is_read, created_at)
+		SELECT id, user_id, feature_id, NULLIF(comment_id, 0), COALESCE(from_user, ''), COALESCE(feature_title, ''), ` + messageExpr + `, is_read, created_at
+		FROM notifications_legacy
+	`
+	if _, err := tx.Exec(copyQuery); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DROP TABLE notifications_legacy`); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // ── Users ──────────────────────────────────────────────────────────────────
@@ -531,17 +621,50 @@ func (d *DB) GetStats() (*model.Stats, error) {
 	return s, err
 }
 
-// AutoArchiveFeatures 将 done 超过 24h 的功能自动归档，返回归档数量。
-func (d *DB) AutoArchiveFeatures() (int64, error) {
-	res, err := d.Exec(`
-		UPDATE features SET status='archived', updated_at=CURRENT_TIMESTAMP
-		WHERE status='done'
-		  AND updated_at <= datetime('now', '-24 hours')
-	`)
+// AutoArchiveFeatures 将 done 超过 24h 的功能自动归档，并返回已归档的功能列表。
+func (d *DB) AutoArchiveFeatures() ([]*model.Feature, error) {
+	tx, err := d.Begin()
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return res.RowsAffected()
+	defer tx.Rollback()
+
+	rows, err := tx.Query(`SELECT ` + featureCols + `
+		FROM features f
+		JOIN users u ON u.id = f.created_by
+		LEFT JOIN groups g ON g.id = f.group_id
+		WHERE f.status='done' AND f.updated_at <= datetime('now', '-24 hours')
+		ORDER BY f.updated_at ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var archived []*model.Feature
+	for rows.Next() {
+		f, err := scanFeature(rows)
+		if err != nil {
+			return nil, err
+		}
+		archived = append(archived, f)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	for _, f := range archived {
+		if _, err := tx.Exec(`UPDATE features SET status='archived', updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='done'`, f.ID); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return archived, nil
 }
 
 // ── Groups ─────────────────────────────────────────────────────────────────
@@ -708,16 +831,27 @@ func (d *DB) CreateComment(c *model.Comment) error {
 // ── Notifications ───────────────────────────────────────────────────────────
 
 func (d *DB) CreateNotification(n *model.Notification) error {
+	message := n.Message
+	if message == "" {
+		message = n.PreviewText()
+	}
 	_, err := d.Exec(
-		`INSERT INTO notifications (user_id, feature_id, comment_id, from_user, feature_title) VALUES (?,?,?,?,?)`,
-		n.UserID, n.FeatureID, n.CommentID, n.FromUser, n.FeatureTitle,
+		`INSERT INTO notifications (user_id, feature_id, comment_id, from_user, feature_title, message) VALUES (?,?,?,?,?,?)`,
+		n.UserID, n.FeatureID, nullInt64(n.CommentID), n.FromUser, n.FeatureTitle, message,
 	)
 	return err
 }
 
+func nullInt64(value int64) any {
+	if value == 0 {
+		return nil
+	}
+	return value
+}
+
 func (d *DB) ListUnreadNotifications(userID int64) ([]*model.Notification, error) {
 	rows, err := d.Query(`
-		SELECT id, user_id, feature_id, comment_id, from_user, feature_title, is_read, created_at
+		SELECT id, user_id, feature_id, comment_id, from_user, feature_title, message, is_read, created_at
 		FROM notifications
 		WHERE user_id=? AND is_read=0
 		ORDER BY created_at DESC
@@ -729,8 +863,12 @@ func (d *DB) ListUnreadNotifications(userID int64) ([]*model.Notification, error
 	var list []*model.Notification
 	for rows.Next() {
 		n := &model.Notification{}
-		if err := rows.Scan(&n.ID, &n.UserID, &n.FeatureID, &n.CommentID, &n.FromUser, &n.FeatureTitle, &n.IsRead, &n.CreatedAt); err != nil {
+		var commentID sql.NullInt64
+		if err := rows.Scan(&n.ID, &n.UserID, &n.FeatureID, &commentID, &n.FromUser, &n.FeatureTitle, &n.Message, &n.IsRead, &n.CreatedAt); err != nil {
 			return nil, err
+		}
+		if commentID.Valid {
+			n.CommentID = commentID.Int64
 		}
 		list = append(list, n)
 	}
@@ -761,7 +899,7 @@ func (d *DB) ListRecentNotifications(userID int64, limit int) ([]*model.Notifica
 		limit = 20
 	}
 	rows, err := d.Query(`
-		SELECT id, user_id, feature_id, comment_id, from_user, feature_title, is_read, created_at
+		SELECT id, user_id, feature_id, comment_id, from_user, feature_title, message, is_read, created_at
 		FROM notifications
 		WHERE user_id=?
 		ORDER BY created_at DESC
@@ -774,8 +912,12 @@ func (d *DB) ListRecentNotifications(userID int64, limit int) ([]*model.Notifica
 	var list []*model.Notification
 	for rows.Next() {
 		n := &model.Notification{}
-		if err := rows.Scan(&n.ID, &n.UserID, &n.FeatureID, &n.CommentID, &n.FromUser, &n.FeatureTitle, &n.IsRead, &n.CreatedAt); err != nil {
+		var commentID sql.NullInt64
+		if err := rows.Scan(&n.ID, &n.UserID, &n.FeatureID, &commentID, &n.FromUser, &n.FeatureTitle, &n.Message, &n.IsRead, &n.CreatedAt); err != nil {
 			return nil, err
+		}
+		if commentID.Valid {
+			n.CommentID = commentID.Int64
 		}
 		list = append(list, n)
 	}
@@ -933,7 +1075,7 @@ func (d *DB) BuildSystemContact(userID int64) (*model.MessageContact, error) {
 	contact := &model.MessageContact{
 		Kind:        "system",
 		Title:       "系统通知",
-		Secondary:   "功能提醒与 @ 通知",
+		Secondary:   "功能状态与 @ 通知",
 		UnreadCount: unreadCount,
 		Preview:     "暂无系统通知",
 	}
