@@ -11,6 +11,15 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// MarkNotificationReadByID 标记单条通知为已读
+func (d *DB) MarkNotificationReadByID(userID, notifID int64) error {
+	_, err := d.Exec(
+		"UPDATE notifications SET is_read=1 WHERE user_id=? AND id=?",
+		userID, notifID,
+	)
+	return err
+}
+
 type DB struct {
 	*sql.DB
 }

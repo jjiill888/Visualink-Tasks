@@ -69,7 +69,7 @@
               <div class="message-system-title">{{.PreviewText}}</div>
               <div class="message-system-actions">
                 <button class="us-btn us-btn-outline us-btn-sm"
-                  hx-get="/features/{{.FeatureID}}?from=messages"
+                  hx-get="/features/{{.FeatureID}}?from=messages&notif_id={{.ID}}"
                   hx-target="#modal-content"
                   hx-swap="innerHTML">
                   查看详情
@@ -140,7 +140,8 @@
   }
   var input = root ? root.querySelector('.message-compose-input') : null;
   if (window.messageUI) {
-    window.messageUI.refreshBadge();
+    var kind = root ? root.getAttribute('data-kind') : '';
+    if (kind !== 'system') window.messageUI.refreshBadge();
     window.messageUI.refreshPreview();
   }
   if (input) {

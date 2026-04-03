@@ -583,6 +583,15 @@ func FeatureDetail(database *db.DB) http.HandlerFunc {
 			}
 			return
 		}
+		// Mark specific notification as read when arriving from messages center
+		if notifIDStr := r.URL.Query().Get("notif_id"); notifIDStr != "" {
+			if notifID, err := strconv.ParseInt(notifIDStr, 10, 64); err == nil && notifID > 0 {
+				_ = database.MarkNotificationReadByID(u.ID, notifID)
+				// Trigger message-refresh on body so the nav badge updates without a full reload.
+				// This is safe: it only refreshes the badge span, not the modal content.
+				w.Header().Set("HX-Trigger", "message-refresh")
+			}
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		detail, err := buildFeatureDetailData(database, u, f)
 		if err != nil {
@@ -753,15 +762,28 @@ func GetNotificationList(database *db.DB) http.HandlerFunc {
 func MarkNotificationsRead(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := UserFromContext(r)
-		featureIDStr := r.FormValue("feature_id")
-		featureID, err := strconv.ParseInt(featureIDStr, 10, 64)
-		if err != nil {
-			http.Error(w, "invalid feature_id", 400)
-			return
-		}
-		if err := database.MarkNotificationsReadByFeature(u.ID, featureID); err != nil {
-			http.Error(w, err.Error(), 500)
-			return
+		notifIDStr := r.FormValue("id")
+		if notifIDStr != "" {
+			notifID, err := strconv.ParseInt(notifIDStr, 10, 64)
+			if err != nil {
+				http.Error(w, "invalid id", 400)
+				return
+			}
+			if err := database.MarkNotificationReadByID(u.ID, notifID); err != nil {
+				http.Error(w, err.Error(), 500)
+				return
+			}
+		} else {
+			featureIDStr := r.FormValue("feature_id")
+			featureID, err := strconv.ParseInt(featureIDStr, 10, 64)
+			if err != nil {
+				http.Error(w, "invalid feature_id", 400)
+				return
+			}
+			if err := database.MarkNotificationsReadByFeature(u.ID, featureID); err != nil {
+				http.Error(w, err.Error(), 500)
+				return
+			}
 		}
 		notifs, err := database.ListUnreadNotifications(u.ID)
 		if err != nil {

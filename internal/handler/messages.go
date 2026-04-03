@@ -110,11 +110,7 @@ func buildMessageCenterData(database *db.DB, u *model.User, kind string, targetU
 			return messageCenterData{}, err
 		}
 	}
-	if kind == "system" {
-		if err := database.MarkAllNotificationsRead(u.ID); err != nil {
-			return messageCenterData{}, err
-		}
-	}
+	// 不再自动全部已读系统通知，单条已读由 notif_list.html 控制
 
 	systemContact, err := database.BuildSystemContact(u.ID)
 	if err != nil {
