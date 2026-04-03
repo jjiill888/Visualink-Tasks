@@ -209,5 +209,11 @@ func main() {
 
 	addr := ":8080"
 	log.Println("Listening on", addr)
-	log.Fatal(http.ListenAndServe(addr, r))
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second, // keep-alive for high-latency VPN
+	}
+	log.Fatal(srv.ListenAndServe())
 }

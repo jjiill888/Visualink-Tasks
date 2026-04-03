@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"featuretrack/internal/hub"
 )
@@ -29,6 +30,10 @@ func SSE() http.HandlerFunc {
 		fmt.Fprintf(w, "event: ping\ndata: connected\n\n")
 		flusher.Flush()
 
+		// Heartbeat every 25s to keep the connection alive over unstable VPN links.
+		ticker := time.NewTicker(25 * time.Second)
+		defer ticker.Stop()
+
 		for {
 			select {
 			case event, ok := <-ch:
@@ -37,6 +42,9 @@ func SSE() http.HandlerFunc {
 				}
 				eventName, data, _ := strings.Cut(event, ":")
 				fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventName, data)
+				flusher.Flush()
+			case <-ticker.C:
+				fmt.Fprintf(w, ": heartbeat\n\n")
 				flusher.Flush()
 			case <-r.Context().Done():
 				return

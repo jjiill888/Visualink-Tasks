@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{block "title" .}}VisualLink Tasks{{end}}</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%234f46e5'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-weight='bold' font-size='16' fill='white'>VT</text></svg>">
-  <link rel="stylesheet" href="/static/css/style.css?v=14">
+  <link rel="stylesheet" href="/static/css/style.min.css?v=15">
   {{block "head" .}}{{end}}
 </head>
 <body hx-ext="morph,loading-states,response-targets">
@@ -27,7 +27,7 @@
           <a href="/admin" {{if eq .ActiveNav "admin"}}class="active"{{end}}>管理</a>
           {{end}}
           <!-- 消息通知 -->
-          <div x-data="{ open: false }" @message-preview-close.window="open = false" @mouseenter="open = true; htmx.ajax('GET','/messages/preview',{target:'#notif-dropdown-list',swap:'innerHTML'})" @mouseleave="open = false" style="position:relative;display:inline-flex;align-items:center">
+          <div x-data="{ open: false }" @message-preview-close.window="open = false" @mouseenter="if(!open){ open = true; htmx.ajax('GET','/messages/preview',{target:'#notif-dropdown-list',swap:'innerHTML'}) }" @mouseleave="open = false" style="position:relative;display:inline-flex;align-items:center">
             <button class="notif-bell-btn"
               @click.prevent="open = false; window.messageUI.openCenter('/messages/center')">
               消息
@@ -98,7 +98,7 @@
 
   <!-- HTMX + Alpine.js 本地托管，避免 CDN 在中国不稳定 -->
   <script defer src="/static/js/htmx.min.js?v=1"></script>
-  <script defer src="/static/js/htmx-ext-sse.js?v=1"></script>
+  <script defer src="/static/js/htmx-ext-sse.min.js?v=2"></script>
   <script defer src="/static/js/idiomorph-ext.min.js?v=1"></script>
   <script defer src="/static/js/htmx-ext-bundle.min.js?v=1"></script>
   <script defer src="/static/js/alpine.min.js?v=1"></script>
@@ -106,6 +106,13 @@
   <script>
   (function(){
     window.featureUI = {
+      _lastRefresh: {},
+      _dedup: function(key, fn) {
+        var now = Date.now();
+        if (now - (this._lastRefresh[key] || 0) < 500) return;
+        this._lastRefresh[key] = now;
+        fn();
+      },
       openFeatureId: function() {
         var el = document.querySelector('#modal-content [data-feature-id]');
         return el ? el.getAttribute('data-feature-id') : '';
@@ -113,23 +120,35 @@
       refreshFeatureModal: function(id) {
         var featureID = String(id || this.openFeatureId() || '').trim();
         if (!featureID || !document.getElementById('modal-content')) return;
-        htmx.ajax('GET', '/features/' + featureID, {target:'#modal-content', swap:'innerHTML'});
+        var self = this;
+        self._dedup('modal-' + featureID, function() {
+          htmx.ajax('GET', '/features/' + featureID, {target:'#modal-content', swap:'innerHTML'});
+        });
       },
       refreshFeatureRow: function(id) {
         var featureID = String(id || '').trim();
         if (!featureID) return;
         var row = document.getElementById('feature-' + featureID);
         if (!row) return;
-        htmx.ajax('GET', '/features/' + featureID + '/row', {target:'#feature-' + featureID, swap:'morph:outerHTML'});
+        var self = this;
+        self._dedup('row-' + featureID, function() {
+          htmx.ajax('GET', '/features/' + featureID + '/row', {target:'#feature-' + featureID, swap:'morph:outerHTML'});
+        });
       },
       refreshFeatureList: function() {
         var list = document.getElementById('feature-list');
-        if (list) htmx.trigger(list, 'refresh');
+        if (!list) return;
+        var self = this;
+        self._dedup('list', function() {
+          htmx.trigger(list, 'refresh');
+        });
       },
       refreshStats: function() {
-        if (document.getElementById('stats-grid')) {
+        if (!document.getElementById('stats-grid')) return;
+        var self = this;
+        self._dedup('stats', function() {
           htmx.ajax('GET', '/stats', {target:'#stats-grid', swap:'morph:outerHTML'});
-        }
+        });
       },
       afterFeatureMutation: function(id, opts) {
         var options = opts || {};
@@ -176,50 +195,65 @@
     };
 
     var uid = '{{.CurrentUser.ID}}';
-    var src = new EventSource('/sse');
-    var statsTimer;
+    var statsTimer, listTimer;
+    var sseRetryDelay = 1000;
+    var sseMaxDelay = 30000;
+    var src;
 
-    src.addEventListener('mention-added', function(e) {
-      if (e.data.trim() === uid) {
+    function connectSSE() {
+      src = new EventSource('/sse');
+      src.addEventListener('ping', function() { sseRetryDelay = 1000; });
+
+      src.addEventListener('mention-added', function(e) {
+        if (e.data.trim() === uid) {
+          window.messageUI.refreshBadge();
+          window.messageUI.refreshPreview();
+        }
+      });
+
+      src.addEventListener('mailbox-updated', function(e) {
+        if (e.data.trim() !== uid) return;
         window.messageUI.refreshBadge();
         window.messageUI.refreshPreview();
-      }
-    });
+        window.messageUI.refreshOpenCenter();
+      });
 
-    src.addEventListener('mailbox-updated', function(e) {
-      if (e.data.trim() !== uid) return;
-      window.messageUI.refreshBadge();
-      window.messageUI.refreshPreview();
-      window.messageUI.refreshOpenCenter();
-    });
+      src.addEventListener('stats-updated', function() {
+        if (!document.getElementById('stats-grid')) return;
+        clearTimeout(statsTimer);
+        statsTimer = setTimeout(function() {
+          window.featureUI.refreshStats();
+        }, 300);
+      });
 
-    src.addEventListener('stats-updated', function() {
-      if (!document.getElementById('stats-grid')) return;
-      clearTimeout(statsTimer);
-      statsTimer = setTimeout(function() {
-        window.featureUI.refreshStats();
-      }, 300);
-    });
+      src.addEventListener('feature-row-updated', function(e) {
+        var id = e.data.trim();
+        window.featureUI.refreshFeatureRow(id);
+        if (window.featureUI.openFeatureId() === id) window.featureUI.refreshFeatureModal(id);
+      });
 
-    src.addEventListener('feature-row-updated', function(e) {
-      var id = e.data.trim();
-      window.featureUI.refreshFeatureRow(id);
-      if (window.featureUI.openFeatureId() === id) window.featureUI.refreshFeatureModal(id);
-    });
+      src.addEventListener('feature-list-changed', function() {
+        clearTimeout(listTimer);
+        listTimer = setTimeout(function() {
+          window.featureUI.refreshFeatureList();
+        }, 300);
+      });
 
-    src.addEventListener('feature-list-changed', function() {
-      window.featureUI.refreshFeatureList();
-    });
+      src.addEventListener('comment-added', function(e) {
+        var id = e.data.trim();
+        var el = document.getElementById('comments-' + id);
+        if (el) {
+          htmx.ajax('GET', '/features/' + id + '/comments', {target:'#comments-' + id, swap:'morph:innerHTML'});
+        }
+      });
 
-    src.addEventListener('comment-added', function(e) {
-      var id = e.data.trim();
-      var el = document.getElementById('comments-' + id);
-      if (el) {
-        htmx.ajax('GET', '/features/' + id + '/comments', {target:'#comments-' + id, swap:'morph:innerHTML'});
-      }
-    });
-
-    src.addEventListener('error', function() { src.close(); });
+      src.addEventListener('error', function() {
+        src.close();
+        setTimeout(connectSSE, sseRetryDelay);
+        sseRetryDelay = Math.min(sseRetryDelay * 2, sseMaxDelay);
+      });
+    }
+    connectSSE();
   })();
   </script>
   {{end}}

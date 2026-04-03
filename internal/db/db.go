@@ -29,7 +29,14 @@ func Open(path string) (*DB, error) {
 }
 
 func (d *DB) migrate() error {
-	_, err := d.Exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;`)
+	_, err := d.Exec(`
+		PRAGMA journal_mode=WAL;
+		PRAGMA foreign_keys=ON;
+		PRAGMA synchronous=NORMAL;
+		PRAGMA cache_size=-8000;
+		PRAGMA busy_timeout=5000;
+		PRAGMA temp_store=MEMORY;
+	`)
 	if err != nil {
 		return err
 	}
