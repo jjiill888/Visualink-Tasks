@@ -129,6 +129,11 @@ func buildMessageCenterData(database *db.DB, u *model.User, kind string, targetU
 		if search != "" && len(contacts) > 0 {
 			kind = "user"
 			targetUserID = contacts[0].UserID
+			search = ""
+			contacts, err = database.ListMessageContacts(u.ID, "")
+			if err != nil {
+				return messageCenterData{}, err
+			}
 		} else if systemContact.UnreadCount > 0 || !systemContact.LastAt.IsZero() {
 			kind = "system"
 		} else if len(contacts) > 0 {
