@@ -397,6 +397,7 @@ type featureDetailData struct {
 	CanRetract      bool
 	CanReject       bool
 	CanPublishDraft bool
+	FromMessages    bool
 }
 
 func canEditStatus(role string) bool {
@@ -532,6 +533,7 @@ func FeatureDetail(database *db.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), 500)
 			return
 		}
+		detail.FromMessages = r.URL.Query().Get("from") == "messages"
 		if err := PartialTmpl.ExecuteTemplate(w, "feature_detail.html", detail); err != nil {
 			http.Error(w, err.Error(), 500)
 		}

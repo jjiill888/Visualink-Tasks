@@ -69,25 +69,9 @@
               <div class="message-system-title">{{.PreviewText}}</div>
               <div class="message-system-actions">
                 <button class="us-btn us-btn-outline us-btn-sm"
-                  hx-get="/features/{{.FeatureID}}"
+                  hx-get="/features/{{.FeatureID}}?from=messages"
                   hx-target="#modal-content"
-                  hx-swap="innerHTML"
-                  hx-on:htmx:after-request="if(event.detail.successful){
-                    var box=document.querySelector('#feature-modal .modal-box');
-                    box.classList.remove('message-modal');
-                    var mc=document.getElementById('modal-content');
-                    mc.style.overflow='visible';
-                    mc.style.height='auto';
-                    mc.style.flex='none';
-                    var headerBtns=mc.querySelector('.modal-header > div:last-child');
-                    if(headerBtns){
-                      var backBtn=document.createElement('button');
-                      backBtn.className='us-btn us-btn-outline us-btn-sm';
-                      backBtn.textContent='返回消息中心';
-                      backBtn.onclick=function(){ if(window.messageUI) window.messageUI.openCenter('/messages/center?kind=system'); };
-                      headerBtns.insertBefore(backBtn, headerBtns.firstChild);
-                    }
-                  }">
+                  hx-swap="innerHTML">
                   查看详情
                 </button>
               </div>
