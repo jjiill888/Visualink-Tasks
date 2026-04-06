@@ -30,8 +30,9 @@ func SSE() http.HandlerFunc {
 		fmt.Fprintf(w, "event: ping\ndata: connected\n\n")
 		flusher.Flush()
 
-		// Heartbeat every 25s to keep the connection alive over unstable VPN links.
-		ticker := time.NewTicker(25 * time.Second)
+		// Heartbeat every 15s — aggressive enough to survive high-latency VPN
+		// (180ms RTT) where idle connections are often culled by NAT/firewall.
+		ticker := time.NewTicker(15 * time.Second)
 		defer ticker.Stop()
 
 		for {

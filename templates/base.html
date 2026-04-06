@@ -132,7 +132,7 @@
         if (!row) return;
         var self = this;
         self._dedup('row-' + featureID, function() {
-          htmx.ajax('GET', '/features/' + featureID + '/row', {target:'#feature-' + featureID, swap:'morph:outerHTML'});
+          htmx.ajax('GET', '/features/' + featureID + '/row?with_stats=1', {target:'#feature-' + featureID, swap:'morph:outerHTML'});
         });
       },
       refreshFeatureList: function() {
@@ -196,13 +196,13 @@
 
     var uid = '{{.CurrentUser.ID}}';
     var statsTimer, listTimer;
-    var sseRetryDelay = 1000;
-    var sseMaxDelay = 30000;
+    var sseRetryDelay = 2000;
+    var sseMaxDelay = 60000;
     var src;
 
     function connectSSE() {
       src = new EventSource('/sse');
-      src.addEventListener('ping', function() { sseRetryDelay = 1000; });
+      src.addEventListener('ping', function() { sseRetryDelay = 2000; });
 
       src.addEventListener('mention-added', function(e) {
         if (e.data.trim() === uid) {
@@ -219,20 +219,26 @@
       });
 
       src.addEventListener('stats-updated', function() {
+        // Stats are now piggybacked as OOB swaps on row/list refreshes.
+        // Only do a standalone stats refresh if no row/list update happened recently.
         if (!document.getElementById('stats-grid')) return;
         clearTimeout(statsTimer);
         statsTimer = setTimeout(function() {
           window.featureUI.refreshStats();
-        }, 300);
+        }, 600);
       });
 
       src.addEventListener('feature-row-updated', function(e) {
         var id = e.data.trim();
+        // Clear any pending standalone stats refresh — we'll include stats OOB
+        clearTimeout(statsTimer);
         window.featureUI.refreshFeatureRow(id);
         if (window.featureUI.openFeatureId() === id) window.featureUI.refreshFeatureModal(id);
       });
 
       src.addEventListener('feature-list-changed', function() {
+        // Clear any pending standalone stats refresh — list response includes OOB stats
+        clearTimeout(statsTimer);
         clearTimeout(listTimer);
         listTimer = setTimeout(function() {
           window.featureUI.refreshFeatureList();
@@ -249,7 +255,8 @@
 
       src.addEventListener('error', function() {
         src.close();
-        setTimeout(connectSSE, sseRetryDelay);
+        var jitter = Math.random() * sseRetryDelay * 0.3;
+        setTimeout(connectSSE, sseRetryDelay + jitter);
         sseRetryDelay = Math.min(sseRetryDelay * 2, sseMaxDelay);
       });
     }

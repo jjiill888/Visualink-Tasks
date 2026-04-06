@@ -460,7 +460,8 @@ func scanFeature(row interface {
 // search: 标题/描述模糊搜索
 // groupID, assigneeID, creatorID: 精确筛选
 // currentUserID: 用于让草稿对创建者可见（传 0 则所有草稿都不可见）
-func (d *DB) ListFeatures(currentUserID int64, priority, status, search string, groupID, assigneeID, creatorID *int64) ([]*model.Feature, error) {
+// limit/offset: 分页参数，limit=0 表示不限制
+func (d *DB) ListFeatures(currentUserID int64, priority, status, search string, groupID, assigneeID, creatorID *int64, limit, offset int) ([]*model.Feature, error) {
 	q := `SELECT ` + featureCols + `
 	       FROM features f
 	       JOIN users u ON u.id = f.created_by
@@ -502,6 +503,10 @@ func (d *DB) ListFeatures(currentUserID int64, priority, status, search string, 
 		args = append(args, *creatorID)
 	}
 	q += ` ORDER BY f.created_at DESC`
+	if limit > 0 {
+		q += ` LIMIT ? OFFSET ?`
+		args = append(args, limit, offset)
+	}
 	rows, err := d.Query(q, args...)
 	if err != nil {
 		return nil, err
@@ -1298,7 +1303,7 @@ func (d *DB) ListSubscribedGroups(userID int64) ([]*model.GroupSubscription, err
 
 // ListFeaturesPersonal returns features relevant to a user (subscribed groups,
 // commented, created, or watched), with watched ones sorted first.
-func (d *DB) ListFeaturesPersonal(userID int64, priority, status, search string) ([]*model.Feature, error) {
+func (d *DB) ListFeaturesPersonal(userID int64, priority, status, search string, limit, offset int) ([]*model.Feature, error) {
 	q := `SELECT ` + featureCols + `,
 		CASE WHEN w.feature_id IS NOT NULL THEN 1 ELSE 0 END AS is_watched
 		FROM features f
@@ -1328,6 +1333,10 @@ func (d *DB) ListFeaturesPersonal(userID int64, priority, status, search string)
 		args = append(args, like, like)
 	}
 	q += ` ORDER BY is_watched DESC, f.created_at DESC`
+	if limit > 0 {
+		q += ` LIMIT ? OFFSET ?`
+		args = append(args, limit, offset)
+	}
 
 	rows, err := d.Query(q, args...)
 	if err != nil {
@@ -1352,45 +1361,74 @@ func (d *DB) ListFeaturesPersonal(userID int64, priority, status, search string)
 	return list, rows.Err()
 }
 
-// ListFeaturesWithWatch wraps ListFeatures and annotates IsWatched for a user.
-func (d *DB) ListFeaturesWithWatch(userID int64, priority, status, search string, groupID, assigneeID, creatorID *int64) ([]*model.Feature, error) {
-	features, err := d.ListFeatures(userID, priority, status, search, groupID, assigneeID, creatorID)
+// ListFeaturesWithWatch does a single SQL query that joins user_feature_watches,
+// sorts watched items first, and supports pagination via limit/offset.
+func (d *DB) ListFeaturesWithWatch(userID int64, priority, status, search string, groupID, assigneeID, creatorID *int64, limit, offset int) ([]*model.Feature, error) {
+	q := `SELECT ` + featureCols + `,
+		CASE WHEN w.feature_id IS NOT NULL THEN 1 ELSE 0 END AS is_watched
+		FROM features f
+		JOIN users u ON u.id = f.created_by
+		LEFT JOIN groups g ON g.id = f.group_id
+		LEFT JOIN user_feature_watches w ON w.feature_id = f.id AND w.user_id = ?
+		WHERE 1=1`
+	args := []any{userID}
+	if priority != "" && priority != "all" {
+		q += ` AND f.priority=?`
+		args = append(args, priority)
+	}
+	if status != "" && status != "all" {
+		q += ` AND f.status=?`
+		args = append(args, status)
+	} else {
+		q += ` AND f.status != 'archived'`
+		if userID > 0 {
+			q += ` AND (f.status != 'draft' OR f.created_by = ?)`
+			args = append(args, userID)
+		} else {
+			q += ` AND f.status != 'draft'`
+		}
+	}
+	if search != "" {
+		q += ` AND (f.title LIKE ? OR f.description LIKE ?)`
+		like := "%" + search + "%"
+		args = append(args, like, like)
+	}
+	if groupID != nil && *groupID > 0 {
+		q += ` AND f.group_id=?`
+		args = append(args, *groupID)
+	}
+	if assigneeID != nil && *assigneeID > 0 {
+		q += ` AND f.assigned_to=?`
+		args = append(args, *assigneeID)
+	}
+	if creatorID != nil && *creatorID > 0 {
+		q += ` AND f.created_by=?`
+		args = append(args, *creatorID)
+	}
+	q += ` ORDER BY is_watched DESC, f.created_at DESC`
+	if limit > 0 {
+		q += ` LIMIT ? OFFSET ?`
+		args = append(args, limit, offset)
+	}
+	rows, err := d.Query(q, args...)
 	if err != nil {
 		return nil, err
 	}
-	if len(features) == 0 {
-		return features, nil
-	}
-	// fetch watched IDs in one query
-	ids := make([]any, len(features)+1)
-	ids[0] = userID
-	ph := make([]string, len(features))
-	for i, f := range features {
-		ids[i+1] = f.ID
-		ph[i] = "?"
-	}
-	watched := map[int64]bool{}
-	rows, err := d.Query(
-		`SELECT feature_id FROM user_feature_watches WHERE user_id=? AND feature_id IN (`+strings.Join(ph, ",")+`)`,
-		ids...,
-	)
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var fid int64
-			_ = rows.Scan(&fid)
-			watched[fid] = true
+	defer rows.Close()
+	var list []*model.Feature
+	for rows.Next() {
+		f := &model.Feature{}
+		var isWatched int
+		if err := rows.Scan(
+			&f.ID, &f.GroupID, &f.Title, &f.Description, &f.Priority, &f.Status,
+			&f.CreatedBy, &f.AssignedTo, &f.CreatedAt, &f.UpdatedAt,
+			&f.CreatorName, &f.CreatorRole, &f.GroupTitle,
+			&isWatched,
+		); err != nil {
+			return nil, err
 		}
+		f.IsWatched = isWatched == 1
+		list = append(list, f)
 	}
-	// sort: watched first, then original order (stable)
-	var pinned, rest []*model.Feature
-	for _, f := range features {
-		f.IsWatched = watched[f.ID]
-		if f.IsWatched {
-			pinned = append(pinned, f)
-		} else {
-			rest = append(rest, f)
-		}
-	}
-	return append(pinned, rest...), nil
+	return list, rows.Err()
 }

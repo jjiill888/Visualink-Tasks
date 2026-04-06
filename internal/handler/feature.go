@@ -142,7 +142,7 @@ func Dashboard(database *db.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		features, err := database.ListFeatures(u.ID, "", "", "", nil, nil, nil)
+		features, err := database.ListFeatures(u.ID, "", "", "", nil, nil, nil, pageSize, 0)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -180,6 +180,14 @@ func Dashboard(database *db.DB) http.HandlerFunc {
 	}
 }
 
+const pageSize = 20
+
+type featuresListData struct {
+	Features []featureRowData
+	HasMore  bool
+	NextPage int
+}
+
 // ListFeatures is the HTMX partial endpoint — returns only the feature rows.
 func ListFeatures(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -190,11 +198,18 @@ func ListFeatures(database *db.DB) http.HandlerFunc {
 		search := strings.TrimSpace(q.Get("search"))
 		view := q.Get("view") // "all" | "personal"
 
+		page, _ := strconv.Atoi(q.Get("page"))
+		if page < 1 {
+			page = 1
+		}
+		offset := (page - 1) * pageSize
+		fetchLimit := pageSize + 1 // fetch one extra to detect more pages
+
 		var features []*model.Feature
 		var err error
 
 		if view == "personal" {
-			features, err = database.ListFeaturesPersonal(u.ID, priority, status, search)
+			features, err = database.ListFeaturesPersonal(u.ID, priority, status, search, fetchLimit, offset)
 		} else {
 			var groupID, assigneeID, creatorID *int64
 			if v := q.Get("group_id"); v != "" {
@@ -212,19 +227,37 @@ func ListFeatures(database *db.DB) http.HandlerFunc {
 					creatorID = &id
 				}
 			}
-			features, err = database.ListFeaturesWithWatch(u.ID, priority, status, search, groupID, assigneeID, creatorID)
+			features, err = database.ListFeaturesWithWatch(u.ID, priority, status, search, groupID, assigneeID, creatorID, fetchLimit, offset)
 		}
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
+
+		hasMore := len(features) > pageSize
+		if hasMore {
+			features = features[:pageSize]
+		}
+
 		rows := make([]featureRowData, len(features))
 		for i, f := range features {
 			rows[i] = featureRowData{Feature: f, CanEditStatus: canEditStatus(u.Role)}
 		}
+
+		data := featuresListData{
+			Features: rows,
+			HasMore:  hasMore,
+			NextPage: page + 1,
+		}
+
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := PartialTmpl.ExecuteTemplate(w, "features_partial.html", rows); err != nil {
+		if err := PartialTmpl.ExecuteTemplate(w, "features_partial.html", data); err != nil {
 			http.Error(w, err.Error(), 500)
+			return
+		}
+		// Piggyback OOB stats on list refreshes to avoid a separate round-trip
+		if page == 1 {
+			writeOOBStats(database, w)
 		}
 	}
 }
@@ -459,6 +492,23 @@ type featureDetailData struct {
 
 func canEditStatus(role string) bool {
 	return role == "dev" || role == "admin"
+}
+
+// writeOOBStats appends the stats partial with OOB swap to the response writer.
+// Errors are silently ignored since stats are best-effort.
+func writeOOBStats(database *db.DB, w io.Writer) {
+	stats, err := database.GetStats()
+	if err != nil {
+		return
+	}
+	// Write stats grid with OOB morph swap so HTMX replaces #stats-grid in-place
+	fmt.Fprintf(w, `<div id="stats-grid" class="us-stat-grid" hx-swap-oob="morph:outerHTML">`)
+	fmt.Fprintf(w, `<div class="us-stat"><div class="us-stat-label">全部功能</div><div class="us-stat-val">%d</div></div>`, stats.Total)
+	fmt.Fprintf(w, `<div class="us-stat warn"><div class="us-stat-label">待处理</div><div class="us-stat-val">%d</div></div>`, stats.Pending)
+	fmt.Fprintf(w, `<div class="us-stat"><div class="us-stat-label">进行中</div><div class="us-stat-val">%d</div></div>`, stats.InProgress)
+	fmt.Fprintf(w, `<div class="us-stat success"><div class="us-stat-label">已完成</div><div class="us-stat-val">%d</div></div>`, stats.Done)
+	fmt.Fprintf(w, `</div>`)
+	fmt.Fprintf(w, `<span id="banner-pending" hx-swap-oob="innerHTML">&nbsp;·&nbsp;共 %d 条待处理功能</span>`, stats.Pending)
 }
 
 func wantsModalResponse(r *http.Request) bool {
@@ -843,6 +893,7 @@ func ArchiveFeature(database *db.DB) http.HandlerFunc {
 }
 
 // GetFeatureRow handles GET /features/{id}/row — returns single feature row partial for SSE targeted update.
+// If ?with_stats=1 is set, appends OOB stats partial to avoid a separate round-trip.
 func GetFeatureRow(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -853,6 +904,10 @@ func GetFeatureRow(database *db.DB) http.HandlerFunc {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if err := writeFeatureRow(database, w, r, id, ""); err != nil {
 			http.Error(w, err.Error(), 500)
+			return
+		}
+		if r.URL.Query().Get("with_stats") == "1" {
+			writeOOBStats(database, w)
 		}
 	}
 }
