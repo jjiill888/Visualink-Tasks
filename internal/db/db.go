@@ -157,6 +157,50 @@ func (d *DB) migrate() error {
 	_, _ = d.Exec(`CREATE INDEX IF NOT EXISTS idx_direct_messages_pair ON direct_messages(sender_id, recipient_id, created_at DESC)`)
 	_, _ = d.Exec(`CREATE INDEX IF NOT EXISTS idx_direct_messages_recipient_read ON direct_messages(recipient_id, is_read, created_at DESC)`)
 
+	// ── IM tables ──────────────────────────────────────────────────────────
+	_, _ = d.Exec(`
+	CREATE TABLE IF NOT EXISTS im_channels (
+		id           INTEGER PRIMARY KEY AUTOINCREMENT,
+		name         TEXT NOT NULL UNIQUE,
+		display_name TEXT NOT NULL DEFAULT '',
+		description  TEXT NOT NULL DEFAULT '',
+		type         TEXT NOT NULL DEFAULT 'public',
+		created_by   INTEGER REFERENCES users(id),
+		created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+
+	_, _ = d.Exec(`
+	CREATE TABLE IF NOT EXISTS im_channel_members (
+		channel_id       INTEGER NOT NULL REFERENCES im_channels(id) ON DELETE CASCADE,
+		user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		role             TEXT NOT NULL DEFAULT 'member',
+		last_read_msg_id INTEGER NOT NULL DEFAULT 0,
+		joined_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (channel_id, user_id)
+	)`)
+
+	_, _ = d.Exec(`
+	CREATE TABLE IF NOT EXISTS im_messages (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		channel_id  INTEGER NOT NULL REFERENCES im_channels(id) ON DELETE CASCADE,
+		user_id     INTEGER NOT NULL REFERENCES users(id),
+		content     TEXT NOT NULL,
+		reply_to_id INTEGER REFERENCES im_messages(id),
+		edited_at   DATETIME,
+		deleted_at  DATETIME,
+		created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+
+	_, _ = d.Exec(`CREATE INDEX IF NOT EXISTS idx_im_messages_channel ON im_messages(channel_id, id DESC)`)
+	_, _ = d.Exec(`CREATE INDEX IF NOT EXISTS idx_im_members_user ON im_channel_members(user_id)`)
+
+	// Seed #general channel if not exists
+	var generalExists int
+	_ = d.QueryRow(`SELECT COUNT(*) FROM im_channels WHERE name='general'`).Scan(&generalExists)
+	if generalExists == 0 {
+		_, _ = d.Exec(`INSERT OR IGNORE INTO im_channels (name, display_name, description, type, created_by) VALUES ('general', '大厅', '团队公共频道', 'public', 0)`)
+	}
+
 	return nil
 }
 
@@ -1131,6 +1175,35 @@ func (d *DB) ListDirectMessages(userID, partnerID int64, limit int) ([]*model.Di
 		ORDER BY dm.created_at ASC
 		LIMIT ?
 	`, userID, partnerID, partnerID, userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []*model.DirectMessage
+	for rows.Next() {
+		m := &model.DirectMessage{}
+		if err := rows.Scan(&m.ID, &m.SenderID, &m.RecipientID, &m.Content, &m.IsRead, &m.CreatedAt, &m.SenderName, &m.RecipientName); err != nil {
+			return nil, err
+		}
+		list = append(list, m)
+	}
+	return list, rows.Err()
+}
+
+// ListNewDirectMessages returns DMs between two users with id > afterID (for SSE refresh).
+func (d *DB) ListNewDirectMessages(userID, partnerID, afterID int64) ([]*model.DirectMessage, error) {
+	rows, err := d.Query(`
+		SELECT dm.id, dm.sender_id, dm.recipient_id, dm.content, dm.is_read, dm.created_at,
+		       COALESCE(NULLIF(s.display_name,''), s.username),
+		       COALESCE(NULLIF(r.display_name,''), r.username)
+		FROM direct_messages dm
+		JOIN users s ON s.id = dm.sender_id
+		JOIN users r ON r.id = dm.recipient_id
+		WHERE ((dm.sender_id=? AND dm.recipient_id=?) OR (dm.sender_id=? AND dm.recipient_id=?))
+		  AND dm.id > ?
+		ORDER BY dm.created_at ASC
+		LIMIT 100
+	`, userID, partnerID, partnerID, userID, afterID)
 	if err != nil {
 		return nil, err
 	}

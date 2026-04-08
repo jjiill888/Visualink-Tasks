@@ -343,6 +343,84 @@ type Flash struct {
 	Message string
 }
 
+// ── IM (Instant Messaging) models ──────────────────────────────────────────
+
+type IMChannel struct {
+	ID          int64
+	Name        string // internal: "general", "dm:3_7"
+	DisplayName string // shown in UI
+	Description string
+	Type        string // 'public' | 'private' | 'direct'
+	CreatedBy   int64
+	CreatedAt   time.Time
+	// Computed (joined from query)
+	UnreadCount int
+	LastMsg     string
+	LastMsgAt   time.Time
+	IsMember    bool
+	MyRole      string
+}
+
+func (c *IMChannel) IsPublic() bool { return c.Type == "public" }
+func (c *IMChannel) IsDirect() bool { return c.Type == "direct" }
+
+func (c *IMChannel) LastMsgAtLabel() string {
+	if c.LastMsgAt.IsZero() {
+		return ""
+	}
+	t := c.LastMsgAt.In(shanghaiLoc)
+	today := time.Now().In(shanghaiLoc)
+	if t.Format("2006-01-02") == today.Format("2006-01-02") {
+		return t.Format("15:04")
+	}
+	return t.Format("01-02")
+}
+
+type IMMessage struct {
+	ID         int64
+	ChannelID  int64
+	UserID     int64
+	Content    string
+	ReplyToID  *int64
+	EditedAt   *time.Time
+	DeletedAt  *time.Time
+	CreatedAt  time.Time
+	// Joined
+	UserName    string
+	UserDisplay string
+}
+
+func (m *IMMessage) IsDeleted() bool { return m.DeletedAt != nil }
+func (m *IMMessage) IsEdited() bool  { return m.EditedAt != nil }
+
+func (m *IMMessage) TimeLabel() string {
+	return m.CreatedAt.In(shanghaiLoc).Format("15:04")
+}
+
+func (m *IMMessage) DateLabel() string {
+	t := m.CreatedAt.In(shanghaiLoc)
+	today := time.Now().In(shanghaiLoc)
+	if t.Format("2006-01-02") == today.Format("2006-01-02") {
+		return "今天"
+	}
+	yesterday := today.AddDate(0, 0, -1)
+	if t.Format("2006-01-02") == yesterday.Format("2006-01-02") {
+		return "昨天"
+	}
+	return t.Format("01月02日")
+}
+
+type IMChannelMember struct {
+	ChannelID     int64
+	UserID        int64
+	Role          string
+	LastReadMsgID int64
+	JoinedAt      time.Time
+	// Joined
+	DisplayName string
+	Username    string
+}
+
 // PageData is the top-level template context.
 type PageData struct {
 	CurrentUser   *User

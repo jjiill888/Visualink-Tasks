@@ -1,0 +1,41 @@
+{{define "im_new_channel.html"}}
+<div class="im-channel-root im-new-channel-page">
+  <div class="im-channel-header">
+    <div class="im-channel-header-inner">
+      <div class="im-channel-title">创建新频道</div>
+    </div>
+  </div>
+  <div class="im-new-channel-body">
+    <form method="POST" action="/im/channels" class="im-new-channel-form">
+      <div class="us-form-group">
+        <label class="us-label" for="ch-name">频道名称 <span class="us-req">*</span></label>
+        <input class="us-input" id="ch-name" name="name" type="text" placeholder="例如：dev-frontend" required pattern="[\p{L}\p{N}_-]{1,32}" autocomplete="off">
+        <p class="us-hint">只能包含字母、数字、下划线、连字符，长度 1-32</p>
+      </div>
+      <div class="us-form-group">
+        <label class="us-label" for="ch-display">显示名称</label>
+        <input class="us-input" id="ch-display" name="display_name" type="text" placeholder="例如：前端开发">
+      </div>
+      <div class="us-form-group">
+        <label class="us-label" for="ch-desc">频道描述</label>
+        <input class="us-input" id="ch-desc" name="description" type="text" placeholder="（可选）">
+      </div>
+      <div class="us-form-group">
+        <label class="us-label">类型</label>
+        <div style="display:flex;gap:16px;margin-top:4px">
+          <label class="us-radio-label">
+            <input type="radio" name="type" value="public" checked> 公开（所有人可见）
+          </label>
+          <label class="us-radio-label">
+            <input type="radio" name="type" value="private"> 私有（仅受邀成员）
+          </label>
+        </div>
+      </div>
+      <div class="us-form-actions">
+        <button type="submit" class="us-btn us-btn-primary">创建频道</button>
+        <a href="/im" class="us-btn us-btn-outline">取消</a>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}

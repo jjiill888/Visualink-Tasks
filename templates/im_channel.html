@@ -1,0 +1,88 @@
+{{define "im_channel.html"}}
+{{$isDM := .ActiveChannel.IsDirect}}
+{{$channelID := .ActiveChannel.ID}}
+{{$sendURL := ""}}
+{{$newURL := ""}}
+{{if $isDM}}
+  {{$sendURL = printf "/im/dm/%d/messages" $channelID}}
+  {{$newURL  = printf "/im/dm/%d/messages/new" $channelID}}
+{{else}}
+  {{$sendURL = printf "/im/c/%d/messages" $channelID}}
+  {{$newURL  = printf "/im/c/%d/messages/new" $channelID}}
+{{end}}
+
+<div class="im-channel-root"
+     id="im-chat-box"
+     x-data="imChat('{{$sendURL}}', '{{$newURL}}', {{.NewestMsgID}})"
+     x-init="init()">
+
+  <!-- 频道头部 -->
+  <div class="im-channel-header">
+    <div class="im-channel-header-inner">
+      {{if $isDM}}
+        <span class="im-channel-header-avatar">{{firstChar .ActiveChannel.DisplayName}}</span>
+        <div>
+          <div class="im-channel-title">{{.ActiveChannel.DisplayName}}</div>
+          <div class="im-channel-desc">私信</div>
+        </div>
+      {{else}}
+        <div>
+          <div class="im-channel-title"># {{.ActiveChannel.DisplayName}}</div>
+          {{if .ActiveChannel.Description}}<div class="im-channel-desc">{{.ActiveChannel.Description}}</div>{{end}}
+        </div>
+      {{end}}
+    </div>
+  </div>
+
+  <!-- 消息区域 -->
+  <div class="im-message-area" id="im-message-area">
+    <div id="im-message-list">
+      {{if .HasMore}}
+      <div id="im-load-more"
+           hx-get="/im/c/{{$channelID}}/messages?before={{.OldestMsgID}}"
+           hx-trigger="intersect once"
+           hx-target="#im-load-more"
+           hx-swap="outerHTML">
+        <div class="im-load-more-trigger">
+          <span class="im-loading-dot"></span><span class="im-loading-dot"></span><span class="im-loading-dot"></span>
+        </div>
+      </div>
+      {{end}}
+      {{template "im_message_list.html" .}}
+    </div>
+
+    <!-- Optimistic 消息（Alpine 立即渲染） -->
+    <template x-for="msg in optimisticMessages" :key="msg.id">
+      <div class="im-msg-item im-msg-own" :class="{'im-msg-failed': msg.failed}">
+        <div class="im-msg-avatar im-msg-avatar-own" aria-hidden="true">{{firstChar .CurrentUser.DisplayName}}</div>
+        <div class="im-msg-header">
+          <span class="im-msg-name im-msg-name-own">{{.CurrentUser.DisplayName}}</span>
+          <span class="im-msg-time" x-text="new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})"></span>
+          <span class="im-msg-sending-label" x-show="msg.sending">发送中…</span>
+          <span class="im-msg-fail-label" x-show="msg.failed">
+            发送失败<span x-show="msg.failReason" x-text="': ' + msg.failReason" style="margin-right:4px"></span> <button class="im-retry-btn" @click="retry(msg)">重试</button>
+          </span>
+        </div>
+        <div class="im-msg-content" x-text="msg.content"></div>
+      </div>
+    </template>
+  </div>
+
+  <!-- 输入区 -->
+  <div class="im-compose-area">
+    <div class="im-compose-box">
+      <textarea
+        class="im-compose-input"
+        x-model="content"
+        placeholder="发送消息到 {{if $isDM}}{{.ActiveChannel.DisplayName}}{{else}}# {{.ActiveChannel.DisplayName}}{{end}}（Enter 发送，Shift+Enter 换行）"
+        rows="1"
+        @keydown="if($event.key==='Enter'&&!$event.shiftKey){$event.preventDefault();send()}"
+        @input="$el.style.height='auto'; $el.style.height=Math.min($el.scrollHeight,160)+'px'"
+      ></textarea>
+      <button class="us-btn us-btn-primary im-send-btn"
+              @click="send()"
+              :disabled="!content.trim() || sending">发送</button>
+    </div>
+  </div>
+</div>
+{{end}}

@@ -1,0 +1,72 @@
+{{define "im_sidebar.html"}}
+<div class="im-sidebar-inner">
+  <!-- 顶部品牌栏 -->
+  <div class="im-sidebar-header">
+    <div class="im-sidebar-brand">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="opacity:.8"><path d="M2 2h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H9l-3 3v-3H2a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/></svg>
+      VisualLink IM
+    </div>
+    <a href="/dashboard" class="im-back-link" title="返回看板">← 看板</a>
+  </div>
+
+  <!-- 系统通知入口 -->
+  <div class="im-sidebar-notif-section">
+    <a href="/im/notifications"
+       class="im-sidebar-item im-sidebar-notif{{if and $.ActiveChannel (eq $.ActiveChannel.Type "system")}} active{{end}}">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="flex-shrink:0;opacity:.8"><path d="M8 1a5 5 0 0 0-5 5v1.5l-1.3 2.2A1 1 0 0 0 2.6 11H5a3 3 0 0 0 6 0h2.4a1 1 0 0 0 .9-1.3L13 7.5V6a5 5 0 0 0-5-5zm0 12a1 1 0 0 1-1-1h2a1 1 0 0 1-1 1z"/></svg>
+      <span class="im-sidebar-item-name">系统通知</span>
+      {{if gt .NotifUnreadCount 0}}<span class="im-sidebar-badge">{{.NotifUnreadCount}}</span>{{end}}
+    </a>
+  </div>
+
+  <!-- 频道区 -->
+  <div class="im-sidebar-section">
+    <div class="im-sidebar-section-header">
+      <span class="im-sidebar-label">频道</span>
+      <a href="/im/channels/new" class="im-sidebar-add" title="创建频道">+</a>
+    </div>
+    <div class="im-sidebar-list">
+      {{if .MyChannels}}
+        {{range .MyChannels}}
+        <a href="/im/c/{{.ID}}"
+           class="im-sidebar-item{{if and $.ActiveChannel (eq $.ActiveChannel.Type "") (eq $.ActiveChannel.ID .ID)}} active{{end}}{{if and $.ActiveChannel (eq $.ActiveChannel.Type "public") (eq $.ActiveChannel.ID .ID)}} active{{end}}{{if and $.ActiveChannel (eq $.ActiveChannel.Type "private") (eq $.ActiveChannel.ID .ID)}} active{{end}}">
+          <span class="im-sidebar-item-name"># {{.DisplayName}}</span>
+          {{if gt .UnreadCount 0}}<span class="im-sidebar-badge">{{.UnreadCount}}</span>{{end}}
+        </a>
+        {{end}}
+      {{else}}
+        <div class="im-sidebar-empty">暂无频道，<a href="/im/channels/new" style="color:#a9aeb1">创建一个</a></div>
+      {{end}}
+    </div>
+  </div>
+
+  <!-- 私信区（来自 direct_messages 表，与消息中心同源） -->
+  <div class="im-sidebar-section" style="flex:1;min-height:0;display:flex;flex-direction:column;">
+    <div class="im-sidebar-section-header">
+      <span class="im-sidebar-label">私信</span>
+    </div>
+    <div class="im-sidebar-list" style="flex:1;overflow-y:auto;">
+      {{if .MyDMs}}
+        {{range .MyDMs}}
+        <a href="/im/dm/{{.ID}}"
+           class="im-sidebar-item{{if and $.ActiveChannel (eq $.ActiveChannel.Type "direct") (eq $.ActiveChannel.ID .ID)}} active{{end}}">
+          <span class="im-sidebar-item-avatar">{{firstChar .DisplayName}}</span>
+          <span class="im-sidebar-item-name">{{.DisplayName}}</span>
+          {{if gt .UnreadCount 0}}<span class="im-sidebar-badge">{{.UnreadCount}}</span>{{end}}
+        </a>
+        {{end}}
+      {{else}}
+        <div class="im-sidebar-empty">暂无私信</div>
+      {{end}}
+    </div>
+  </div>
+
+  <!-- 当前用户 -->
+  <div class="im-sidebar-footer">
+    <div class="im-sidebar-user">
+      <span class="im-sidebar-item-avatar">{{firstChar .CurrentUser.DisplayName}}</span>
+      <span class="im-sidebar-user-name">{{.CurrentUser.DisplayName}}</span>
+    </div>
+  </div>
+</div>
+{{end}}

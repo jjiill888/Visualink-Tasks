@@ -24,6 +24,12 @@ var mentionHighlightRe = regexp.MustCompile(`@([\p{L}\p{N}_]+)`)
 
 var funcMap = template.FuncMap{
 	"add": func(a, b int) int { return a + b },
+	"firstChar": func(s string) string {
+		for _, r := range s {
+			return string(r)
+		}
+		return "?"
+	},
 	"deref": func(p *int64) int64 {
 		if p == nil {
 			return 0
@@ -108,6 +114,19 @@ func buildPartialTmpl() *template.Template {
 	))
 }
 
+// buildIMTmpl parses the standalone IM window templates.
+func buildIMTmpl() *template.Template {
+	return template.Must(template.New("").Funcs(funcMap).ParseFiles(
+		"templates/im_layout.html",
+		"templates/im_sidebar.html",
+		"templates/im_channel.html",
+		"templates/im_notif_view.html",
+		"templates/im_message_list.html",
+		"templates/im_message_page.html",
+		"templates/im_new_channel.html",
+	))
+}
+
 func main() {
 	dbPath := os.Getenv("DB_PATH")
 	if dbPath == "" {
@@ -122,7 +141,7 @@ func main() {
 		log.Fatal("open db:", err)
 	}
 
-	handler.SetTemplates(buildTmplMap(), buildPartialTmpl())
+	handler.SetTemplates(buildTmplMap(), buildPartialTmpl(), buildIMTmpl())
 
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
@@ -185,6 +204,23 @@ func main() {
 		r.Post("/messages/send", handler.SendMessage(database))
 
 		r.Get("/preferences", handler.Preferences(database))
+
+		// IM routes
+		r.Get("/im", handler.IMHome(database))
+		r.Get("/im/sidebar", handler.IMSidebar(database))
+		r.Get("/im/notifications", handler.IMNotifications(database))
+		r.Get("/im/channels/new", handler.IMNewChannelForm(database))
+		r.Post("/im/channels", handler.CreateIMChannel(database))
+		r.Get("/im/c/{id}", handler.IMChannel(database))
+		r.Get("/im/c/{id}/messages", handler.GetIMMessages(database))
+		r.Get("/im/c/{id}/messages/new", handler.GetNewIMMessages(database))
+		r.Post("/im/c/{id}/messages", handler.SendIMMessage(database))
+		r.Post("/im/c/{id}/join", handler.JoinIMChannel(database))
+		r.Delete("/im/c/{id}/join", handler.LeaveIMChannel(database))
+		// DM routes — read/write direct_messages table (同 Tasks 消息中心)
+		r.Get("/im/dm/{userID}", handler.IMDMView(database))
+		r.Post("/im/dm/{userID}/messages", handler.SendIMDM(database))
+		r.Get("/im/dm/{userID}/messages/new", handler.GetNewIMDMMessages(database))
 
 		r.Get("/groups", handler.ListGroups(database))
 		r.Post("/groups", handler.CreateGroup(database))

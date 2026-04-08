@@ -25,9 +25,13 @@ var tmplMap map[string]*template.Template
 // PartialTmpl is used by HTMX-only endpoints (feature list, row swap).
 var PartialTmpl *template.Template
 
-func SetTemplates(m map[string]*template.Template, p *template.Template) {
+// IMTmpl is the template set for the standalone IM window.
+var IMTmpl *template.Template
+
+func SetTemplates(m map[string]*template.Template, p *template.Template, im *template.Template) {
 	tmplMap = m
 	PartialTmpl = p
+	IMTmpl = im
 }
 
 func render(w http.ResponseWriter, r *http.Request, name string, data *model.PageData) {

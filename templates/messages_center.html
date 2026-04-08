@@ -4,7 +4,12 @@
     <div class="message-header-block">
       <h2 class="modal-title">消息中心</h2>
     </div>
-    <button class="modal-close-btn message-close-btn" onclick="window.dispatchEvent(new CustomEvent('close-modal'))">×</button>
+    <div class="message-header-actions">
+      <a href="/im" target="_blank" class="us-btn us-btn-outline us-btn-sm im-open-btn" title="打开即时通讯">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="vertical-align:-2px;margin-right:4px"><path d="M2 2h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H9l-3 3v-3H2a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/></svg>即时通讯
+      </a>
+      <button class="modal-close-btn message-close-btn" onclick="window.dispatchEvent(new CustomEvent('close-modal'))">×</button>
+    </div>
   </div>
 
   <div class="message-center-shell">

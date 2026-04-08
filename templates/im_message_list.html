@@ -1,0 +1,25 @@
+{{define "im_message_list.html"}}
+{{range .Messages}}
+{{if .ShowDate}}
+<div class="im-date-sep"><span>{{.DateLabel}}</span></div>
+{{end}}
+<div class="im-msg-item{{if .Own}} im-msg-own{{end}}{{if .Compact}} im-msg-compact{{end}}" data-msg-id="{{.ID}}">
+  {{if not .Compact}}
+  <div class="im-msg-avatar" aria-hidden="true">{{firstChar .UserDisplay}}</div>
+  <div class="im-msg-header">
+    {{if .Own}}<span class="im-msg-name im-msg-name-own">{{.UserDisplay}}</span>{{else}}<span class="im-msg-name">{{.UserDisplay}}</span>{{end}}
+    <span class="im-msg-time">{{.TimeLabel}}</span>
+    {{if .IsEdited}}<span class="im-msg-edited">（已编辑）</span>{{end}}
+  </div>
+  {{end}}
+  {{if .Compact}}
+  <span class="im-msg-time-compact">{{.TimeLabel}}</span>
+  {{end}}
+  {{if .IsDeleted}}
+  <div class="im-msg-content im-msg-deleted">此消息已撤回</div>
+  {{else}}
+  <div class="im-msg-content">{{highlightMentions .Content}}</div>
+  {{end}}
+</div>
+{{end}}
+{{end}}

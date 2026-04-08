@@ -1,0 +1,14 @@
+{{define "im_message_page.html"}}
+{{if .HasMore}}
+<div id="im-load-more"
+     hx-get="/im/c/{{.ActiveChannel.ID}}/messages?before={{.OldestMsgID}}"
+     hx-trigger="intersect once"
+     hx-target="#im-load-more"
+     hx-swap="outerHTML">
+  <div class="im-load-more-trigger">
+    <span class="im-loading-dot"></span><span class="im-loading-dot"></span><span class="im-loading-dot"></span>
+  </div>
+</div>
+{{end}}
+{{template "im_message_list.html" .}}
+{{end}}
