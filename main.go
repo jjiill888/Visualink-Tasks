@@ -221,6 +221,8 @@ func main() {
 		r.Get("/im/dm/{userID}", handler.IMDMView(database))
 		r.Post("/im/dm/{userID}/messages", handler.SendIMDM(database))
 		r.Get("/im/dm/{userID}/messages/new", handler.GetNewIMDMMessages(database))
+		// WebRTC signaling relay
+		r.Post("/im/call/signal", handler.CallSignal(database))
 
 		r.Get("/groups", handler.ListGroups(database))
 		r.Post("/groups", handler.CreateGroup(database))

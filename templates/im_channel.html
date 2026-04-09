@@ -17,8 +17,8 @@
      x-init="init()">
 
   <!-- 频道头部 -->
-  <div class="im-channel-header">
-    <div class="im-channel-header-inner">
+  <div class="im-channel-header" style="display:flex;align-items:center;">
+    <div class="im-channel-header-inner" style="flex:1;">
       {{if $isDM}}
         <span class="im-channel-header-avatar">{{firstChar .ActiveChannel.DisplayName}}</span>
         <div>
@@ -32,6 +32,19 @@
         </div>
       {{end}}
     </div>
+    {{if $isDM}}
+    <div style="padding-right:12px;flex-shrink:0;">
+      <button onclick="CallManager.call({{$channelID}}, '{{.ActiveChannel.DisplayName}}')"
+              title="语音通话"
+              style="background:none;border:1px solid #4e5058;border-radius:6px;color:#b5bac1;padding:5px 11px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:13px;"
+              onmouseover="this.style.background='#3c3f45'" onmouseout="this.style.background='none'">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M3.5 2A1.5 1.5 0 0 0 2 3.5v1A9.5 9.5 0 0 0 11.5 14h1a1.5 1.5 0 0 0 1.5-1.5v-1.207a1 1 0 0 0-.293-.707l-1.5-1.5a1 1 0 0 0-1.414 0l-.5.5a.5.5 0 0 1-.637.066A7.5 7.5 0 0 1 6.574 6.344a.5.5 0 0 1 .066-.637l.5-.5a1 1 0 0 0 0-1.414l-1.5-1.5A1 1 0 0 0 4.933 2z"/>
+        </svg>
+        语音通话
+      </button>
+    </div>
+    {{end}}
   </div>
 
   <!-- 消息区域 -->

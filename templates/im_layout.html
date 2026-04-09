@@ -96,6 +96,11 @@
       refreshSidebar();
     });
 
+    // WebRTC 信令（必须在 connectSSE 内，重连后也要重新注册）
+    src.addEventListener('call-signal', function(e) {
+      try { CallManager.onSignal(JSON.parse(e.data)); } catch(err) { console.error('call-signal parse error:', err); }
+    });
+
     src.addEventListener('error', function() {
       src.close();
       var jitter = Math.random() * sseRetryDelay * 0.3;
@@ -103,6 +108,7 @@
       sseRetryDelay = Math.min(sseRetryDelay * 2, 60000);
     });
   }
+
   connectSSE();
 
   // imChat Alpine 组件（sendURL/newMsgsURL 由模板注入，DM 和群聊用不同端点）
@@ -190,6 +196,415 @@
     clearTimeout(toast._timer);
     toast._timer = setTimeout(function(){ toast.textContent = ''; }, 4000);
   });
+})();
+</script>
+
+<!-- 语音通话浮层 -->
+<!-- 音频元素不能 display:none，否则部分浏览器不播放，用 position:fixed 移出视野 -->
+<audio id="call-remote-audio" autoplay playsinline
+       style="position:fixed;left:-9999px;width:1px;height:1px;"></audio>
+
+<div id="call-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:10000;align-items:center;justify-content:center;">
+  <div style="background:#1e1f22;border-radius:14px;padding:32px 40px;text-align:center;min-width:310px;box-shadow:0 12px 40px rgba(0,0,0,.6);">
+
+    <!-- 设备选择（主叫/被叫接听前共用） -->
+    <div id="call-device-pick" style="display:none">
+      <div class="call-remote-name" style="color:#e3e5e8;font-size:17px;font-weight:600;margin-bottom:16px"></div>
+      <div style="text-align:left;margin-bottom:14px;">
+        <label style="color:#949ba4;font-size:12px;display:block;margin-bottom:5px">麦克风</label>
+        <select id="call-mic-select" style="width:100%;background:#2b2d31;color:#e3e5e8;border:1px solid #3d4045;border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer"></select>
+      </div>
+      <div style="text-align:left;margin-bottom:22px;">
+        <label style="color:#949ba4;font-size:12px;display:block;margin-bottom:5px">扬声器</label>
+        <select id="call-speaker-select" style="width:100%;background:#2b2d31;color:#e3e5e8;border:1px solid #3d4045;border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer"></select>
+        <div id="call-speaker-hint" style="color:#5c6068;font-size:11px;margin-top:4px;display:none">此浏览器不支持扬声器选择</div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:center">
+        <button onclick="CallManager.cancelDevicePick()" style="padding:10px 22px;border-radius:50px;background:#4e5058;border:none;color:#e3e5e8;font-size:14px;cursor:pointer">取消</button>
+        <button id="call-confirm-btn" onclick="CallManager.confirmDevices()" style="padding:10px 22px;border-radius:50px;background:#5865f2;border:none;color:#fff;font-size:14px;cursor:pointer;font-weight:500">确认</button>
+      </div>
+    </div>
+
+    <!-- 来电 -->
+    <div id="call-incoming" style="display:none">
+      <div class="call-remote-name" style="color:#e3e5e8;font-size:19px;font-weight:600;margin-bottom:4px"></div>
+      <div style="color:#949ba4;font-size:13px;margin-bottom:26px">语音通话来电</div>
+      <div style="display:flex;gap:14px;justify-content:center">
+        <button onclick="CallManager.reject()" style="padding:12px 26px;border-radius:50px;background:#ed4245;border:none;color:#fff;font-size:15px;cursor:pointer;font-weight:500">拒绝</button>
+        <button onclick="CallManager.accept()" style="padding:12px 26px;border-radius:50px;background:#23a55a;border:none;color:#fff;font-size:15px;cursor:pointer;font-weight:500">接听</button>
+      </div>
+    </div>
+
+    <!-- 呼叫中 -->
+    <div id="call-outgoing" style="display:none">
+      <div class="call-remote-name" style="color:#e3e5e8;font-size:19px;font-weight:600;margin-bottom:4px"></div>
+      <div style="color:#949ba4;font-size:13px;margin-bottom:26px">正在呼叫…</div>
+      <button onclick="CallManager.hangup()" style="padding:11px 28px;border-radius:50px;background:#ed4245;border:none;color:#fff;font-size:15px;cursor:pointer;font-weight:500">取消</button>
+    </div>
+
+    <!-- 通话中 -->
+    <div id="call-connected" style="display:none">
+      <div class="call-remote-name" style="color:#e3e5e8;font-size:19px;font-weight:600;margin-bottom:4px"></div>
+      <div id="call-timer" style="color:#23a55a;font-size:24px;font-weight:700;margin-bottom:26px;font-family:monospace;letter-spacing:1px">00:00</div>
+      <div style="display:flex;gap:12px;justify-content:center">
+        <button id="call-mute-btn" onclick="CallManager.toggleMute()" style="padding:10px 22px;border-radius:50px;background:#4e5058;border:none;color:#e3e5e8;font-size:14px;cursor:pointer">静音</button>
+        <button onclick="CallManager.hangup()" style="padding:10px 22px;border-radius:50px;background:#ed4245;border:none;color:#fff;font-size:14px;cursor:pointer;font-weight:500">挂断</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// CallManager — WebRTC 语音通话管理器
+window.CallManager = (function() {
+  var myUID = parseInt('{{.CurrentUser.ID}}') || 0;
+  var pc = null;
+  var localStream = null;
+  var state = 'idle'; // idle | device-pick-out | device-pick-in | outgoing | incoming | connected
+  var remoteUID = null;
+  var remoteName = '';
+  var pendingCandidates = [];
+  var pendingOfferSdp = null;
+  var timerInterval = null;
+  var timerStart = null;
+  var muted = false;
+  var selectedMicId = '';
+  var selectedSpeakerId = '';
+
+  var iceServers = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' }
+  ];
+
+  function getRemoteAudio() { return document.getElementById('call-remote-audio'); }
+
+  // ── UI ────────────────────────────────────────────────────────────────────
+  function setState(s) {
+    state = s;
+    var overlay   = document.getElementById('call-overlay');
+    var devPick   = document.getElementById('call-device-pick');
+    var incoming  = document.getElementById('call-incoming');
+    var outgoing  = document.getElementById('call-outgoing');
+    var connected = document.getElementById('call-connected');
+    if (!overlay) return;
+    overlay.style.display   = (s !== 'idle') ? 'flex' : 'none';
+    devPick.style.display   = (s === 'device-pick-out' || s === 'device-pick-in') ? 'block' : 'none';
+    incoming.style.display  = (s === 'incoming')   ? 'block' : 'none';
+    outgoing.style.display  = (s === 'outgoing')   ? 'block' : 'none';
+    connected.style.display = (s === 'connected')  ? 'block' : 'none';
+    overlay.querySelectorAll('.call-remote-name').forEach(function(el) { el.textContent = remoteName; });
+
+    // 设备选择确认按钮文案
+    var confirmBtn = document.getElementById('call-confirm-btn');
+    if (confirmBtn) confirmBtn.textContent = (s === 'device-pick-in') ? '接听' : '发起通话';
+  }
+
+  // ── 枚举设备 ──────────────────────────────────────────────────────────────
+  function populateDevices() {
+    return navigator.mediaDevices.enumerateDevices().then(function(devices) {
+      var micSel     = document.getElementById('call-mic-select');
+      var spkSel     = document.getElementById('call-speaker-select');
+      var spkHint    = document.getElementById('call-speaker-hint');
+      var supportsSink = typeof HTMLMediaElement.prototype.setSinkId === 'function';
+
+      micSel.innerHTML = '';
+      spkSel.innerHTML = '';
+
+      var mics = devices.filter(function(d) { return d.kind === 'audioinput'; });
+      var spks = devices.filter(function(d) { return d.kind === 'audiooutput'; });
+
+      mics.forEach(function(d, i) {
+        var opt = document.createElement('option');
+        opt.value = d.deviceId;
+        opt.textContent = d.label || ('麦克风 ' + (i + 1));
+        micSel.appendChild(opt);
+      });
+
+      if (supportsSink && spks.length) {
+        spks.forEach(function(d, i) {
+          var opt = document.createElement('option');
+          opt.value = d.deviceId;
+          opt.textContent = d.label || ('扬声器 ' + (i + 1));
+          spkSel.appendChild(opt);
+        });
+        spkSel.parentElement.style.display = 'block';
+        spkHint.style.display = 'none';
+      } else {
+        spkSel.parentElement.style.display = 'none';
+        spkHint.style.display = 'block';
+      }
+    });
+  }
+
+  // ── 主叫：点击语音通话按钮 ────────────────────────────────────────────────
+  function call(toUID, toDisplayName) {
+    if (state !== 'idle') return;
+    remoteUID  = parseInt(toUID);
+    remoteName = toDisplayName;
+    // 先请求麦克风权限（让浏览器弹授权），授权后再枚举设备可得到真实标签
+    navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      .then(function(tmpStream) {
+        tmpStream.getTracks().forEach(function(t) { t.stop(); }); // 只是触发授权，立即释放
+        return populateDevices();
+      })
+      .then(function() { setState('device-pick-out'); })
+      .catch(function(err) {
+        alert('无法访问麦克风：' + err.message);
+      });
+  }
+
+  // ── 设备选择确认 ──────────────────────────────────────────────────────────
+  function confirmDevices() {
+    var micSel = document.getElementById('call-mic-select');
+    var spkSel = document.getElementById('call-speaker-select');
+    selectedMicId     = micSel ? micSel.value : '';
+    selectedSpeakerId = spkSel ? spkSel.value : '';
+
+    // 应用扬声器
+    var audio = getRemoteAudio();
+    if (audio && selectedSpeakerId && typeof audio.setSinkId === 'function') {
+      audio.setSinkId(selectedSpeakerId).catch(function(e) { console.warn('setSinkId:', e); });
+    }
+
+    var wasIncoming = (state === 'device-pick-in');
+    if (wasIncoming) {
+      doAccept();
+    } else {
+      doCall();
+    }
+  }
+
+  // 取消设备选择
+  function cancelDevicePick() {
+    if (state === 'device-pick-in') {
+      // 回到来电界面
+      setState('incoming');
+    } else {
+      cleanup();
+    }
+  }
+
+  // ── 实际发起呼叫（设备已选定） ────────────────────────────────────────────
+  function doCall() {
+    setState('outgoing');
+    var constraints = { audio: selectedMicId ? { deviceId: { exact: selectedMicId } } : true, video: false };
+    navigator.mediaDevices.getUserMedia(constraints)
+      .then(function(stream) {
+        localStream = stream;
+        createPC();
+        stream.getTracks().forEach(function(t) { pc.addTrack(t, stream); });
+        return pc.createOffer();
+      })
+      .then(function(offer) {
+        return pc.setLocalDescription(offer).then(function() { return offer; });
+      })
+      .then(function(offer) {
+        sendSignal({ to: remoteUID, type: 'offer', sdp: offer.sdp });
+      })
+      .catch(function(err) {
+        console.error('doCall error:', err);
+        alert('麦克风错误：' + err.message);
+        cleanup();
+      });
+  }
+
+  // ── 被叫收到 offer ────────────────────────────────────────────────────────
+  function onOffer(fromUID, fromName, sdp) {
+    if (state !== 'idle') {
+      sendSignal({ to: fromUID, type: 'hangup' });
+      return;
+    }
+    remoteUID       = fromUID;
+    remoteName      = fromName;
+    pendingOfferSdp = sdp;
+    setState('incoming');
+  }
+
+  // ── 被叫点击接听 → 先选设备 ───────────────────────────────────────────────
+  function accept() {
+    if (state !== 'incoming' || !pendingOfferSdp) return;
+    navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      .then(function(tmpStream) {
+        tmpStream.getTracks().forEach(function(t) { t.stop(); });
+        return populateDevices();
+      })
+      .then(function() { setState('device-pick-in'); })
+      .catch(function(err) {
+        alert('无法访问麦克风：' + err.message);
+      });
+  }
+
+  // ── 实际接听（设备已选定） ────────────────────────────────────────────────
+  function doAccept() {
+    setState('connected');
+    var constraints = { audio: selectedMicId ? { deviceId: { exact: selectedMicId } } : true, video: false };
+    navigator.mediaDevices.getUserMedia(constraints)
+      .then(function(stream) {
+        localStream = stream;
+        createPC();
+        stream.getTracks().forEach(function(t) { pc.addTrack(t, stream); });
+        return pc.setRemoteDescription({ type: 'offer', sdp: pendingOfferSdp });
+      })
+      .then(function() {
+        var addAll = pendingCandidates.map(function(c) { return pc.addIceCandidate(c); });
+        pendingCandidates = [];
+        return Promise.all(addAll);
+      })
+      .then(function() { return pc.createAnswer(); })
+      .then(function(answer) {
+        return pc.setLocalDescription(answer).then(function() { return answer; });
+      })
+      .then(function(answer) {
+        sendSignal({ to: remoteUID, type: 'answer', sdp: answer.sdp });
+      })
+      .catch(function(err) {
+        console.error('doAccept error:', err);
+        cleanup();
+      });
+  }
+
+  // ── 主叫收到 answer ───────────────────────────────────────────────────────
+  function onAnswer(sdp) {
+    if (!pc) return;
+    pc.setRemoteDescription({ type: 'answer', sdp: sdp })
+      .then(function() {
+        var addAll = pendingCandidates.map(function(c) { return pc.addIceCandidate(c); });
+        pendingCandidates = [];
+        return Promise.all(addAll);
+      })
+      .catch(function(err) { console.error('onAnswer error:', err); });
+  }
+
+  // ── PeerConnection ────────────────────────────────────────────────────────
+  function createPC() {
+    pc = new RTCPeerConnection({ iceServers: iceServers });
+
+    pc.onicecandidate = function(e) {
+      if (!e.candidate) return;
+      sendSignal({ to: remoteUID, type: 'ice',
+        candidate: e.candidate.candidate,
+        sdpMid: e.candidate.sdpMid,
+        sdpMLineIndex: e.candidate.sdpMLineIndex });
+    };
+
+    pc.ontrack = function(e) {
+      var audio = getRemoteAudio();
+      if (!audio) return;
+      var stream = e.streams && e.streams[0] ? e.streams[0] : new MediaStream([e.track]);
+      audio.srcObject = stream;
+      // 应用扬声器（ontrack 时可能还没设，再设一次）
+      if (selectedSpeakerId && typeof audio.setSinkId === 'function') {
+        audio.setSinkId(selectedSpeakerId).catch(function(){});
+      }
+      audio.play().catch(function(err) { console.warn('remote audio play:', err); });
+    };
+
+    pc.onconnectionstatechange = function() {
+      console.log('connectionState:', pc.connectionState);
+      if (pc.connectionState === 'connected') {
+        setState('connected');
+        startTimer();
+        // 确保音频在连接建立后播放
+        var audio = getRemoteAudio();
+        if (audio && audio.srcObject) {
+          audio.play().catch(function(){});
+        }
+      } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+        cleanup();
+      }
+    };
+  }
+
+  // ── ICE candidate ─────────────────────────────────────────────────────────
+  function onIce(candidate, sdpMid, sdpMLineIndex) {
+    var c = new RTCIceCandidate({ candidate: candidate, sdpMid: sdpMid, sdpMLineIndex: sdpMLineIndex });
+    if (pc && pc.remoteDescription && pc.remoteDescription.type) {
+      pc.addIceCandidate(c).catch(function(e) { console.warn('addIceCandidate:', e); });
+    } else {
+      pendingCandidates.push(c);
+    }
+  }
+
+  // ── 拒绝 / 挂断 ───────────────────────────────────────────────────────────
+  function reject() { hangup(); }
+
+  function hangup() {
+    if (state !== 'idle' && remoteUID) {
+      sendSignal({ to: remoteUID, type: 'hangup' });
+    }
+    cleanup();
+  }
+
+  function cleanup() {
+    if (localStream) {
+      localStream.getTracks().forEach(function(t) { t.stop(); });
+      localStream = null;
+    }
+    if (pc) { pc.close(); pc = null; }
+    var audio = getRemoteAudio();
+    if (audio) { audio.pause(); audio.srcObject = null; }
+    pendingCandidates = [];
+    pendingOfferSdp   = null;
+    remoteUID = null;
+    remoteName = '';
+    muted = false;
+    selectedMicId = '';
+    selectedSpeakerId = '';
+    stopTimer();
+    setState('idle');
+  }
+
+  // ── 静音 ──────────────────────────────────────────────────────────────────
+  function toggleMute() {
+    if (!localStream) return;
+    muted = !muted;
+    localStream.getAudioTracks().forEach(function(t) { t.enabled = !muted; });
+    var btn = document.getElementById('call-mute-btn');
+    if (btn) btn.textContent = muted ? '取消静音' : '静音';
+  }
+
+  // ── 计时器 ────────────────────────────────────────────────────────────────
+  function startTimer() {
+    if (timerInterval) return; // 防止重复启动
+    timerStart = Date.now();
+    timerInterval = setInterval(function() {
+      var el = document.getElementById('call-timer');
+      if (!el) return;
+      var s = Math.floor((Date.now() - timerStart) / 1000);
+      var m = Math.floor(s / 60); s = s % 60;
+      el.textContent = (m<10?'0':'')+m+':'+(s<10?'0':'')+s;
+    }, 1000);
+  }
+  function stopTimer() {
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+    var el = document.getElementById('call-timer');
+    if (el) el.textContent = '00:00';
+  }
+
+  // ── SSE 信令分发 ──────────────────────────────────────────────────────────
+  function onSignal(data) {
+    if (parseInt(data.to) !== myUID) return;
+    switch (data.type) {
+      case 'offer':  onOffer(parseInt(data.from), data.fromName || '对方', data.sdp); break;
+      case 'answer': onAnswer(data.sdp); break;
+      case 'ice':    onIce(data.candidate, data.sdpMid, data.sdpMLineIndex); break;
+      case 'hangup': cleanup(); break;
+    }
+  }
+
+  // ── 发送信令 ──────────────────────────────────────────────────────────────
+  function sendSignal(payload) {
+    fetch('/im/call/signal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).catch(function(e) { console.error('sendSignal error:', e); });
+  }
+
+  return { call: call, accept: accept, reject: reject, hangup: hangup,
+           toggleMute: toggleMute, onSignal: onSignal,
+           confirmDevices: confirmDevices, cancelDevicePick: cancelDevicePick };
 })();
 </script>
 
