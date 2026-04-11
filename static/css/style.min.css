@@ -318,6 +318,8 @@ a:visited { color: #4c2c92; }
 
 /* ── Feature watch / pin ── */
 .feature-watched { border-left: 3px solid #ffbe2e; }
+.feature-unread-comment { border-left: 3px solid #0076d6; }
+.feature-watched.feature-unread-comment { border-left: 3px solid #0076d6; }
 .feature-watch-pin { color: #ffbe2e; font-size: 13px; line-height: 1; flex-shrink: 0; }
 .feature-watch-active { background: #fff8e1; color: #8a6400; border: 1px solid #ffbe2e; }
 

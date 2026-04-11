@@ -265,6 +265,18 @@ a:visited { color: #4c2c92; }
   font-weight: 700;
   color: #1b1b1b;
   margin-bottom: 3px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.us-comment-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e31c3d;
+  flex-shrink: 0;
 }
 
 .us-feature-desc {
@@ -318,6 +330,8 @@ a:visited { color: #4c2c92; }
 
 /* ── Feature watch / pin ── */
 .feature-watched { border-left: 3px solid #ffbe2e; }
+.feature-unread-comment { border-left: 3px solid #0076d6; }
+.feature-watched.feature-unread-comment { border-left: 3px solid #0076d6; }
 .feature-watch-pin { color: #ffbe2e; font-size: 13px; line-height: 1; flex-shrink: 0; }
 .feature-watch-active { background: #fff8e1; color: #8a6400; border: 1px solid #ffbe2e; }
 
@@ -748,6 +762,25 @@ body.modal-open {
   font-size: 12px;
   color: #a9aeb1;
 }
+
+.comment-delete-btn {
+  margin-left: auto;
+  appearance: none;
+  -webkit-appearance: none;
+  background: none;
+  border: none;
+  box-shadow: none;
+  outline: none;
+  cursor: pointer;
+  color: #a9aeb1;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+.comment-item:hover .comment-delete-btn { opacity: 1; }
+.comment-delete-btn:hover { color: #e31c3d; }
 
 .comment-body {
   font-size: 14px;

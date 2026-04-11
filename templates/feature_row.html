@@ -1,5 +1,5 @@
 {{define "feature_row.html"}}
-<div id="feature-{{.ID}}" class="us-feature-item{{if .IsWatched}} feature-watched{{end}}" data-priority="{{.Priority}}" data-status="{{.Status}}"{{if .OOBSwap}} hx-swap-oob="{{.OOBSwap}}"{{end}}>
+<div id="feature-{{.ID}}" class="us-feature-item{{if .IsWatched}} feature-watched{{end}}{{if .HasUnreadComments}} feature-unread-comment{{end}}" data-priority="{{.Priority}}" data-status="{{.Status}}"{{if .OOBSwap}} hx-swap-oob="{{.OOBSwap}}"{{end}}>
   <!-- 左侧：点击区域 → 打开弹窗 -->
   <div style="display:flex;gap:12px;align-items:flex-start;flex:1;min-width:0;cursor:pointer"
     hx-get="/features/{{.ID}}"

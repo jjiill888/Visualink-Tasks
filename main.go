@@ -191,6 +191,7 @@ func main() {
 		r.Patch("/features/{id}/status", handler.UpdateStatus(database))
 		r.Post("/features/{id}/archive", handler.ArchiveFeature(database))
 		r.Post("/features/{id}/comments", handler.AddComment(database))
+		r.Delete("/features/{id}/comments/{commentID}", handler.DeleteComment(database))
 		r.Post("/features/{id}/watch", handler.WatchFeature(database))
 		r.Delete("/features/{id}/watch", handler.UnwatchFeature(database))
 

@@ -21,8 +21,11 @@
         <div class="im-notif-text">{{.PreviewText}}</div>
         {{if .FeatureID}}
         <div class="im-notif-action">
-          <a href="/dashboard" class="us-btn us-btn-outline us-btn-sm"
-             onclick="window.opener && window.opener.location.reload(); return true;">
+          <a href="/dashboard?open={{.FeatureID}}"
+             class="us-btn us-btn-outline us-btn-sm"
+             hx-post="/notifications/read"
+             hx-vals='{"id":"{{.ID}}"}'
+             hx-swap="none">
             查看功能
           </a>
         </div>

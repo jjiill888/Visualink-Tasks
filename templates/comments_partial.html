@@ -2,10 +2,18 @@
 <div class="modal-section-label">评论（{{len .}}）</div>
 {{if .}}
   {{range .}}
-  <div class="comment-item">
+  <div class="comment-item" id="comment-{{.ID}}">
     <div class="comment-header">
       <span class="comment-author">{{.Username}}（{{.UserRoleLabel}}）</span>
       <span class="comment-time" data-utc="{{.CreatedAt.UTC.Format "2006-01-02T15:04:05Z"}}">{{.CreatedAt.Format "01-02 15:04"}}</span>
+      {{if .CanDelete}}
+      <button class="comment-delete-btn" title="删除评论"
+        hx-delete="/features/{{.FeatureID}}/comments/{{.ID}}"
+        hx-target="#comments-{{.FeatureID}}"
+        hx-swap="morph:innerHTML"
+        hx-confirm="确定要删除这条评论吗？"
+        data-loading-disable>×</button>
+      {{end}}
     </div>
     <p class="comment-body">{{.RenderedContent}}</p>
   </div>

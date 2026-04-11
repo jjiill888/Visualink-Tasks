@@ -164,6 +164,12 @@
   (function(){
     const p = new URLSearchParams(location.search);
     if (p.get('success')) history.replaceState({}, '', '/dashboard');
+    const openID = p.get('open');
+    if (openID) {
+      history.replaceState({}, '', '/dashboard');
+      htmx.ajax('GET', '/features/' + openID, {target:'#modal-content', swap:'morph:innerHTML'})
+        .then(function(){ window.dispatchEvent(new CustomEvent('open-modal')); });
+    }
   })();
 </script>
 {{end}}

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{block "title" .}}VisualLink Tasks{{end}}</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%234f46e5'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-weight='bold' font-size='16' fill='white'>VT</text></svg>">
-  <link rel="stylesheet" href="/static/css/style.min.css?v=15">
+  <link rel="stylesheet" href="/static/css/style.min.css?v=16">
   {{block "head" .}}{{end}}
 </head>
 <body hx-ext="morph,loading-states,response-targets">
@@ -14,10 +14,10 @@
   <!-- 顶部导航栏 -->
   <header class="us-header">
     <div class="us-header-inner">
-      <div class="us-logo">
+      <a href="/dashboard" class="us-logo" style="text-decoration:none;color:inherit">
         VisualLink Tasks
         <span>内部协作系统</span>
-      </div>
+      </a>
       <nav class="us-nav">
         {{if .CurrentUser}}
           <a href="/dashboard" {{if eq .ActiveNav "dashboard"}}class="active"{{end}}>看板</a>
@@ -122,7 +122,7 @@
         if (!featureID || !document.getElementById('modal-content')) return;
         var self = this;
         self._dedup('modal-' + featureID, function() {
-          htmx.ajax('GET', '/features/' + featureID, {target:'#modal-content', swap:'innerHTML'});
+          htmx.ajax('GET', '/features/' + featureID + '?bg=1', {target:'#modal-content', swap:'innerHTML'});
         });
       },
       refreshFeatureRow: function(id) {
@@ -163,6 +163,18 @@
         if (options.refreshStats) this.refreshStats();
       }
     };
+
+    // 当功能详情加载到弹窗后，清除对应看板行的蓝条
+    document.addEventListener('htmx:afterSettle', function(e) {
+      if (e.detail.target && e.detail.target.id === 'modal-content') {
+        var detail = document.querySelector('#modal-content [data-feature-id]');
+        if (detail) {
+          var fid = detail.getAttribute('data-feature-id');
+          var row = document.getElementById('feature-' + fid);
+          if (row) row.classList.remove('feature-unread-comment');
+        }
+      }
+    });
 
     window.messageUI = {
       refreshBadge: function() {

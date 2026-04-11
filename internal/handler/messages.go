@@ -201,6 +201,8 @@ func buildMessageCenterData(database *db.DB, u *model.User, kind string, targetU
 		if len(notifications) == 0 {
 			data.EmptyState = "暂无系统通知"
 		}
+		// 打开系统通知列表时全部标已读（蓝条不受影响，仍需实际查看功能才消除）
+		_ = database.MarkAllNotificationsRead(u.ID)
 		return data, nil
 	}
 
@@ -311,6 +313,11 @@ func GetMessageCenter(database *db.DB) http.HandlerFunc {
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		// 系统通知视图已在 buildMessageCenterData 中标记全部已读，通过 HX-Trigger 刷新徽章
+		if data.ActiveKind == "system" {
+			w.Header().Set("HX-Trigger", "message-refresh")
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if err := PartialTmpl.ExecuteTemplate(w, "messages_center.html", data); err != nil {

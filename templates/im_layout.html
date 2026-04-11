@@ -337,9 +337,19 @@ window.CallManager = (function() {
     });
   }
 
+  // ── 检查浏览器是否支持（需要 HTTPS 或 localhost）────────────────────────
+  function checkMediaSupport() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert('语音通话需要 HTTPS 访问。\n\n当前是 HTTP，请联系管理员启用 HTTPS，\n或在 Chrome 地址栏访问 chrome://flags/#unsafely-treat-insecure-origin-as-secure\n将当前地址加入白名单后重启浏览器。');
+      return false;
+    }
+    return true;
+  }
+
   // ── 主叫：点击语音通话按钮 ────────────────────────────────────────────────
   function call(toUID, toDisplayName) {
     if (state !== 'idle') return;
+    if (!checkMediaSupport()) return;
     remoteUID  = parseInt(toUID);
     remoteName = toDisplayName;
     // 先请求麦克风权限（让浏览器弹授权），授权后再枚举设备可得到真实标签
@@ -424,6 +434,7 @@ window.CallManager = (function() {
   // ── 被叫点击接听 → 先选设备 ───────────────────────────────────────────────
   function accept() {
     if (state !== 'incoming' || !pendingOfferSdp) return;
+    if (!checkMediaSupport()) return;
     navigator.mediaDevices.getUserMedia({ audio: true, video: false })
       .then(function(tmpStream) {
         tmpStream.getTracks().forEach(function(t) { t.stop(); });

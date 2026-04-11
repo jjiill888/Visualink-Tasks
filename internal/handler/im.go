@@ -498,6 +498,8 @@ func IMNotifications(database *db.DB) http.HandlerFunc {
 		sort.Slice(notifs, func(i, j int) bool {
 			return notifs[i].CreatedAt.Before(notifs[j].CreatedAt)
 		})
+		// Mark all as read since the user is actively viewing this page.
+		_ = database.MarkAllNotificationsRead(u.ID)
 
 		myChannels, myDMs, _, err := loadIMSidebar(database, u.ID)
 		if err != nil {

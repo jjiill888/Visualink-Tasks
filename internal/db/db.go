@@ -127,6 +127,7 @@ func (d *DB) migrate() error {
 	// ALTER TABLE fails if column already exists — error intentionally ignored.
 	_, _ = d.Exec(`ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''`)
 	_, _ = d.Exec(`UPDATE users SET display_name = username WHERE display_name = ''`)
+	_, _ = d.Exec(`ALTER TABLE comments ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0`)
 
 	_, _ = d.Exec(`
 	CREATE TABLE IF NOT EXISTS user_group_subscriptions (
@@ -142,6 +143,14 @@ func (d *DB) migrate() error {
 		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		feature_id INTEGER NOT NULL REFERENCES features(id) ON DELETE CASCADE,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (user_id, feature_id)
+	)`)
+
+	_, _ = d.Exec(`
+	CREATE TABLE IF NOT EXISTS feature_comment_reads (
+		user_id              INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		feature_id           INTEGER NOT NULL REFERENCES features(id) ON DELETE CASCADE,
+		last_seen_comment_id INTEGER NOT NULL DEFAULT 0,
 		PRIMARY KEY (user_id, feature_id)
 	)`)
 
@@ -568,23 +577,38 @@ func (d *DB) ListFeatures(currentUserID int64, priority, status, search string, 
 }
 
 func (d *DB) ListFeaturesByUser(userID int64) ([]*model.Feature, error) {
-	q := `SELECT ` + featureCols + `
+	q := `SELECT ` + featureCols + `,
+		CASE WHEN EXISTS (
+			SELECT 1 FROM comments c
+			WHERE c.feature_id = f.id AND c.is_deleted = 0
+			AND c.id > COALESCE((
+				SELECT fcr.last_seen_comment_id FROM feature_comment_reads fcr
+				WHERE fcr.user_id = ? AND fcr.feature_id = f.id
+			), 0)
+		) THEN 1 ELSE 0 END AS has_unread_comments
 		FROM features f
 		JOIN users u ON u.id = f.created_by
 		LEFT JOIN groups g ON g.id = f.group_id
 		WHERE f.created_by=?
 		ORDER BY f.created_at DESC`
-	rows, err := d.Query(q, userID)
+	rows, err := d.Query(q, userID, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var list []*model.Feature
 	for rows.Next() {
-		f, err := scanFeature(rows)
-		if err != nil {
+		f := &model.Feature{}
+		var isUnread int
+		if err := rows.Scan(
+			&f.ID, &f.GroupID, &f.Title, &f.Description, &f.Priority, &f.Status,
+			&f.CreatedBy, &f.AssignedTo, &f.CreatedAt, &f.UpdatedAt,
+			&f.CreatorName, &f.CreatorRole, &f.GroupTitle,
+			&isUnread,
+		); err != nil {
 			return nil, err
 		}
+		f.HasUnreadComments = isUnread == 1
 		list = append(list, f)
 	}
 	return list, rows.Err()
@@ -830,7 +854,7 @@ func (d *DB) ListComments(featureID int64) ([]*model.Comment, error) {
 		       COALESCE(NULLIF(u.display_name,''), u.username), u.role
 		FROM comments c
 		JOIN users u ON u.id = c.user_id
-		WHERE c.feature_id = ?
+		WHERE c.feature_id = ? AND c.is_deleted = 0
 		ORDER BY c.created_at ASC
 	`, featureID)
 	if err != nil {
@@ -900,6 +924,48 @@ func (d *DB) CreateComment(c *model.Comment) error {
 	}
 	c.ID, _ = res.LastInsertId()
 	return nil
+}
+
+// MarkCommentsRead records the max non-deleted comment ID seen by a user on a feature.
+func (d *DB) MarkCommentsRead(userID, featureID int64) error {
+	_, err := d.Exec(`
+		INSERT INTO feature_comment_reads (user_id, feature_id, last_seen_comment_id)
+		SELECT ?, ?, COALESCE(MAX(id), 0) FROM comments WHERE feature_id = ? AND is_deleted = 0
+		ON CONFLICT(user_id, feature_id) DO UPDATE SET
+			last_seen_comment_id = MAX(last_seen_comment_id, excluded.last_seen_comment_id)
+	`, userID, featureID, featureID)
+	return err
+}
+
+// HasUnreadComments reports whether a feature the user created has comments they haven't seen yet.
+func (d *DB) HasUnreadComments(userID, featureID int64) (bool, error) {
+	var count int
+	err := d.QueryRow(`
+		SELECT COUNT(*) FROM comments
+		WHERE feature_id = ? AND is_deleted = 0
+		AND ? = (SELECT created_by FROM features WHERE id = ?)
+		AND id > COALESCE((
+			SELECT last_seen_comment_id FROM feature_comment_reads
+			WHERE user_id = ? AND feature_id = ?
+		), 0)
+	`, featureID, userID, featureID, userID, featureID).Scan(&count)
+	return count > 0, err
+}
+
+// DeleteComment soft-deletes a comment. Only the comment owner or an admin may delete.
+func (d *DB) DeleteComment(commentID, userID int64, isAdmin bool) (bool, error) {
+	var res sql.Result
+	var err error
+	if isAdmin {
+		res, err = d.Exec(`UPDATE comments SET is_deleted = 1 WHERE id = ? AND is_deleted = 0`, commentID)
+	} else {
+		res, err = d.Exec(`UPDATE comments SET is_deleted = 1 WHERE id = ? AND user_id = ? AND is_deleted = 0`, commentID, userID)
+	}
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
 }
 
 // ── Notifications ───────────────────────────────────────────────────────────
@@ -1378,7 +1444,15 @@ func (d *DB) ListSubscribedGroups(userID int64) ([]*model.GroupSubscription, err
 // commented, created, or watched), with watched ones sorted first.
 func (d *DB) ListFeaturesPersonal(userID int64, priority, status, search string, limit, offset int) ([]*model.Feature, error) {
 	q := `SELECT ` + featureCols + `,
-		CASE WHEN w.feature_id IS NOT NULL THEN 1 ELSE 0 END AS is_watched
+		CASE WHEN w.feature_id IS NOT NULL THEN 1 ELSE 0 END AS is_watched,
+		CASE WHEN f.created_by = ? AND EXISTS (
+			SELECT 1 FROM comments c
+			WHERE c.feature_id = f.id AND c.is_deleted = 0
+			AND c.id > COALESCE((
+				SELECT fcr.last_seen_comment_id FROM feature_comment_reads fcr
+				WHERE fcr.user_id = ? AND fcr.feature_id = f.id
+			), 0)
+		) THEN 1 ELSE 0 END AS has_unread_comments
 		FROM features f
 		JOIN users u ON u.id = f.created_by
 		LEFT JOIN groups g ON g.id = f.group_id
@@ -1387,11 +1461,11 @@ func (d *DB) ListFeaturesPersonal(userID int64, priority, status, search string,
 		AND (f.status != 'draft' OR f.created_by = ?)
 		AND (
 			f.group_id IN (SELECT group_id FROM user_group_subscriptions WHERE user_id = ?)
-			OR f.id IN (SELECT DISTINCT feature_id FROM comments WHERE user_id = ?)
+			OR f.id IN (SELECT DISTINCT feature_id FROM comments WHERE user_id = ? AND is_deleted = 0)
 			OR f.created_by = ?
 			OR w.feature_id IS NOT NULL
 		)`
-	args := []any{userID, userID, userID, userID, userID}
+	args := []any{userID, userID, userID, userID, userID, userID, userID}
 	if priority != "" && priority != "all" {
 		q += ` AND f.priority=?`
 		args = append(args, priority)
@@ -1419,16 +1493,17 @@ func (d *DB) ListFeaturesPersonal(userID int64, priority, status, search string,
 	var list []*model.Feature
 	for rows.Next() {
 		f := &model.Feature{}
-		var isWatched int
+		var isWatched, isUnread int
 		if err := rows.Scan(
 			&f.ID, &f.GroupID, &f.Title, &f.Description, &f.Priority, &f.Status,
 			&f.CreatedBy, &f.AssignedTo, &f.CreatedAt, &f.UpdatedAt,
 			&f.CreatorName, &f.CreatorRole, &f.GroupTitle,
-			&isWatched,
+			&isWatched, &isUnread,
 		); err != nil {
 			return nil, err
 		}
 		f.IsWatched = isWatched == 1
+		f.HasUnreadComments = isUnread == 1
 		list = append(list, f)
 	}
 	return list, rows.Err()
@@ -1438,13 +1513,21 @@ func (d *DB) ListFeaturesPersonal(userID int64, priority, status, search string,
 // sorts watched items first, and supports pagination via limit/offset.
 func (d *DB) ListFeaturesWithWatch(userID int64, priority, status, search string, groupID, assigneeID, creatorID *int64, limit, offset int) ([]*model.Feature, error) {
 	q := `SELECT ` + featureCols + `,
-		CASE WHEN w.feature_id IS NOT NULL THEN 1 ELSE 0 END AS is_watched
+		CASE WHEN w.feature_id IS NOT NULL THEN 1 ELSE 0 END AS is_watched,
+		CASE WHEN f.created_by = ? AND EXISTS (
+			SELECT 1 FROM comments c
+			WHERE c.feature_id = f.id AND c.is_deleted = 0
+			AND c.id > COALESCE((
+				SELECT fcr.last_seen_comment_id FROM feature_comment_reads fcr
+				WHERE fcr.user_id = ? AND fcr.feature_id = f.id
+			), 0)
+		) THEN 1 ELSE 0 END AS has_unread_comments
 		FROM features f
 		JOIN users u ON u.id = f.created_by
 		LEFT JOIN groups g ON g.id = f.group_id
 		LEFT JOIN user_feature_watches w ON w.feature_id = f.id AND w.user_id = ?
 		WHERE 1=1`
-	args := []any{userID}
+	args := []any{userID, userID, userID}
 	if priority != "" && priority != "all" {
 		q += ` AND f.priority=?`
 		args = append(args, priority)
@@ -1491,16 +1574,17 @@ func (d *DB) ListFeaturesWithWatch(userID int64, priority, status, search string
 	var list []*model.Feature
 	for rows.Next() {
 		f := &model.Feature{}
-		var isWatched int
+		var isWatched, isUnread int
 		if err := rows.Scan(
 			&f.ID, &f.GroupID, &f.Title, &f.Description, &f.Priority, &f.Status,
 			&f.CreatedBy, &f.AssignedTo, &f.CreatedAt, &f.UpdatedAt,
 			&f.CreatorName, &f.CreatorRole, &f.GroupTitle,
-			&isWatched,
+			&isWatched, &isUnread,
 		); err != nil {
 			return nil, err
 		}
 		f.IsWatched = isWatched == 1
+		f.HasUnreadComments = isUnread == 1
 		list = append(list, f)
 	}
 	return list, rows.Err()

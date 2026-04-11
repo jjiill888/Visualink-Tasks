@@ -51,7 +51,8 @@ type Feature struct {
 	CreatorRole string
 	GroupTitle  string
 	// Computed
-	IsWatched bool
+	IsWatched        bool
+	HasUnreadComments bool
 }
 
 type GroupMember struct {
@@ -254,6 +255,13 @@ func (n Notification) PreviewText() string {
 		return "你收到了一条系统通知"
 	}
 	return "在「" + n.FeatureTitle + "」里提到了你"
+}
+
+func NewCommentNotificationText(featureTitle string) string {
+	if featureTitle == "" {
+		return "在你提交的功能下发表了评论"
+	}
+	return "在你提交的「" + featureTitle + "」下发表了评论"
 }
 
 func MentionNotificationText(featureTitle string) string {

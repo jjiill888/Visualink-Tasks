@@ -23,6 +23,7 @@ var mentionRe = regexp.MustCompile(`@([\p{L}\p{N}_]+)`)
 type commentView struct {
 	*model.Comment
 	RenderedContent template.HTML
+	CanDelete       bool
 }
 
 // renderMentions converts @username handles in content to highlighted @displayname spans.
@@ -46,7 +47,8 @@ func renderMentions(content string, displayMap map[string]string) template.HTML 
 }
 
 // renderCommentViews resolves @username handles in all comments to display names in one batch query.
-func renderCommentViews(comments []*model.Comment, database *db.DB) []commentView {
+// currentUserID and isAdmin determine whether each comment shows a delete button.
+func renderCommentViews(comments []*model.Comment, database *db.DB, currentUserID int64, isAdmin bool) []commentView {
 	seen := map[string]bool{}
 	var usernames []string
 	for _, c := range comments {
@@ -60,7 +62,11 @@ func renderCommentViews(comments []*model.Comment, database *db.DB) []commentVie
 	displayMap, _ := database.MentionDisplayMap(usernames)
 	views := make([]commentView, len(comments))
 	for i, c := range comments {
-		views[i] = commentView{Comment: c, RenderedContent: renderMentions(c.Content, displayMap)}
+		views[i] = commentView{
+			Comment:         c,
+			RenderedContent: renderMentions(c.Content, displayMap),
+			CanDelete:       isAdmin || c.UserID == currentUserID,
+		}
 	}
 	return views
 }
@@ -76,6 +82,22 @@ func notificationSenderName(u *model.User) string {
 		return u.Username
 	}
 	return "系统"
+}
+
+func createNewCommentNotification(database *db.DB, recipientID, featureID, commentID int64, fromUser, featureTitle string) {
+	if recipientID <= 0 {
+		return
+	}
+	if err := database.CreateNotification(&model.Notification{
+		UserID:       recipientID,
+		FeatureID:    featureID,
+		CommentID:    commentID,
+		FromUser:     fromUser,
+		FeatureTitle: featureTitle,
+		Message:      model.NewCommentNotificationText(featureTitle),
+	}); err == nil {
+		hub.Global.Broadcast(fmt.Sprintf("mailbox-updated:%d", recipientID))
+	}
 }
 
 func createMentionNotification(database *db.DB, recipientID, featureID, commentID int64, fromUser, featureTitle string) {
@@ -142,7 +164,7 @@ func Dashboard(database *db.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		features, err := database.ListFeatures(u.ID, "", "", "", nil, nil, nil, pageSize, 0)
+		features, err := database.ListFeaturesWithWatch(u.ID, "", "", "", nil, nil, nil, pageSize, 0)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -528,9 +550,10 @@ func buildFeatureDetailData(database *db.DB, u *model.User, f *model.Feature) (f
 		return featureDetailData{}, err
 	}
 	f.IsWatched, _ = database.IsFeatureWatched(u.ID, f.ID)
+	_ = database.MarkCommentsRead(u.ID, f.ID)
 	return featureDetailData{
 		Feature:         f,
-		Comments:        renderCommentViews(comments, database),
+		Comments:        renderCommentViews(comments, database, u.ID, u.Role == "admin"),
 		Events:          events,
 		CanEditStatus:   canEditStatus(u.Role),
 		CanRetract:      (f.Status == "pending" || f.Status == "draft") && u.ID == f.CreatedBy,
@@ -550,6 +573,7 @@ func writeFeatureRow(database *db.DB, w io.Writer, r *http.Request, featureID in
 	}
 	u := UserFromContext(r)
 	f.IsWatched, _ = database.IsFeatureWatched(u.ID, featureID)
+	f.HasUnreadComments, _ = database.HasUnreadComments(u.ID, featureID)
 	row := featureRowData{Feature: f, CanEditStatus: canEditStatus(u.Role), OOBSwap: oobSwap}
 	return PartialTmpl.ExecuteTemplate(w, "feature_row.html", row)
 }
@@ -639,9 +663,6 @@ func FeatureDetail(database *db.DB) http.HandlerFunc {
 		if notifIDStr := r.URL.Query().Get("notif_id"); notifIDStr != "" {
 			if notifID, err := strconv.ParseInt(notifIDStr, 10, 64); err == nil && notifID > 0 {
 				_ = database.MarkNotificationReadByID(u.ID, notifID)
-				// Trigger message-refresh on body so the nav badge updates without a full reload.
-				// This is safe: it only refreshes the badge span, not the modal content.
-				w.Header().Set("HX-Trigger", "message-refresh")
 			}
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -651,9 +672,20 @@ func FeatureDetail(database *db.DB) http.HandlerFunc {
 			return
 		}
 		detail.FromMessages = r.URL.Query().Get("from") == "messages"
+		// Only mark notifications as read on explicit user navigation, not SSE background refresh.
+		// Use HX-Trigger instead of SSE broadcast to avoid race condition where the SSE event
+		// arrives before this HTMX response settles, causing refreshOpenCenter to overwrite modal.
+		isBackground := r.URL.Query().Get("bg") == "1"
+		if !isBackground {
+			_ = database.MarkNotificationsReadByFeature(u.ID, id)
+			w.Header().Set("HX-Trigger", "message-refresh")
+		}
 		if err := PartialTmpl.ExecuteTemplate(w, "feature_detail.html", detail); err != nil {
 			http.Error(w, err.Error(), 500)
+			return
 		}
+		// Append OOB row update so the blue bar disappears immediately in the list.
+		_ = writeFeatureRow(database, w, r, id, "morph:outerHTML")
 	}
 }
 
@@ -713,8 +745,17 @@ func AddComment(database *db.DB) http.HandlerFunc {
 			return
 		}
 
-		// Parse @mentions and create notifications
+		// Notify feature creator when someone else comments.
 		f, _ := database.GetFeature(id)
+		fromUser := u.DisplayName
+		if fromUser == "" {
+			fromUser = u.Username
+		}
+		if f != nil && f.CreatedBy != u.ID {
+			createNewCommentNotification(database, f.CreatedBy, id, c.ID, fromUser, f.Title)
+		}
+
+		// Parse @mentions and create notifications
 		for _, token := range parseMentions(content) {
 			mentioned, _ := database.GetUserByUsername(token)
 			if mentioned == nil {
@@ -728,10 +769,6 @@ func AddComment(database *db.DB) http.HandlerFunc {
 			if f != nil {
 				featureTitle = f.Title
 			}
-			fromUser := u.DisplayName
-			if fromUser == "" {
-				fromUser = u.Username
-			}
 			createMentionNotification(database, mentioned.ID, id, c.ID, fromUser, featureTitle)
 		}
 
@@ -740,9 +777,51 @@ func AddComment(database *db.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), 500)
 			return
 		}
+		// Mark the commenter's own comment as seen so their row doesn't show a red dot.
+		_ = database.MarkCommentsRead(u.ID, id)
 		hub.Global.Broadcast("comment-added:" + chi.URLParam(r, "id"))
+		// Refresh feature rows for all connected clients so the unread dot appears.
+		hub.Global.Broadcast("feature-row-updated:" + chi.URLParam(r, "id"))
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := PartialTmpl.ExecuteTemplate(w, "comments_partial.html", renderCommentViews(comments, database)); err != nil {
+		if err := PartialTmpl.ExecuteTemplate(w, "comments_partial.html", renderCommentViews(comments, database, u.ID, u.Role == "admin")); err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+	}
+}
+
+// DeleteComment handles DELETE /features/{id}/comments/{commentID}
+func DeleteComment(database *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := UserFromContext(r)
+		featureID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			http.Error(w, "invalid feature id", 400)
+			return
+		}
+		commentID, err := strconv.ParseInt(chi.URLParam(r, "commentID"), 10, 64)
+		if err != nil {
+			http.Error(w, "invalid comment id", 400)
+			return
+		}
+		ok, err := database.DeleteComment(commentID, u.ID, u.Role == "admin")
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		if !ok {
+			http.Error(w, "无权删除或评论不存在", 403)
+			return
+		}
+		comments, err := database.ListComments(featureID)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		// Keep the commenter's read pointer valid after deletion.
+		_ = database.MarkCommentsRead(u.ID, featureID)
+		hub.Global.Broadcast("feature-row-updated:" + chi.URLParam(r, "id"))
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := PartialTmpl.ExecuteTemplate(w, "comments_partial.html", renderCommentViews(comments, database, u.ID, u.Role == "admin")); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}
@@ -1213,6 +1292,7 @@ func UpdateFeatureContent(database *db.DB) http.HandlerFunc {
 // GetComments handles GET /features/{id}/comments — returns comments partial for SSE targeted update.
 func GetComments(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		u := UserFromContext(r)
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if err != nil {
 			http.Error(w, "invalid id", 400)
@@ -1223,8 +1303,9 @@ func GetComments(database *db.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), 500)
 			return
 		}
+		_ = database.MarkCommentsRead(u.ID, id)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := PartialTmpl.ExecuteTemplate(w, "comments_partial.html", renderCommentViews(comments, database)); err != nil {
+		if err := PartialTmpl.ExecuteTemplate(w, "comments_partial.html", renderCommentViews(comments, database, u.ID, u.Role == "admin")); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}
