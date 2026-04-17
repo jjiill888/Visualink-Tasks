@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -428,6 +429,26 @@ type IMChannelMember struct {
 	DisplayName string
 	Username    string
 }
+
+// ── Attachments ────────────────────────────────────────────────────────────
+
+type Attachment struct {
+	ID         int64
+	OwnerKind  string // "feature" | "comment" | "" (orphan, not yet attached)
+	OwnerID    int64
+	UploaderID int64
+	PathFull   string // filesystem-relative path, e.g. "2026/04/abc123-full.jpg"
+	PathThumb  string
+	Width      int
+	Height     int
+	Bytes      int64
+	Original   string // original filename, for alt text / download
+	CreatedAt  time.Time
+}
+
+// ThumbURL and FullURL map to routes served by handler.ServeUpload.
+func (a *Attachment) ThumbURL() string { return fmt.Sprintf("/uploads/%d/thumb", a.ID) }
+func (a *Attachment) FullURL() string  { return fmt.Sprintf("/uploads/%d/full", a.ID) }
 
 // PageData is the top-level template context.
 type PageData struct {

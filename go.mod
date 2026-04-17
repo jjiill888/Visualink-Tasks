@@ -1,10 +1,13 @@
 module featuretrack
 
-go 1.22
+go 1.25.0
 
 require (
+	github.com/HugoSmits86/nativewebp v1.2.1
 	github.com/go-chi/chi/v5 v5.1.0
+	github.com/jdeng/goheif v0.0.0-20260407171156-9bf5264f67af
 	golang.org/x/crypto v0.24.0
+	golang.org/x/image v0.39.0
 	modernc.org/sqlite v1.30.0
 )
 

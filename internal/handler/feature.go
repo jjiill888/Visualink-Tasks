@@ -24,6 +24,7 @@ type commentView struct {
 	*model.Comment
 	RenderedContent template.HTML
 	CanDelete       bool
+	Attachments     []*model.Attachment
 }
 
 // renderMentions converts @username handles in content to highlighted @displayname spans.
@@ -60,12 +61,18 @@ func renderCommentViews(comments []*model.Comment, database *db.DB, currentUserI
 		}
 	}
 	displayMap, _ := database.MentionDisplayMap(usernames)
+	ids := make([]int64, 0, len(comments))
+	for _, c := range comments {
+		ids = append(ids, c.ID)
+	}
+	attMap, _ := database.ListAttachmentsForOwners("comment", ids)
 	views := make([]commentView, len(comments))
 	for i, c := range comments {
 		views[i] = commentView{
 			Comment:         c,
 			RenderedContent: renderMentions(c.Content, displayMap),
 			CanDelete:       isAdmin || c.UserID == currentUserID,
+			Attachments:     attMap[c.ID],
 		}
 	}
 	return views
@@ -451,6 +458,9 @@ func CreateFeature(database *db.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), 500)
 			return
 		}
+		if ids := parseAttachmentIDs(r.FormValue("attachment_ids")); len(ids) > 0 {
+			_ = database.AttachTo("feature", f.ID, u.ID, ids)
+		}
 		if f.Status != "draft" {
 			_ = database.CreateFeatureEvent(&model.FeatureEvent{
 				FeatureID:  f.ID,
@@ -504,6 +514,7 @@ type featureDetailData struct {
 	Feature         *model.Feature
 	Comments        []commentView
 	Events          []*model.FeatureEvent
+	Attachments     []*model.Attachment
 	CanEditStatus   bool
 	CanRetract      bool
 	CanReject       bool
@@ -551,10 +562,12 @@ func buildFeatureDetailData(database *db.DB, u *model.User, f *model.Feature) (f
 	}
 	f.IsWatched, _ = database.IsFeatureWatched(u.ID, f.ID)
 	_ = database.MarkCommentsRead(u.ID, f.ID)
+	atts, _ := loadAttachments(database, f.ID)
 	return featureDetailData{
 		Feature:         f,
 		Comments:        renderCommentViews(comments, database, u.ID, u.Role == "admin"),
 		Events:          events,
+		Attachments:     atts,
 		CanEditStatus:   canEditStatus(u.Role),
 		CanRetract:      (f.Status == "pending" || f.Status == "draft") && u.ID == f.CreatedBy,
 		CanReject:       canEditStatus(u.Role) && f.Status == "pending" && u.ID != f.CreatedBy,
@@ -596,7 +609,8 @@ func writeFeatureDetail(database *db.DB, w io.Writer, r *http.Request, featureID
 		if err != nil {
 			return err
 		}
-		return PartialTmpl.ExecuteTemplate(w, "feature_draft_edit.html", draftEditData{Feature: f, Groups: groups, Users: users})
+		atts, csv := loadAttachments(database, f.ID)
+		return PartialTmpl.ExecuteTemplate(w, "feature_draft_edit.html", draftEditData{Feature: f, Groups: groups, Users: users, Attachments: atts, AttachmentIDsCSV: csv})
 	}
 	detail, err := buildFeatureDetailData(database, u, f)
 	if err != nil {
@@ -653,8 +667,9 @@ func FeatureDetail(database *db.DB) http.HandlerFunc {
 				http.Error(w, err.Error(), 500)
 				return
 			}
+			atts, csv := loadAttachments(database, f.ID)
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			if err := PartialTmpl.ExecuteTemplate(w, "feature_draft_edit.html", draftEditData{Feature: f, Groups: groups, Users: users}); err != nil {
+			if err := PartialTmpl.ExecuteTemplate(w, "feature_draft_edit.html", draftEditData{Feature: f, Groups: groups, Users: users, Attachments: atts, AttachmentIDsCSV: csv}); err != nil {
 				http.Error(w, err.Error(), 500)
 			}
 			return
@@ -735,7 +750,8 @@ func AddComment(database *db.DB) http.HandlerFunc {
 			return
 		}
 		content := strings.TrimSpace(r.FormValue("content"))
-		if content == "" {
+		attachmentIDs := parseAttachmentIDs(r.FormValue("attachment_ids"))
+		if content == "" && len(attachmentIDs) == 0 {
 			http.Error(w, "empty comment", 400)
 			return
 		}
@@ -743,6 +759,9 @@ func AddComment(database *db.DB) http.HandlerFunc {
 		if err := database.CreateComment(c); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
+		}
+		if len(attachmentIDs) > 0 {
+			_ = database.AttachTo("comment", c.ID, u.ID, attachmentIDs)
 		}
 
 		// Notify feature creator when someone else comments.
@@ -812,6 +831,7 @@ func DeleteComment(database *db.DB) http.HandlerFunc {
 			http.Error(w, "无权删除或评论不存在", 403)
 			return
 		}
+		_ = database.DetachAttachments("comment", commentID)
 		comments, err := database.ListComments(featureID)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
@@ -1044,9 +1064,39 @@ func UnwatchFeature(database *db.DB) http.HandlerFunc {
 }
 
 type draftEditData struct {
-	Feature *model.Feature
-	Groups  []*model.Group
-	Users   []*model.User
+	Feature          *model.Feature
+	Groups           []*model.Group
+	Users            []*model.User
+	Attachments      []*model.Attachment
+	AttachmentIDsCSV string
+}
+
+func loadAttachments(database *db.DB, featureID int64) ([]*model.Attachment, string) {
+	list, err := database.ListAttachments("feature", featureID)
+	if err != nil || len(list) == 0 {
+		return nil, ""
+	}
+	ids := make([]string, len(list))
+	for i, a := range list {
+		ids[i] = strconv.FormatInt(a.ID, 10)
+	}
+	return list, strings.Join(ids, ",")
+}
+
+// parseAttachmentIDs turns a CSV form value into a slice of positive ids.
+func parseAttachmentIDs(raw string) []int64 {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	ids := make([]int64, 0, len(parts))
+	for _, p := range parts {
+		if id, err := strconv.ParseInt(strings.TrimSpace(p), 10, 64); err == nil && id > 0 {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 // DraftEditForm handles GET /features/{id}/edit — returns edit form modal partial for drafts.
@@ -1077,7 +1127,8 @@ func DraftEditForm(database *db.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		data := draftEditData{Feature: f, Groups: groups, Users: users}
+		atts, csv := loadAttachments(database, f.ID)
+		data := draftEditData{Feature: f, Groups: groups, Users: users, Attachments: atts, AttachmentIDsCSV: csv}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if err := PartialTmpl.ExecuteTemplate(w, "feature_draft_edit.html", data); err != nil {
 			http.Error(w, err.Error(), 500)
@@ -1114,6 +1165,7 @@ func UpdateDraft(database *db.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), 500)
 			return
 		}
+		_ = database.SyncFeatureAttachments(id, u.ID, parseAttachmentIDs(r.FormValue("attachment_ids")))
 		// action=publish: 保存后直接发布为 pending
 		if r.FormValue("action") == "publish" {
 			if err := database.UpdateFeatureStatus(id, "pending"); err != nil {
@@ -1198,7 +1250,8 @@ func ModifyContentForm(database *db.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		data := draftEditData{Feature: f, Groups: groups, Users: users}
+		atts, csv := loadAttachments(database, f.ID)
+		data := draftEditData{Feature: f, Groups: groups, Users: users, Attachments: atts, AttachmentIDsCSV: csv}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if err := PartialTmpl.ExecuteTemplate(w, "feature_modify.html", data); err != nil {
 			http.Error(w, err.Error(), 500)
@@ -1248,6 +1301,7 @@ func UpdateFeatureContent(database *db.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), 500)
 			return
 		}
+		_ = database.SyncFeatureAttachments(id, u.ID, parseAttachmentIDs(r.FormValue("attachment_ids")))
 
 		// If the proposal was rejected, revert it to pending for re-review
 		if oldStatus == "rejected" {

@@ -40,10 +40,22 @@
         </div>
         <div class="us-form-group">
           <label class="us-label" for="fs-desc">详细描述</label>
-          <span class="us-hint">背景、用户诉求和验收标准</span>
+          <span class="us-hint">背景、用户诉求和验收标准 · 可拖拽/粘贴图片</span>
           <textarea class="us-textarea" name="description" id="fs-desc"
             placeholder="背景：&#10;用户诉求：&#10;验收标准："
             style="min-height:220px;resize:vertical"></textarea>
+        </div>
+        <div class="us-form-group">
+          <label class="us-label">图片附件</label>
+          <div class="attach-uploader" data-attach-uploader data-attach-paste="#fs-desc">
+            <label class="attach-uploader-trigger">
+              + 添加图片
+              <input type="file" data-attach-input multiple hidden>
+            </label>
+            <span class="attach-uploader-hint">支持 JPEG / PNG / WebP / HEIC，单图≤25 MiB</span>
+            <div class="attach-list" data-attach-list></div>
+            <input type="hidden" name="attachment_ids" value="" data-attach-ids>
+          </div>
         </div>
         <hr class="us-divider">
         <div style="display:flex;align-items:center;gap:12px">

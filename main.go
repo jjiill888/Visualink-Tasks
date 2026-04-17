@@ -195,6 +195,9 @@ func main() {
 		r.Post("/features/{id}/watch", handler.WatchFeature(database))
 		r.Delete("/features/{id}/watch", handler.UnwatchFeature(database))
 
+		r.Post("/uploads/image", handler.UploadImage(database))
+		r.Get("/uploads/{id}/{variant}", handler.ServeUpload(database))
+
 		r.Get("/notifications/count", handler.GetNotificationBadge(database))
 		r.Get("/notifications", handler.GetNotificationList(database))
 		r.Post("/notifications/read", handler.MarkNotificationsRead(database))

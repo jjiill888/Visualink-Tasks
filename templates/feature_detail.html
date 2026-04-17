@@ -91,10 +91,21 @@
   </div>
 </div>
 
-{{if $f.Description}}
+{{if or $f.Description .Attachments}}
 <div class="modal-section">
   <div class="modal-section-label">详细描述</div>
+  {{if $f.Description}}
   <p style="font-size:14px;color:#1b1b1b;white-space:pre-wrap;line-height:1.7;margin:0">{{$f.Description}}</p>
+  {{end}}
+  {{if .Attachments}}
+  <div class="attach-gallery">
+    {{range .Attachments}}
+    <a href="{{.FullURL}}" data-attach-lightbox>
+      <img src="{{.ThumbURL}}" alt="{{.Original}}" loading="lazy">
+    </a>
+    {{end}}
+  </div>
+  {{end}}
 </div>
 {{end}}
 
@@ -248,13 +259,22 @@
     {{template "comments_partial.html" .Comments}}
   </div>
 
-  <form class="comment-form"
+  <form class="comment-form" id="comment-form-{{$f.ID}}"
     hx-post="/features/{{$f.ID}}/comments"
     hx-target="#comments-{{$f.ID}}"
     hx-swap="innerHTML"
-    hx-on:htmx:after-request="this.reset()">
-    <textarea class="us-textarea comment-input" name="content"
-      placeholder="添加评论，Enter 发送 · Shift+Enter 换行" required style="min-height:64px"></textarea>
+    hx-on:htmx:after-request="if(event.detail.successful){ this.reset(); window.clearAttachmentUploader(this); }">
+    <textarea class="us-textarea comment-input" id="comment-input-{{$f.ID}}" name="content"
+      placeholder="添加评论，Enter 发送 · Shift+Enter 换行 · 可拖拽/粘贴图片" style="min-height:64px"></textarea>
+    <div class="attach-uploader attach-uploader--inline" data-attach-uploader data-attach-paste="#comment-input-{{$f.ID}}">
+      <label class="attach-uploader-trigger">
+        + 添加图片
+        <input type="file" data-attach-input multiple hidden>
+      </label>
+      <span class="attach-uploader-hint">支持 JPEG / PNG / WebP / HEIC，单图≤25 MiB</span>
+      <div class="attach-list" data-attach-list></div>
+      <input type="hidden" name="attachment_ids" value="" data-attach-ids>
+    </div>
     <button type="submit" class="us-btn us-btn-primary us-btn-sm" style="margin-top:8px">发送</button>
   </form>
 </div>

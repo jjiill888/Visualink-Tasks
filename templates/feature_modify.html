@@ -41,10 +41,31 @@
     </div>
     <div class="us-form-group" style="position:relative">
       <label class="us-label" for="mo-desc">详细描述</label>
-      <span class="us-hint">输入 @ 可提及成员</span>
+      <span class="us-hint">输入 @ 可提及成员 · 可拖拽/粘贴图片</span>
       <textarea class="us-textarea" name="description" id="mo-desc"
         style="min-height:180px;resize:vertical">{{$f.Description}}</textarea>
       <ul id="mo-mention-dropdown" style="display:none;position:fixed;z-index:9999;background:#fff;border:1px solid #d9d9d9;border-radius:6px;list-style:none;margin:0;padding:4px 0;min-width:200px;max-height:220px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.12)"></ul>
+    </div>
+    <div class="us-form-group">
+      <label class="us-label">图片附件</label>
+      <div class="attach-uploader" data-attach-uploader data-attach-paste="#mo-desc">
+        <label class="attach-uploader-trigger">
+          + 添加图片
+          <input type="file" data-attach-input multiple hidden>
+        </label>
+        <span class="attach-uploader-hint">支持 JPEG / PNG / WebP / HEIC，单图≤25 MiB</span>
+        <div class="attach-list" data-attach-list>
+          {{range .Attachments}}
+          <div class="attach-item" data-attach-id="{{.ID}}">
+            <img src="{{.ThumbURL}}" alt="" class="attach-thumb">
+            <button type="button" class="attach-remove" aria-label="移除"
+              onclick="var p=this.parentNode; p.remove(); var r=p.closest('[data-attach-uploader]'); var ids=[]; r.querySelectorAll('[data-attach-row]').forEach(function(e){ids.push(e.value)}); r.querySelector('[data-attach-ids]').value=ids.join(',');">×</button>
+            <input type="hidden" data-attach-row value="{{.ID}}">
+          </div>
+          {{end}}
+        </div>
+        <input type="hidden" name="attachment_ids" value="{{.AttachmentIDsCSV}}" data-attach-ids>
+      </div>
     </div>
     <hr class="us-divider">
     <div style="display:flex;align-items:center;gap:12px">

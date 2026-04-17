@@ -123,6 +123,9 @@ func (d *DB) migrate() error {
 	if err := d.migrateNotifications(); err != nil {
 		return err
 	}
+	if err := d.migrateAttachments(); err != nil {
+		return err
+	}
 	// For existing databases without display_name: add column and backfill.
 	// ALTER TABLE fails if column already exists — error intentionally ignored.
 	_, _ = d.Exec(`ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''`)

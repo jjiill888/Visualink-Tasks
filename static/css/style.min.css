@@ -2019,4 +2019,33 @@ body.modal-open {
 .us-radio-label { display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
 .us-form-actions { display: flex; gap: 10px; margin-top: 24px; }
 .us-hint { font-size: 12px; color: #71767a; margin-top: 4px; }
+.attach-uploader{border:1px dashed #d9d9d9;border-radius:6px;padding:10px 12px;background:#fafbfc;transition:background .15s,border-color .15s}
+.attach-uploader.attach-dropping{background:#eaf3ff;border-color:#1a56db}
+.attach-uploader-trigger{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#1a56db;cursor:pointer;padding:4px 10px;border:1px solid #cfdcf7;border-radius:4px;background:#fff}
+.attach-uploader-trigger:hover{background:#f0f4ff}
+.attach-uploader-hint{font-size:12px;color:#71767a;margin-left:8px}
+.attach-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.attach-list:empty{display:none}
+.attach-item{position:relative;width:96px;height:96px;border:1px solid #e4e4e4;border-radius:6px;overflow:hidden;background:#fff;display:flex;align-items:center;justify-content:center}
+.attach-item--loading{background:#f5f6f8}
+.attach-item--error{border-color:#f0b4ac;background:#fff5f3}
+.attach-thumb{width:100%;height:100%;object-fit:cover;display:block}
+.attach-remove{position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;border:none;cursor:pointer;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center}
+.attach-remove:hover{background:rgba(0,0,0,.8)}
+.attach-name{font-size:11px;color:#71767a;padding:0 6px;text-align:center;overflow:hidden;text-overflow:ellipsis}
+.attach-error{color:#b42418}
+.attach-spinner{width:18px;height:18px;border-radius:50%;border:2px solid #d9d9d9;border-top-color:#1a56db;animation:attach-spin .8s linear infinite}
+@keyframes attach-spin{to{transform:rotate(360deg)}}
+.attach-gallery{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.attach-gallery a{display:block;width:140px;height:140px;border:1px solid #e4e4e4;border-radius:6px;overflow:hidden;text-decoration:none}
+.attach-gallery img{width:100%;height:100%;object-fit:cover;display:block}
+.attach-lightbox{position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:10000;cursor:zoom-out}
+.attach-lightbox img{max-width:94vw;max-height:94vh;box-shadow:0 4px 32px rgba(0,0,0,.5)}
+.attach-uploader--inline{padding:6px 8px;margin-top:6px;background:transparent;border-style:dashed;border-color:#e4e4e4}
+.attach-uploader--inline .attach-uploader-trigger{padding:2px 8px;font-size:12px}
+.attach-uploader--inline .attach-uploader-hint{font-size:11px}
+.attach-uploader--inline .attach-item{width:72px;height:72px}
+.attach-uploader--inline .attach-list{margin-top:8px;gap:6px}
+.comment-item .attach-gallery{margin-top:6px;gap:6px}
+.comment-item .attach-gallery a{width:96px;height:96px}
 
