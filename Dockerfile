@@ -3,7 +3,7 @@
 FROM golang:1.25-alpine AS builder
 
 # CGo 工具链：goheif 的 dav1d 子包用 C 实现 AV1-in-HEIF 解码
-RUN apk add --no-cache gcc musl-dev
+RUN apk add --no-cache gcc g++ musl-dev
 
 WORKDIR /app
 COPY go.mod go.sum ./
