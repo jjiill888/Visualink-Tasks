@@ -20,7 +20,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 
 # ── Run stage ─────────────────────────────────────────────────────────────────
 FROM alpine:3.20
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata libstdc++ libgcc
 WORKDIR /app
 
 COPY --from=builder /app/featuretrack .
