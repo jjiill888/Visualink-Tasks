@@ -11,19 +11,27 @@ import (
 	"strings"
 	"time"
 
+	"featuretrack/internal/assets"
 	"featuretrack/internal/db"
 	"featuretrack/internal/handler"
 	"featuretrack/internal/hub"
 	"featuretrack/internal/model"
 
+	httpcompression "github.com/CAFxX/httpcompression"
+	brotlihttp "github.com/CAFxX/httpcompression/contrib/andybalholm/brotli"
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 )
 
+// bundleVer is set in main() before templates are parsed; funcMap's
+// bundleVersion reads it via closure.
+var bundleVer string
+
 var mentionHighlightRe = regexp.MustCompile(`@([\p{L}\p{N}_]+)`)
 
 var funcMap = template.FuncMap{
-	"add": func(a, b int) int { return a + b },
+	"add":           func(a, b int) int { return a + b },
+	"bundleVersion": func() string { return bundleVer },
 	"firstChar": func(s string) string {
 		for _, r := range s {
 			return string(r)
@@ -141,12 +149,46 @@ func main() {
 		log.Fatal("open db:", err)
 	}
 
+	// Build JS bundle before templates so bundleVersion() returns correct hash.
+	jsBundle, err := assets.NewBundle("static/js", []string{
+		"htmx.min.js",
+		"htmx-ext-sse.min.js",
+		"idiomorph-ext.min.js",
+		"htmx-ext-bundle.min.js",
+		"alpine.min.js",
+		"attachment-uploader.js",
+	})
+	if err != nil {
+		log.Fatal("bundle js:", err)
+	}
+	bundleVer = jsBundle.Version()
+	rawSize, gzSize, brSize := jsBundle.Stats()
+	log.Printf("js bundle: raw=%dB gzip=%dB brotli=%dB version=%s",
+		rawSize, gzSize, brSize, bundleVer)
+
 	handler.SetTemplates(buildTmplMap(), buildPartialTmpl(), buildIMTmpl())
+
+	// Brotli + gzip content-negotiating compression. Brotli wins for Chinese
+	// users: ~20% smaller than gzip, which matters over 180ms RTT.
+	brComp, err := brotlihttp.New(brotlihttp.Options{Quality: 5})
+	if err != nil {
+		log.Fatal("brotli init:", err)
+	}
+	compress, err := httpcompression.DefaultAdapter(
+		httpcompression.Compressor(brotlihttp.Encoding, 1000, brComp),
+	)
+	if err != nil {
+		log.Fatal("compression adapter:", err)
+	}
 
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
-	r.Use(chimw.Compress(5)) // gzip — saves ~70% on HTML/CSS transfers
+	r.Use(compress)
+
+	// JS bundle — pre-compressed at startup, served directly with
+	// Content-Encoding already set so the middleware passes through.
+	r.Get("/static/js/bundle.js", jsBundle.Handler())
 
 	// Static files with long cache (JS/CSS never change between deploys)
 	staticFS := http.StripPrefix("/static/", http.FileServer(http.Dir("static")))

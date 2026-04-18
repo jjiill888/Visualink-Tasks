@@ -96,14 +96,9 @@
     </div>
   </div>
 
-  <!-- HTMX + Alpine.js 本地托管，避免 CDN 在中国不稳定 -->
-  <script defer src="/static/js/htmx.min.js?v=1"></script>
-  <script defer src="/static/js/htmx-ext-sse.min.js?v=2"></script>
-  <script defer src="/static/js/idiomorph-ext.min.js?v=1"></script>
-  <script defer src="/static/js/htmx-ext-bundle.min.js?v=1"></script>
-  <script defer src="/static/js/alpine.min.js?v=1"></script>
-  <script defer src="/static/js/attachment-uploader.js?v=2"></script>
+  {{/* 合并为单一 bundle：1 次请求 + Brotli 压缩，登录/注册页零 JS */}}
   {{if .CurrentUser}}
+  <script defer src="/static/js/bundle.js?v={{bundleVersion}}"></script>
   <script>
   (function(){
     window.featureUI = {

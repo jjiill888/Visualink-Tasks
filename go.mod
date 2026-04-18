@@ -3,7 +3,9 @@ module featuretrack
 go 1.25.0
 
 require (
+	github.com/CAFxX/httpcompression v0.0.9
 	github.com/HugoSmits86/nativewebp v1.2.1
+	github.com/andybalholm/brotli v1.2.1
 	github.com/go-chi/chi/v5 v5.1.0
 	github.com/jdeng/goheif v0.0.0-20260407171156-9bf5264f67af
 	golang.org/x/crypto v0.24.0
@@ -15,6 +17,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
+	github.com/klauspost/compress v1.16.7 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
