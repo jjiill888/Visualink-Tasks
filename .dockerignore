@@ -3,3 +3,5 @@ data/
 .git/
 dashboard.html
 base.html
+node_modules/
+web/notes-editor/node_modules/

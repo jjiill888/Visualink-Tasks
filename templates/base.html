@@ -23,6 +23,7 @@
           <a href="/dashboard" {{if eq .ActiveNav "dashboard"}}class="active"{{end}}>看板</a>
           <a href="/features/mine" {{if eq .ActiveNav "mine"}}class="active"{{end}}>我的提交</a>
           <a href="/groups" {{if eq .ActiveNav "groups"}}class="active"{{end}}>讨论组</a>
+          <a href="/notes" {{if eq .ActiveNav "notes"}}class="active"{{end}}>笔记</a>
           {{if eq .CurrentUser.Role "admin"}}
           <a href="/admin" {{if eq .ActiveNav "admin"}}class="active"{{end}}>管理</a>
           {{end}}

@@ -1,9 +1,15 @@
 # Database
 data/
+*.db
+*.db-wal
+*.db-shm
 
 # Go build output
 /VisualLink_Tasks
 *.exe
+
+# Node（笔记编辑器前端构建）
+node_modules/
 
 # IDE
 .vscode/

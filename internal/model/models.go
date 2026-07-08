@@ -450,6 +450,55 @@ type Attachment struct {
 func (a *Attachment) ThumbURL() string { return fmt.Sprintf("/uploads/%d/thumb", a.ID) }
 func (a *Attachment) FullURL() string  { return fmt.Sprintf("/uploads/%d/full", a.ID) }
 
+// ── Notes（云笔记） ─────────────────────────────────────────────────────────
+
+// Note 的 UpdatedAt 是毫秒精度的文本时间戳（strftime %Y-%m-%d %H:%M:%f），
+// 同时充当乐观锁 token：保存时客户端回传打开时的值，不匹配返回 409。
+type Note struct {
+	ID        int64
+	Title     string
+	ContentMD string
+	OwnerID   int64
+	IsPrivate bool
+	CreatedAt time.Time
+	UpdatedAt string // 原始文本，用于乐观锁比较与排序
+	// Joined
+	OwnerName   string
+	UpdaterName string // 最后更新人显示名
+}
+
+// UpdatedAtLabel 把毫秒精度时间戳转为界面显示格式（东八区）。
+func (n Note) UpdatedAtLabel() string {
+	t, err := time.ParseInLocation("2006-01-02 15:04:05.000", n.UpdatedAt, time.UTC)
+	if err != nil {
+		return n.UpdatedAt
+	}
+	return t.In(shanghaiLoc).Format("2006-01-02 15:04")
+}
+
+type NoteRevision struct {
+	ID        int64
+	NoteID    int64
+	ContentMD string
+	SavedBy   int64
+	SavedAt   time.Time
+	// Joined
+	SaverName string
+}
+
+func (r NoteRevision) SavedAtLabel() string {
+	return r.SavedAt.In(shanghaiLoc).Format("2006-01-02 15:04:05")
+}
+
+type NoteAttachment struct {
+	ID         int64
+	NoteID     int64
+	Filename   string // 原始文件名
+	StoredPath string // 磁盘相对路径，如 "12/a1b2c3d4e5f6a7b8.png"
+	Size       int64
+	CreatedAt  time.Time
+}
+
 // PageData is the top-level template context.
 type PageData struct {
 	CurrentUser   *User

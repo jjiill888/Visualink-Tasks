@@ -43,3 +43,39 @@ go run .             # 启动，监听 :8080
 | `/groups` | 功能组列表 + 新建 |
 | `/groups/{id}` | 功能组详情 |
 | `PATCH /features/{id}/status` | HTMX 状态更新 |
+
+## 云笔记模块（notes）
+
+所见即所得的 Markdown 笔记（Milkdown 编辑器，输入 `## ` 自动变标题），支持中文全文搜索（SQLite FTS5 trigram）、历史版本、图片/文件附件。
+
+### 权限规则
+
+- 登录用户可查看/编辑所有**非私有**笔记（内网协作场景）
+- `私有` 笔记仅创建者可见（编辑页右上角勾选）
+- 删除仅创建者可操作（软删除）
+
+### 路由
+
+| 路径 | 说明 |
+|------|------|
+| `GET /notes` | 笔记列表（最近更新排序 + FTS 搜索框） |
+| `POST /notes` | 新建笔记 |
+| `GET /notes/{id}` | WYSIWYG 编辑页（停顿 2 秒自动保存，乐观锁冲突返回 409） |
+| `GET /notes/{id}/history` | 历史版本弹层（正文变化且距上次快照 >5 分钟才产生新版本，每篇最多 100 条） |
+| `POST /notes/{id}/restore/{rid}` | 恢复到某版本（当前内容先自动存为一条版本） |
+| `POST /notes/{id}/attachments` | 附件上传（≤20MB，扩展名白名单），存 `./data/attachments/{note_id}/` |
+| `GET /attachments/{note_id}/{name}` | 附件下载（需登录，私有笔记附件外人不可见） |
+
+### 前端构建（web/notes-editor）
+
+编辑器岛用 esbuild 打包，产物为 `static/notes-editor.js` + `static/notes-editor.css`（已提交入库，改动源码后需重新构建）：
+
+```bash
+cd web/notes-editor
+npm install        # 首次
+npm run build      # 输出到 ../../static/
+```
+
+- Docker 构建（`docker compose up -d --build`）内置 node 构建阶段，会自动重新打包，无需本地构建
+- `Dockerfile.prebuilt` 快速部署路径直接 COPY 仓库里的 `static/`，改过编辑器源码时记得先在开发机 `npm run build` 并提交产物
+- 服务启动时会对 `notes-editor.js` 计算内容 hash 做缓存版本号（同 `bundle.js` 机制），改版后无需手动清缓存

@@ -1,0 +1,38 @@
+{{template "base.html" .}}
+
+{{define "title"}}历史版本 — {{if .Data.Note.Title}}{{.Data.Note.Title}}{{else}}无标题笔记{{end}}{{end}}
+
+{{define "head"}}
+<link rel="stylesheet" href="/static/notes-editor.css?v={{notesEditorCSSVersion}}">
+{{end}}
+
+{{define "content"}}
+{{$n := .Data.Note}}
+{{$rev := .Data.Rev}}
+<div class="note-editor-page">
+  <div class="note-editor-toolbar">
+    <a href="/notes/{{$n.ID}}" class="us-btn us-btn-sm us-btn-outline">← 返回编辑</a>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span class="text-muted" style="font-size:13px">
+        {{$rev.SavedAtLabel}} 由 {{$rev.SaverName}} 保存的只读快照
+      </span>
+      <form method="POST" action="/notes/{{$n.ID}}/restore/{{$rev.ID}}"
+        onsubmit="return confirm('恢复到此版本？当前内容会先自动存为一条历史版本。')">
+        <button type="submit" class="us-btn us-btn-sm us-btn-primary">恢复到此版本</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="us-card note-editor-card">
+    <div class="note-title-input" style="color:#71767a">{{if $n.Title}}{{$n.Title}}{{else}}无标题笔记{{end}}</div>
+    {{/* data-readonly 让编辑器岛以只读模式渲染该历史版本的 Markdown */}}
+    <div id="note-editor-root" data-readonly="1"></div>
+  </div>
+
+  <textarea id="note-initial" hidden>{{$rev.ContentMD}}</textarea>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script defer src="/static/notes-editor.js?v={{notesEditorVersion}}"></script>
+{{end}}

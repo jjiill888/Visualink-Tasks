@@ -1,0 +1,47 @@
+{{define "notes_list_partial.html"}}
+{{if .Notes}}
+<div class="us-table-wrap">
+  <table class="us-table">
+    <thead>
+      <tr>
+        <th>标题</th>
+        <th style="width:140px">更新人</th>
+        <th style="width:150px">更新时间</th>
+        <th style="width:120px"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {{$uid := .CurrentUserID}}
+      {{range .Notes}}
+      <tr>
+        <td>
+          <a href="/notes/{{.ID}}" style="text-decoration:none;color:inherit;font-weight:500">
+            {{if .Title}}{{.Title}}{{else}}无标题笔记{{end}}
+          </a>
+          {{if .IsPrivate}}<span class="us-badge" title="仅自己可见">私有</span>{{end}}
+        </td>
+        <td class="text-muted">{{if .UpdaterName}}{{.UpdaterName}}{{else}}{{.OwnerName}}{{end}}</td>
+        <td class="text-muted">{{.UpdatedAtLabel}}</td>
+        <td class="text-right">
+          <a href="/notes/{{.ID}}" class="us-btn us-btn-sm us-btn-outline">编辑</a>
+          {{if eq .OwnerID $uid}}
+          <button class="us-btn us-btn-sm us-btn-danger"
+            hx-delete="/notes/{{.ID}}"
+            hx-include="#note-search"
+            hx-target="#notes-list"
+            hx-swap="innerHTML"
+            hx-confirm="确定删除「{{if .Title}}{{.Title}}{{else}}无标题笔记{{end}}」？删除后列表中不再显示。">删除</button>
+          {{end}}
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{else}}
+<div class="us-empty">
+  <div class="us-empty-title">{{if .Query}}没有匹配「{{.Query}}」的笔记{{else}}还没有笔记{{end}}</div>
+  <p style="font-size:13px;color:#71767a">{{if .Query}}换个关键词试试{{else}}点击右上角「新建笔记」开始写作{{end}}</p>
+</div>
+{{end}}
+{{end}}

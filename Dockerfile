@@ -1,4 +1,14 @@
 # syntax=docker/dockerfile:1
+# ── Assets stage: 笔记编辑器（Milkdown）esbuild 打包 ─────────────────────────
+FROM node:22-alpine AS assets
+
+WORKDIR /app/web/notes-editor
+COPY web/notes-editor/package.json web/notes-editor/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci
+COPY web/notes-editor/src ./src
+# build 脚本输出到 ../../static/，即 /app/static/notes-editor.{js,css}
+RUN npm run build
+
 # ── Build stage ──────────────────────────────────────────────────────────────
 FROM golang:1.25-alpine AS builder
 
@@ -26,6 +36,8 @@ WORKDIR /app
 COPY --from=builder /app/featuretrack .
 COPY templates/ templates/
 COPY static/    static/
+# 用容器内新鲜构建的编辑器产物覆盖仓库里提交的版本，保证与源码一致
+COPY --from=assets /app/static/notes-editor.js /app/static/notes-editor.css static/
 
 EXPOSE 8080
 CMD ["./featuretrack"]

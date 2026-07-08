@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"html/template"
 	"log"
@@ -27,11 +29,17 @@ import (
 // bundleVersion reads it via closure.
 var bundleVer string
 
+// notesEditorVer / notesEditorCSSVer：笔记编辑器岛 JS/CSS 的内容 hash，
+// 同样在 main() 中先于模板解析赋值，用作缓存穿透版本号。
+var notesEditorVer, notesEditorCSSVer string
+
 var mentionHighlightRe = regexp.MustCompile(`@([\p{L}\p{N}_]+)`)
 
 var funcMap = template.FuncMap{
-	"add":           func(a, b int) int { return a + b },
-	"bundleVersion": func() string { return bundleVer },
+	"add":                   func(a, b int) int { return a + b },
+	"bundleVersion":         func() string { return bundleVer },
+	"notesEditorVersion":    func() string { return notesEditorVer },
+	"notesEditorCSSVersion": func() string { return notesEditorCSSVer },
 	"firstChar": func(s string) string {
 		for _, r := range s {
 			return string(r)
@@ -74,9 +82,16 @@ func buildTmplMap() map[string]*template.Template {
 	// Pages that extend base.html and need feature_row + group partials
 	withRow := []string{"dashboard.html", "mine.html", "group_detail.html"}
 	// Pages that extend base.html, no partials needed
-	plain := []string{"login.html", "register.html", "groups.html", "submit_standalone.html"}
+	plain := []string{"login.html", "register.html", "groups.html", "submit_standalone.html",
+		"note_edit.html", "note_revision.html"}
 
 	m := make(map[string]*template.Template)
+	// notes.html 内嵌列表片段（搜索时 HTMX 单独刷新该片段）
+	m["notes.html"] = template.Must(template.New("").Funcs(funcMap).ParseFiles(
+		"templates/base.html",
+		"templates/notes_list_partial.html",
+		"templates/notes.html",
+	))
 	for _, page := range withRow {
 		t := template.Must(template.New("").Funcs(funcMap).ParseFiles(
 			"templates/base.html",
@@ -119,6 +134,8 @@ func buildPartialTmpl() *template.Template {
 		"templates/feature_modify.html",
 		"templates/group_action_btn.html",
 		"templates/group_members_partial.html",
+		"templates/notes_list_partial.html",
+		"templates/note_history.html",
 	))
 }
 
@@ -166,6 +183,24 @@ func main() {
 	log.Printf("js bundle: raw=%dB gzip=%dB brotli=%dB version=%s",
 		rawSize, gzSize, brSize, bundleVer)
 
+	// 笔记编辑器岛（esbuild 产物，构建方式见 web/notes-editor/）。
+	// 复用 assets.Bundle 获得内容 hash + 预压缩；CSS 走 /static/* 文件服务，
+	// 单独按内容算 hash 作为 ?v= 参数。
+	notesBundle, err := assets.NewBundle("static", []string{"notes-editor.js"})
+	if err != nil {
+		log.Fatal("bundle notes editor (先运行 web/notes-editor 下的 npm run build):", err)
+	}
+	notesEditorVer = notesBundle.Version()
+	cssBytes, err := os.ReadFile("static/notes-editor.css")
+	if err != nil {
+		log.Fatal("read notes-editor.css (先运行 web/notes-editor 下的 npm run build):", err)
+	}
+	cssSum := sha256.Sum256(cssBytes)
+	notesEditorCSSVer = hex.EncodeToString(cssSum[:6])
+	nRaw, nGz, nBr := notesBundle.Stats()
+	log.Printf("notes editor bundle: raw=%dB gzip=%dB brotli=%dB version=%s",
+		nRaw, nGz, nBr, notesEditorVer)
+
 	handler.SetTemplates(buildTmplMap(), buildPartialTmpl(), buildIMTmpl())
 
 	// Brotli + gzip content-negotiating compression. Brotli wins for Chinese
@@ -189,6 +224,8 @@ func main() {
 	// JS bundle — pre-compressed at startup, served directly with
 	// Content-Encoding already set so the middleware passes through.
 	r.Get("/static/js/bundle.js", jsBundle.Handler())
+	// 笔记编辑器 JS——精确路由优先于下面的 /static/* 通配
+	r.Get("/static/notes-editor.js", notesBundle.Handler())
 
 	// Static files with long cache (JS/CSS never change between deploys)
 	staticFS := http.StripPrefix("/static/", http.FileServer(http.Dir("static")))
@@ -270,6 +307,18 @@ func main() {
 		// WebRTC signaling relay
 		r.Post("/im/call/signal", handler.CallSignal(database))
 
+		// 云笔记
+		r.Get("/notes", handler.NotesPage(database))
+		r.Post("/notes", handler.CreateNote(database))
+		r.Get("/notes/{id}", handler.NoteEditPage(database))
+		r.Put("/notes/{id}", handler.SaveNote(database))
+		r.Delete("/notes/{id}", handler.DeleteNote(database))
+		r.Get("/notes/{id}/history", handler.NoteHistory(database))
+		r.Get("/notes/{id}/revisions/{rid}", handler.NoteRevisionPage(database))
+		r.Post("/notes/{id}/restore/{rid}", handler.RestoreNoteRevision(database))
+		r.Post("/notes/{id}/attachments", handler.UploadNoteAttachment(database))
+		r.Get("/attachments/{id}/{name}", handler.ServeNoteAttachment(database))
+
 		r.Get("/groups", handler.ListGroups(database))
 		r.Post("/groups", handler.CreateGroup(database))
 		r.Get("/groups/{id}", handler.GroupDetail(database))
@@ -314,6 +363,9 @@ func main() {
 	}()
 
 	addr := ":8080"
+	if p := os.Getenv("PORT"); p != "" { // 本地开发可覆盖端口，默认行为不变
+		addr = ":" + p
+	}
 	log.Println("Listening on", addr)
 	srv := &http.Server{
 		Addr:              addr,

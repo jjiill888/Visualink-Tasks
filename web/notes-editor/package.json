@@ -1,0 +1,14 @@
+{
+  "name": "notes-editor",
+  "private": true,
+  "description": "云笔记 Milkdown WYSIWYG 编辑器岛，esbuild 打包为 static/notes-editor.js(+css)",
+  "scripts": {
+    "build": "esbuild src/main.js --bundle --minify --format=iife --target=es2020 --outfile=../../static/notes-editor.js --log-level=info"
+  },
+  "dependencies": {
+    "@milkdown/kit": "^7.15.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.2"
+  }
+}

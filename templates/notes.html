@@ -1,0 +1,31 @@
+{{template "base.html" .}}
+
+{{define "title"}}笔记 — VisualLink Tasks{{end}}
+
+{{define "content"}}
+{{$d := .Data}}
+<div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px">
+  <div>
+    <div class="us-page-title">云笔记</div>
+    <div class="us-page-sub">团队共享的 Markdown 笔记，非私有笔记所有人可查看和编辑</div>
+  </div>
+  <form method="POST" action="/notes">
+    <button type="submit" class="us-btn us-btn-primary">+ 新建笔记</button>
+  </form>
+</div>
+
+<div class="us-card" style="margin-top:16px">
+  <div class="us-card-head">
+    <span class="us-card-title">全部笔记</span>
+    <input type="search" id="note-search" name="q" class="us-input" style="max-width:280px"
+      placeholder="搜索标题或内容…" value="{{$d.Query}}"
+      hx-get="/notes"
+      hx-trigger="keyup changed delay:300ms, search"
+      hx-target="#notes-list"
+      hx-swap="innerHTML">
+  </div>
+  <div class="us-card-body" id="notes-list">
+    {{template "notes_list_partial.html" $d}}
+  </div>
+</div>
+{{end}}
