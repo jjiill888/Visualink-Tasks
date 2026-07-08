@@ -6,6 +6,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light dark">
+  <script>
+  /* 主题先行：在样式应用前定好 .ne-dark，避免深色用户看到白屏闪烁。
+     ne-theme ∈ auto(默认,跟随系统)/light/dark，顶栏按钮循环切换 */
+  (function () {
+    var t = localStorage.getItem('ne-theme');
+    if (t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('ne-dark');
+    }
+    if (t === 'light' || t === 'dark') document.documentElement.style.colorScheme = t;
+  })();
+  </script>
   <title>{{if $n.Title}}{{$n.Title}}{{else}}无标题笔记{{end}} — 笔记</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%234f46e5'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-weight='bold' font-size='16' fill='white'>VT</text></svg>">
   {{/* 跨境高 RTT 优化：只有编辑页自身样式阻塞渲染；
@@ -38,7 +49,8 @@
         onclick="window.dispatchEvent(new CustomEvent('open-modal')); htmx.ajax('GET', '/notes/{{$n.ID}}/history', {target:'#modal-content', swap:'innerHTML'})">
         历史版本
       </button>
-      <button type="button" class="ne-link" id="ne-panel-toggle" title="文档列表与目录（鼠标移到窗口左缘也会弹出）">侧栏</button>
+      <button type="button" class="ne-link" id="ne-panel-toggle" title="文件与大纲（鼠标移到窗口左缘也会弹出）">侧栏</button>
+      <button type="button" class="ne-link" id="ne-theme-toggle" title="切换配色：自动 → 浅色 → 深色">自动</button>
       {{if eq .CurrentUser.ID $n.OwnerID}}
       <label class="ne-check" title="勾选后仅自己可见">
         <input type="checkbox" id="note-private" {{if $n.IsPrivate}}checked{{end}}> 私有
@@ -61,21 +73,20 @@
   {{/* 初始 Markdown 放在隐藏 textarea 里，天然 HTML 转义，编辑器岛读 .value */}}
   <textarea id="note-initial" hidden>{{$n.ContentMD}}</textarea>
 
-  <!-- 左侧面板：工作区文档列表（GET /notes/panel）+ 当前文档目录（前端从编辑器 DOM 生成）。
-       鼠标在窗口左缘停留或点顶栏「侧栏」弹出；可固定。 -->
-  <aside id="ne-panel" aria-label="文档列表与目录">
-    <div class="ne-panel-top">
-      <span class="ne-panel-title">工作区</span>
-      <button type="button" id="ne-panel-pin" class="ne-link">固定</button>
+  <!-- 左侧面板（Typora 式侧栏）：「文件」/「大纲」两视图，底部切换。
+       文件 = 工作区文档列表（GET /notes/panel）；大纲 = 当前文档目录（前端从编辑器 DOM 生成）。
+       鼠标在窗口左缘停留临时探出；顶栏「侧栏」按钮 = 常驻开关。 -->
+  <aside id="ne-panel" aria-label="文件与大纲">
+    <div class="ne-panel-body">
+      <div id="ne-panel-docs" class="ne-panel-view"><div class="ne-panel-empty">加载中…</div></div>
+      <nav id="ne-panel-toc" class="ne-panel-view" hidden><div class="ne-panel-empty">暂无标题</div></nav>
     </div>
-    <section class="ne-panel-section">
-      <div class="ne-panel-caption">文档 <a class="ne-panel-new" href="/notes/new" title="新建笔记并跳转">＋ 新建</a></div>
-      <div id="ne-panel-docs"><div class="ne-panel-empty">加载中…</div></div>
-    </section>
-    <section class="ne-panel-section">
-      <div class="ne-panel-caption">目录</div>
-      <nav id="ne-panel-toc"><div class="ne-panel-empty">暂无标题</div></nav>
-    </section>
+    <footer class="ne-panel-footer">
+      <button type="button" id="ne-tab-files" class="ne-panel-tab">文件</button>
+      <button type="button" id="ne-tab-outline" class="ne-panel-tab">大纲</button>
+      <span class="ne-panel-spacer"></span>
+      <a class="ne-panel-tab" href="/notes/new" title="新建笔记并跳转">＋</a>
+    </footer>
   </aside>
 
   <script>
@@ -118,12 +129,14 @@
   </script>
 
   <script>
-  /* 左侧面板：左缘悬停/「侧栏」按钮弹出，工作区文档列表 + 当前文档目录 */
+  /* 左侧面板（Typora 式侧栏）：左缘悬停临时探出；「侧栏」按钮 = 常驻开关；
+     底部「文件/大纲」切换视图 */
   (function () {
     var panel = document.getElementById('ne-panel');
-    var pinBtn = document.getElementById('ne-panel-pin');
     var docsEl = document.getElementById('ne-panel-docs');
     var tocEl = document.getElementById('ne-panel-toc');
+    var tabFiles = document.getElementById('ne-tab-files');
+    var tabOutline = document.getElementById('ne-tab-outline');
     var root = document.getElementById('note-editor-root');
     var noteId = root.dataset.noteId;
     var pinned = localStorage.getItem('ne-panel-pinned') === '1';
@@ -133,24 +146,48 @@
 
     function setOpen(v) {
       panel.classList.toggle('ne-open', v);
+      panel.classList.toggle('ne-pinned', v && pinned);
       if (v) refreshDocs();
     }
 
-    function renderPin() {
-      pinBtn.textContent = pinned ? '取消固定' : '固定';
-      pinBtn.title = pinned ? '取消固定后，鼠标移出侧栏即收起' : '固定后侧栏保持展开';
-    }
-
-    pinBtn.addEventListener('click', function () {
-      pinned = !pinned;
-      localStorage.setItem('ne-panel-pinned', pinned ? '1' : '0');
-      renderPin();
-      if (!pinned) setOpen(false);
-    });
-
+    /* 顶栏「侧栏」按钮：点开即常驻，再点关闭（悬停临时探出时点击则转为常驻） */
     document.getElementById('ne-panel-toggle').addEventListener('click', function () {
-      setOpen(!isOpen());
+      pinned = !(pinned && isOpen());
+      localStorage.setItem('ne-panel-pinned', pinned ? '1' : '0');
+      setOpen(pinned);
     });
+
+    /* 底部「文件/大纲」切换，选择记住 */
+    function setTab(name) {
+      var files = name !== 'outline';
+      docsEl.hidden = !files;
+      tocEl.hidden = files;
+      tabFiles.classList.toggle('ne-tab-on', files);
+      tabOutline.classList.toggle('ne-tab-on', !files);
+      localStorage.setItem('ne-panel-tab', files ? 'files' : 'outline');
+    }
+    tabFiles.addEventListener('click', function () { setTab('files'); });
+    tabOutline.addEventListener('click', function () { setTab('outline'); });
+    setTab(localStorage.getItem('ne-panel-tab') || 'files');
+
+    /* 配色切换：自动(跟随系统) → 浅色 → 深色；head 里的预判脚本负责首屏防闪烁 */
+    var themeBtn = document.getElementById('ne-theme-toggle');
+    var themeMedia = matchMedia('(prefers-color-scheme: dark)');
+    function applyTheme() {
+      var t = localStorage.getItem('ne-theme') || 'auto';
+      var dark = t === 'dark' || (t === 'auto' && themeMedia.matches);
+      document.documentElement.classList.toggle('ne-dark', dark);
+      document.documentElement.style.colorScheme = t === 'auto' ? '' : t; /* '' 回落到 meta 的 light dark */
+      themeBtn.textContent = { auto: '自动', light: '浅色', dark: '深色' }[t];
+    }
+    themeBtn.addEventListener('click', function () {
+      var order = ['auto', 'light', 'dark'];
+      var cur = localStorage.getItem('ne-theme') || 'auto';
+      localStorage.setItem('ne-theme', order[(order.indexOf(cur) + 1) % order.length]);
+      applyTheme();
+    });
+    themeMedia.addEventListener('change', applyTheme); /* 「自动」下实时跟随系统切换 */
+    applyTheme();
 
     /* 左缘悬停弹出：左侧 16px 内停留 180ms 才触发防误弹；
        面板展开后覆盖该区域，不会反复触发。
@@ -224,7 +261,6 @@
     }).observe(root, { childList: true, subtree: true, characterData: true });
     buildToc();
 
-    renderPin();
     if (pinned) setOpen(true);
   })();
   </script>

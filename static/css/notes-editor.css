@@ -442,8 +442,9 @@ body.note-standalone ::selection {
   padding: 0 3px;
 }
 
-/* ── 2.5 左侧面板：工作区文档列表 + 当前文档目录 ─────────────────────
-   左缘悬停或顶栏「侧栏」按钮弹出；覆盖式抽屉，不挤压正文。
+/* ── 2.5 左侧面板：Typora 式侧栏 ─────────────────────────────────────
+   同一时间只显示一个视图（「文件」或「大纲」），底部一条切换栏。
+   左缘悬停临时探出；顶栏「侧栏」按钮 = 常驻开关（状态记 localStorage）。
    放左边还避开了右缘滚动条：指针悬在滚动条上时页面收不到 mousemove。 */
 
 #ne-panel {
@@ -451,15 +452,15 @@ body.note-standalone ::selection {
   top: 0;
   left: 0;
   bottom: 0;
-  width: 264px;
+  width: 240px;
   box-sizing: border-box;
-  padding: 48px 0 24px; /* 顶部让开 40px 悬浮顶栏（其背景不透明、z-index 更高） */
+  padding-top: 48px; /* 顶部让开 40px 悬浮顶栏（其背景不透明、z-index 更高） */
+  display: flex;
+  flex-direction: column;
   background: #fafafa;
   border-right: 1px solid var(--ne-line);
   transform: translateX(-100%);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  transition: transform 0.2s ease;
   z-index: 40; /* 低于顶栏(50)与弹窗 */
   font-size: 13px;
 }
@@ -469,53 +470,22 @@ body.note-standalone ::selection {
   box-shadow: 6px 0 20px rgba(0, 0, 0, 0.06);
 }
 
-.ne-panel-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 16px 8px;
+/* 常驻（固定）时是页面的一部分，不带浮层阴影 */
+#ne-panel.ne-pinned {
+  box-shadow: none;
 }
 
-/* .ne-link 默认 0.35 透明度靠顶栏悬停恢复；面板内的按钮不受顶栏控制，直接全亮 */
-#ne-panel .ne-link {
-  opacity: 1;
+.ne-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 0 12px;
 }
 
-.ne-panel-title {
-  font-size: 12px;
-  color: var(--ne-faint);
-  user-select: none;
-}
-
-.ne-panel-section {
-  padding: 8px 0;
-  border-top: 1px solid var(--ne-line);
-}
-
-.ne-panel-caption {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 16px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ne-muted);
-  user-select: none;
-}
-
-.ne-panel-new {
-  font-weight: 400;
-  color: var(--ne-muted);
-  text-decoration: none;
-}
-
-.ne-panel-new:hover {
-  color: var(--ne-fg);
-}
-
+/* 分组小标签（公共文档/私人文档）：极淡，只起分隔作用 */
 .ne-panel-head {
-  padding: 6px 16px 2px;
-  font-size: 12px;
+  padding: 12px 16px 3px;
+  font-size: 11px;
   color: var(--ne-faint);
   user-select: none;
 }
@@ -573,6 +543,43 @@ body.note-standalone ::selection {
 #ne-panel-toc .ne-toc-5 { padding-left: 64px; }
 #ne-panel-toc .ne-toc-6 { padding-left: 76px; }
 
+/* 底部切换栏：文件 | 大纲，右端「＋」新建（仿 Typora 侧栏底栏） */
+.ne-panel-footer {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 34px;
+  padding: 0 8px;
+  border-top: 1px solid var(--ne-line);
+}
+
+.ne-panel-tab {
+  font: inherit;
+  font-size: 12px;
+  color: var(--ne-muted);
+  background: none;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 9px;
+  cursor: pointer;
+  text-decoration: none;
+  user-select: none;
+}
+
+.ne-panel-tab:hover {
+  color: var(--ne-fg);
+  background: rgba(150, 150, 150, 0.1);
+}
+
+.ne-panel-tab.ne-tab-on {
+  color: var(--ne-fg);
+  font-weight: 500;
+}
+
+.ne-panel-spacer {
+  flex: 1;
+}
+
 /* 目录跳转时给悬浮顶栏留出空隙 */
 .milkdown .ProseMirror h1,
 .milkdown .ProseMirror h2,
@@ -610,159 +617,161 @@ body.note-standalone *::-webkit-scrollbar-thumb:hover {
 
 /* ── 4. 深色模式（仅独立编辑页；历史只读页带应用外壳保持浅色） ── */
 
-@media (prefers-color-scheme: dark) {
-  body.note-standalone {
-    --ne-bg: #1e1e1e;
-    --ne-fg: #d4d4d4;
-    --ne-heading: #e3e3e3;
-    --ne-muted: #808080;
-    --ne-faint: #555555;
-    --ne-line: #333333;
-    --ne-accent: #6ca0dc;
-  }
+/* 深色规则由 <html> 上的 .ne-dark 类驱动(不再用媒体查询):
+   主题按钮循环 自动/浅色/深色,「自动」时由页面 JS 按系统偏好加/去该类。
+   仍只作用于 body.note-standalone,历史只读页(带应用外壳)保持浅色。 */
 
-  body.note-standalone .note-save-status.ne-status-err {
-    color: #f87171;
-  }
+.ne-dark body.note-standalone {
+  --ne-bg: #1e1e1e;
+  --ne-fg: #d4d4d4;
+  --ne-heading: #e3e3e3;
+  --ne-muted: #808080;
+  --ne-faint: #555555;
+  --ne-line: #333333;
+  --ne-accent: #6ca0dc;
+}
 
-  body.note-standalone ::selection {
-    background: rgba(90, 140, 200, 0.3);
-  }
+.ne-dark body.note-standalone .note-save-status.ne-status-err {
+  color: #f87171;
+}
 
-  body.note-standalone #ne-panel {
-    background: #252526;
-  }
+.ne-dark body.note-standalone ::selection {
+  background: rgba(90, 140, 200, 0.3);
+}
 
-  body.note-standalone #ne-panel.ne-open {
-    box-shadow: 6px 0 20px rgba(0, 0, 0, 0.35);
-  }
+.ne-dark body.note-standalone #ne-panel {
+  background: #252526;
+}
 
-  body.note-standalone .ne-panel-list a.ne-active {
-    background: rgba(108, 160, 220, 0.12);
-  }
+.ne-dark body.note-standalone #ne-panel.ne-open {
+  box-shadow: 6px 0 20px rgba(0, 0, 0, 0.35);
+}
 
-  body.note-standalone .milkdown .ProseMirror {
-    color: #d4d4d4;
-    caret-color: #6ca0dc;
-  }
+.ne-dark body.note-standalone .ne-panel-list a.ne-active {
+  background: rgba(108, 160, 220, 0.12);
+}
 
-  body.note-standalone .milkdown .ProseMirror h1,
-  body.note-standalone .milkdown .ProseMirror h2,
-  body.note-standalone .milkdown .ProseMirror h3,
-  body.note-standalone .milkdown .ProseMirror h4,
-  body.note-standalone .milkdown .ProseMirror h5,
-  body.note-standalone .milkdown .ProseMirror h6 {
-    color: #e3e3e3;
-  }
+.ne-dark body.note-standalone .milkdown .ProseMirror {
+  color: #d4d4d4;
+  caret-color: #6ca0dc;
+}
 
-  body.note-standalone .milkdown .ProseMirror blockquote {
-    border-left-color: #444;
-    color: #999;
-  }
+.ne-dark body.note-standalone .milkdown .ProseMirror h1,
+.ne-dark body.note-standalone .milkdown .ProseMirror h2,
+.ne-dark body.note-standalone .milkdown .ProseMirror h3,
+.ne-dark body.note-standalone .milkdown .ProseMirror h4,
+.ne-dark body.note-standalone .milkdown .ProseMirror h5,
+.ne-dark body.note-standalone .milkdown .ProseMirror h6 {
+  color: #e3e3e3;
+}
 
-  body.note-standalone .milkdown .ProseMirror code {
-    background: #2c2c2c;
-  }
+.ne-dark body.note-standalone .milkdown .ProseMirror blockquote {
+  border-left-color: #444;
+  color: #999;
+}
 
-  body.note-standalone .milkdown .ProseMirror pre {
-    background: #262626;
-    border-color: #333;
-  }
+.ne-dark body.note-standalone .milkdown .ProseMirror code {
+  background: #2c2c2c;
+}
 
-  body.note-standalone .milkdown .ProseMirror pre code {
-    background: none;
-  }
+.ne-dark body.note-standalone .milkdown .ProseMirror pre {
+  background: #262626;
+  border-color: #333;
+}
 
-  body.note-standalone .milkdown .ProseMirror hr {
-    border-top-color: #333;
-  }
+.ne-dark body.note-standalone .milkdown .ProseMirror pre code {
+  background: none;
+}
 
-  body.note-standalone .milkdown .ProseMirror a {
-    color: #6ca0dc;
-    text-decoration-color: rgba(108, 160, 220, 0.4);
-  }
+.ne-dark body.note-standalone .milkdown .ProseMirror hr {
+  border-top-color: #333;
+}
 
-  body.note-standalone .milkdown .ProseMirror th,
-  body.note-standalone .milkdown .ProseMirror td {
-    border-bottom-color: #333;
-  }
+.ne-dark body.note-standalone .milkdown .ProseMirror a {
+  color: #6ca0dc;
+  text-decoration-color: rgba(108, 160, 220, 0.4);
+}
 
-  body.note-standalone .milkdown .ProseMirror th {
-    border-bottom-color: #444;
-  }
+.ne-dark body.note-standalone .milkdown .ProseMirror th,
+.ne-dark body.note-standalone .milkdown .ProseMirror td {
+  border-bottom-color: #333;
+}
 
-  body.note-standalone .milkdown .ProseMirror-selectednode {
-    outline-color: rgba(150, 150, 150, 0.5);
-  }
+.ne-dark body.note-standalone .milkdown .ProseMirror th {
+  border-bottom-color: #444;
+}
 
-  body.note-standalone .milkdown .ProseMirror .selectedCell::after {
-    background: rgba(90, 140, 200, 0.2);
-  }
+.ne-dark body.note-standalone .milkdown .ProseMirror-selectednode {
+  outline-color: rgba(150, 150, 150, 0.5);
+}
 
-  body.note-standalone .ne-table-toolbar {
-    background: #2c2c2c;
-    border-color: #3a3a3a;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-  }
+.ne-dark body.note-standalone .milkdown .ProseMirror .selectedCell::after {
+  background: rgba(90, 140, 200, 0.2);
+}
 
-  body.note-standalone .ne-table-toolbar button {
-    color: #999;
-  }
+.ne-dark body.note-standalone .ne-table-toolbar {
+  background: #2c2c2c;
+  border-color: #3a3a3a;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
 
-  body.note-standalone .ne-table-toolbar button:hover {
-    background: #383838;
-    color: #d4d4d4;
-  }
+.ne-dark body.note-standalone .ne-table-toolbar button {
+  color: #999;
+}
 
-  body.note-standalone .ne-table-toolbar .ne-tt-sep {
-    background: #3a3a3a;
-  }
+.ne-dark body.note-standalone .ne-table-toolbar button:hover {
+  background: #383838;
+  color: #d4d4d4;
+}
 
-  body.note-standalone .milkdown .ProseMirror pre.note-frontmatter {
-    background: none;
-    border-left-color: #333;
-    color: #808080;
-  }
+.ne-dark body.note-standalone .ne-table-toolbar .ne-tt-sep {
+  background: #3a3a3a;
+}
 
-  body.note-standalone .milkdown .ProseMirror span[data-type='html'] {
-    color: #808080;
-    background: rgba(150, 150, 150, 0.12);
-  }
+.ne-dark body.note-standalone .milkdown .ProseMirror pre.note-frontmatter {
+  background: none;
+  border-left-color: #333;
+  color: #808080;
+}
 
-  /* 历史版本弹层（us-* 组件）在深色独立页里的最小适配 */
-  body.note-standalone .modal-box {
-    background: #252526;
-    color: #d4d4d4;
-  }
+.ne-dark body.note-standalone .milkdown .ProseMirror span[data-type='html'] {
+  color: #808080;
+  background: rgba(150, 150, 150, 0.12);
+}
 
-  body.note-standalone .modal-box .modal-title {
-    color: #e3e3e3;
-  }
+/* 历史版本弹层（us-* 组件）在深色独立页里的最小适配 */
+.ne-dark body.note-standalone .modal-box {
+  background: #252526;
+  color: #d4d4d4;
+}
 
-  body.note-standalone .modal-box .us-table th,
-  body.note-standalone .modal-box .us-table td {
-    border-color: #3a3a3a;
-    color: #d4d4d4;
-  }
+.ne-dark body.note-standalone .modal-box .modal-title {
+  color: #e3e3e3;
+}
 
-  body.note-standalone .modal-box .us-empty-title {
-    color: #d4d4d4;
-  }
+.ne-dark body.note-standalone .modal-box .us-table th,
+.ne-dark body.note-standalone .modal-box .us-table td {
+  border-color: #3a3a3a;
+  color: #d4d4d4;
+}
 
-  html,
-  body.note-standalone * {
-    scrollbar-color: #424242 transparent;
-  }
+.ne-dark body.note-standalone .modal-box .us-empty-title {
+  color: #d4d4d4;
+}
 
-  html::-webkit-scrollbar-thumb,
-  body.note-standalone *::-webkit-scrollbar-thumb {
-    background: #424242;
-  }
+html.ne-dark,
+.ne-dark body.note-standalone * {
+  scrollbar-color: #424242 transparent;
+}
 
-  html::-webkit-scrollbar-thumb:hover,
-  body.note-standalone *::-webkit-scrollbar-thumb:hover {
-    background: #555;
-  }
+html.ne-dark::-webkit-scrollbar-thumb,
+.ne-dark body.note-standalone *::-webkit-scrollbar-thumb {
+  background: #424242;
+}
+
+html.ne-dark::-webkit-scrollbar-thumb:hover,
+.ne-dark body.note-standalone *::-webkit-scrollbar-thumb:hover {
+  background: #555;
 }
 
 /* ── 5. 历史版本只读页（note_revision.html，带应用外壳）沿用的布局 ── */
