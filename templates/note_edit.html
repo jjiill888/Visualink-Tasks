@@ -38,6 +38,7 @@
         onclick="window.dispatchEvent(new CustomEvent('open-modal')); htmx.ajax('GET', '/notes/{{$n.ID}}/history', {target:'#modal-content', swap:'innerHTML'})">
         历史版本
       </button>
+      <button type="button" class="ne-link" id="ne-panel-toggle" title="文档列表与目录（鼠标移到窗口右缘也会弹出）">侧栏</button>
       {{if eq .CurrentUser.ID $n.OwnerID}}
       <label class="ne-check" title="勾选后仅自己可见">
         <input type="checkbox" id="note-private" {{if $n.IsPrivate}}checked{{end}}> 私有
@@ -59,6 +60,23 @@
 
   {{/* 初始 Markdown 放在隐藏 textarea 里，天然 HTML 转义，编辑器岛读 .value */}}
   <textarea id="note-initial" hidden>{{$n.ContentMD}}</textarea>
+
+  <!-- 右侧面板：工作区文档列表（GET /notes/panel）+ 当前文档目录（前端从编辑器 DOM 生成）。
+       鼠标在窗口右缘停留或点顶栏「侧栏」弹出；可固定。 -->
+  <aside id="ne-panel" aria-label="文档列表与目录">
+    <div class="ne-panel-top">
+      <span class="ne-panel-title">工作区</span>
+      <button type="button" id="ne-panel-pin" class="ne-link">固定</button>
+    </div>
+    <section class="ne-panel-section">
+      <div class="ne-panel-caption">文档 <a class="ne-panel-new" href="/notes/new" title="新建笔记并跳转">＋ 新建</a></div>
+      <div id="ne-panel-docs"><div class="ne-panel-empty">加载中…</div></div>
+    </section>
+    <section class="ne-panel-section">
+      <div class="ne-panel-caption">目录</div>
+      <nav id="ne-panel-toc"><div class="ne-panel-empty">暂无标题</div></nav>
+    </section>
+  </aside>
 
   <script>
   /* 秒出正文：编辑器 JS（br 后约 260KB）在跨境链路上加载期间，
@@ -97,6 +115,117 @@
     clearTimeout(toast._timer);
     toast._timer = setTimeout(function() { toast.textContent = ''; }, 4000);
   });
+  </script>
+
+  <script>
+  /* 右侧面板：右缘悬停/「侧栏」按钮弹出，工作区文档列表 + 当前文档目录 */
+  (function () {
+    var panel = document.getElementById('ne-panel');
+    var pinBtn = document.getElementById('ne-panel-pin');
+    var docsEl = document.getElementById('ne-panel-docs');
+    var tocEl = document.getElementById('ne-panel-toc');
+    var root = document.getElementById('note-editor-root');
+    var noteId = root.dataset.noteId;
+    var pinned = localStorage.getItem('ne-panel-pinned') === '1';
+    var openTimer = null, closeTimer = null, lastFetch = 0;
+
+    function isOpen() { return panel.classList.contains('ne-open'); }
+
+    function setOpen(v) {
+      panel.classList.toggle('ne-open', v);
+      if (v) refreshDocs();
+    }
+
+    function renderPin() {
+      pinBtn.textContent = pinned ? '取消固定' : '固定';
+      pinBtn.title = pinned ? '取消固定后，鼠标移出侧栏即收起' : '固定后侧栏保持展开';
+    }
+
+    pinBtn.addEventListener('click', function () {
+      pinned = !pinned;
+      localStorage.setItem('ne-panel-pinned', pinned ? '1' : '0');
+      renderPin();
+      if (!pinned) setOpen(false);
+    });
+
+    document.getElementById('ne-panel-toggle').addEventListener('click', function () {
+      setOpen(!isOpen());
+    });
+
+    /* 右缘悬停弹出：右侧 16px 内停留 180ms 才触发，
+       避免去够滚动条时误弹；面板展开后覆盖该区域，不会反复触发 */
+    document.addEventListener('mousemove', function (e) {
+      var inZone = e.clientX >= window.innerWidth - 16;
+      if (inZone && !openTimer && !isOpen()) {
+        openTimer = setTimeout(function () { openTimer = null; setOpen(true); }, 180);
+      } else if (!inZone && openTimer) {
+        clearTimeout(openTimer);
+        openTimer = null;
+      }
+    });
+
+    panel.addEventListener('mouseenter', function () { clearTimeout(closeTimer); });
+    panel.addEventListener('mouseleave', function () {
+      if (pinned) return;
+      clearTimeout(closeTimer);
+      closeTimer = setTimeout(function () { setOpen(false); }, 300);
+    });
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && isOpen() && !pinned) setOpen(false);
+    });
+
+    /* 文档列表：打开时拉取，30 秒内不重复请求 */
+    function refreshDocs() {
+      if (Date.now() - lastFetch < 30000) return;
+      lastFetch = Date.now();
+      fetch('/notes/panel', { credentials: 'same-origin' })
+        .then(function (r) {
+          if (!r.ok) throw new Error(String(r.status));
+          return r.text();
+        })
+        .then(function (html) {
+          docsEl.innerHTML = html;
+          var cur = docsEl.querySelector('a[data-note-id="' + noteId + '"]');
+          if (cur) cur.classList.add('ne-active');
+        })
+        .catch(function () {
+          lastFetch = 0; /* 失败后下次打开重试 */
+          docsEl.innerHTML = '<div class="ne-panel-empty">加载失败，重新打开侧栏重试</div>';
+        });
+    }
+
+    /* 目录：从编辑器 DOM 取标题；内容变化（含挂载完成）防抖重建 */
+    function buildToc() {
+      var hs = root.querySelectorAll('h1, h2, h3, h4, h5, h6');
+      if (!hs.length) {
+        tocEl.innerHTML = '<div class="ne-panel-empty">暂无标题</div>';
+        return;
+      }
+      var frag = document.createDocumentFragment();
+      hs.forEach(function (h) {
+        var a = document.createElement('a');
+        a.className = 'ne-toc-' + h.tagName.charAt(1);
+        a.textContent = h.textContent.trim() || '（空标题）';
+        a.addEventListener('click', function () {
+          h.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+        frag.appendChild(a);
+      });
+      tocEl.innerHTML = '';
+      tocEl.appendChild(frag);
+    }
+
+    var tocTimer = null;
+    new MutationObserver(function () {
+      clearTimeout(tocTimer);
+      tocTimer = setTimeout(buildToc, 300);
+    }).observe(root, { childList: true, subtree: true, characterData: true });
+    buildToc();
+
+    renderPin();
+    if (pinned) setOpen(true);
+  })();
   </script>
 </body>
 </html>

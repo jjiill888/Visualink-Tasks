@@ -1,0 +1,26 @@
+{{define "notes_panel_partial.html"}}
+{{/* 编辑页右侧面板的文档列表片段（GET /notes/panel）。
+     当前文档的高亮由前端按 data-note-id 标记（ne-active）。 */}}
+<div class="ne-panel-group">
+  <div class="ne-panel-head">公共文档</div>
+  {{if .Public}}
+  <ul class="ne-panel-list">
+    {{range .Public}}
+    <li><a href="/notes/{{.ID}}" data-note-id="{{.ID}}"
+      title="{{if .UpdaterName}}{{.UpdaterName}}{{else}}{{.OwnerName}}{{end}} 更新于 {{.UpdatedAtLabel}}">{{if .Title}}{{.Title}}{{else}}无标题笔记{{end}}</a></li>
+    {{end}}
+  </ul>
+  {{else}}<div class="ne-panel-empty">暂无</div>{{end}}
+</div>
+<div class="ne-panel-group">
+  <div class="ne-panel-head">私人文档</div>
+  {{if .Private}}
+  <ul class="ne-panel-list">
+    {{range .Private}}
+    <li><a href="/notes/{{.ID}}" data-note-id="{{.ID}}"
+      title="更新于 {{.UpdatedAtLabel}}">{{if .Title}}{{.Title}}{{else}}无标题笔记{{end}}</a></li>
+    {{end}}
+  </ul>
+  {{else}}<div class="ne-panel-empty">暂无</div>{{end}}
+</div>
+{{end}}

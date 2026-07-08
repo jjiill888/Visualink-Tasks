@@ -139,6 +139,7 @@ func buildPartialTmpl() *template.Template {
 		"templates/group_action_btn.html",
 		"templates/group_members_partial.html",
 		"templates/notes_list_partial.html",
+		"templates/notes_panel_partial.html",
 		"templates/note_history.html",
 	))
 }
@@ -315,6 +316,7 @@ func main() {
 		// 云笔记
 		r.Get("/notes", handler.NotesPage(database))
 		r.Get("/notes/new", handler.NewNote(database))
+		r.Get("/notes/panel", handler.NotesPanel(database)) // 编辑页右侧面板（chi 静态段优先于 {id}）
 		r.Get("/notes/{id}", handler.NoteEditPage(database))
 		r.Put("/notes/{id}", handler.SaveNote(database))
 		r.Delete("/notes/{id}", handler.DeleteNote(database))

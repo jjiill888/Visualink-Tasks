@@ -102,6 +102,33 @@ func NotesPage(database *db.DB) http.HandlerFunc {
 	}
 }
 
+// NotesPanel GET /notes/panel — 编辑页右侧面板的文档列表片段。
+// 公共文档 = 所有人的非私有笔记；私人文档 = 自己的私有笔记（ListNotes 的
+// 可见性规则本就如此，这里只按 IsPrivate 分组）。
+func NotesPanel(database *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := UserFromContext(r)
+		notes, err := database.ListNotes(u.ID, "")
+		if err != nil {
+			http.Error(w, "查询失败", http.StatusInternalServerError)
+			return
+		}
+		var public, private []*model.Note
+		for _, n := range notes {
+			if n.IsPrivate {
+				private = append(private, n)
+			} else {
+				public = append(public, n)
+			}
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		data := map[string]any{"Public": public, "Private": private}
+		if err := PartialTmpl.ExecuteTemplate(w, "notes_panel_partial.html", data); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}
+}
+
 // NewNote GET /notes/new — 创建空笔记后 302 到编辑页。
 // 用 GET 是为了让列表页的「新建笔记」做成 target="_blank" 的普通链接，
 // 直接在新标签页里落到新笔记的编辑器。
