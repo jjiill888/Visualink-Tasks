@@ -442,20 +442,21 @@ body.note-standalone ::selection {
   padding: 0 3px;
 }
 
-/* ── 2.5 右侧面板：工作区文档列表 + 当前文档目录 ─────────────────────
-   右缘悬停或顶栏「侧栏」按钮弹出；覆盖式抽屉，不挤压正文。 */
+/* ── 2.5 左侧面板：工作区文档列表 + 当前文档目录 ─────────────────────
+   左缘悬停或顶栏「侧栏」按钮弹出；覆盖式抽屉，不挤压正文。
+   放左边还避开了右缘滚动条：指针悬在滚动条上时页面收不到 mousemove。 */
 
 #ne-panel {
   position: fixed;
   top: 0;
-  right: 0;
+  left: 0;
   bottom: 0;
   width: 264px;
   box-sizing: border-box;
   padding: 48px 0 24px; /* 顶部让开 40px 悬浮顶栏（其背景不透明、z-index 更高） */
   background: #fafafa;
-  border-left: 1px solid var(--ne-line);
-  transform: translateX(100%);
+  border-right: 1px solid var(--ne-line);
+  transform: translateX(-100%);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -465,7 +466,7 @@ body.note-standalone ::selection {
 
 #ne-panel.ne-open {
   transform: none;
-  box-shadow: -6px 0 20px rgba(0, 0, 0, 0.06);
+  box-shadow: 6px 0 20px rgba(0, 0, 0, 0.06);
 }
 
 .ne-panel-top {
@@ -633,7 +634,7 @@ body.note-standalone *::-webkit-scrollbar-thumb:hover {
   }
 
   body.note-standalone #ne-panel.ne-open {
-    box-shadow: -6px 0 20px rgba(0, 0, 0, 0.35);
+    box-shadow: 6px 0 20px rgba(0, 0, 0, 0.35);
   }
 
   body.note-standalone .ne-panel-list a.ne-active {

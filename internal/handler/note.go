@@ -102,7 +102,7 @@ func NotesPage(database *db.DB) http.HandlerFunc {
 	}
 }
 
-// NotesPanel GET /notes/panel — 编辑页右侧面板的文档列表片段。
+// NotesPanel GET /notes/panel — 编辑页左侧面板的文档列表片段。
 // 公共文档 = 所有人的非私有笔记；私人文档 = 自己的私有笔记（ListNotes 的
 // 可见性规则本就如此，这里只按 IsPrivate 分组）。
 func NotesPanel(database *db.DB) http.HandlerFunc {

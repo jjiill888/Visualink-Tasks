@@ -38,7 +38,7 @@
         onclick="window.dispatchEvent(new CustomEvent('open-modal')); htmx.ajax('GET', '/notes/{{$n.ID}}/history', {target:'#modal-content', swap:'innerHTML'})">
         历史版本
       </button>
-      <button type="button" class="ne-link" id="ne-panel-toggle" title="文档列表与目录（鼠标移到窗口右缘也会弹出）">侧栏</button>
+      <button type="button" class="ne-link" id="ne-panel-toggle" title="文档列表与目录（鼠标移到窗口左缘也会弹出）">侧栏</button>
       {{if eq .CurrentUser.ID $n.OwnerID}}
       <label class="ne-check" title="勾选后仅自己可见">
         <input type="checkbox" id="note-private" {{if $n.IsPrivate}}checked{{end}}> 私有
@@ -61,8 +61,8 @@
   {{/* 初始 Markdown 放在隐藏 textarea 里，天然 HTML 转义，编辑器岛读 .value */}}
   <textarea id="note-initial" hidden>{{$n.ContentMD}}</textarea>
 
-  <!-- 右侧面板：工作区文档列表（GET /notes/panel）+ 当前文档目录（前端从编辑器 DOM 生成）。
-       鼠标在窗口右缘停留或点顶栏「侧栏」弹出；可固定。 -->
+  <!-- 左侧面板：工作区文档列表（GET /notes/panel）+ 当前文档目录（前端从编辑器 DOM 生成）。
+       鼠标在窗口左缘停留或点顶栏「侧栏」弹出；可固定。 -->
   <aside id="ne-panel" aria-label="文档列表与目录">
     <div class="ne-panel-top">
       <span class="ne-panel-title">工作区</span>
@@ -118,7 +118,7 @@
   </script>
 
   <script>
-  /* 右侧面板：右缘悬停/「侧栏」按钮弹出，工作区文档列表 + 当前文档目录 */
+  /* 左侧面板：左缘悬停/「侧栏」按钮弹出，工作区文档列表 + 当前文档目录 */
   (function () {
     var panel = document.getElementById('ne-panel');
     var pinBtn = document.getElementById('ne-panel-pin');
@@ -152,10 +152,11 @@
       setOpen(!isOpen());
     });
 
-    /* 右缘悬停弹出：右侧 16px 内停留 180ms 才触发，
-       避免去够滚动条时误弹；面板展开后覆盖该区域，不会反复触发 */
+    /* 左缘悬停弹出：左侧 16px 内停留 180ms 才触发防误弹；
+       面板展开后覆盖该区域，不会反复触发。
+       （放左边也避开了右缘滚动条——指针悬在滚动条上时收不到 mousemove） */
     document.addEventListener('mousemove', function (e) {
-      var inZone = e.clientX >= window.innerWidth - 16;
+      var inZone = e.clientX <= 16;
       if (inZone && !openTimer && !isOpen()) {
         openTimer = setTimeout(function () { openTimer = null; setOpen(true); }, 180);
       } else if (!inZone && openTimer) {
