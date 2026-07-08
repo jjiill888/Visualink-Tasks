@@ -8,14 +8,15 @@
 
 /* ── 1. 独立编辑页骨架 ─────────────────────────────────────────── */
 
+/* 浅色色板：正文近黑保证清晰，层级只靠 4 档灰阶 + 1 个低饱和强调蓝 */
 body.note-standalone {
   --ne-bg: #ffffff;
-  --ne-fg: #333333;
-  --ne-heading: #262626;
-  --ne-muted: #999999;
-  --ne-faint: #cccccc;
-  --ne-line: #eeeeee;
-  --ne-accent: #4183c4;
+  --ne-fg: #1f2329;      /* 正文：近黑，清晰不生硬 */
+  --ne-heading: #15181d; /* 标题：比正文再深半档 */
+  --ne-muted: #71767d;   /* 次级：状态/大纲/引用，可读 */
+  --ne-faint: #a9afb8;   /* 装饰：分组标签/占位符 */
+  --ne-line: #ebedef;
+  --ne-accent: #3873b3;  /* 白底上更沉稳的链接蓝 */
   background: var(--ne-bg);
   color: var(--ne-fg);
   font-family: -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
@@ -173,8 +174,9 @@ body.note-standalone ::selection {
     "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
   font-size: 16px;
   line-height: 1.75;
-  color: #333;
-  caret-color: #4183c4;
+  /* var 的回退值兼容历史只读页（带应用外壳，无 body.note-standalone 变量） */
+  color: var(--ne-fg, #1f2329);
+  caret-color: var(--ne-accent, #3873b3);
 }
 
 .milkdown .ProseMirror-selectednode {
@@ -200,7 +202,7 @@ body.note-standalone ::selection {
   font-weight: 600;
   line-height: 1.4;
   margin: 1.6em 0 0.5em;
-  color: #262626;
+  color: var(--ne-heading, #15181d);
 }
 
 .milkdown .ProseMirror h1 { font-size: 28px; }
@@ -225,7 +227,7 @@ body.note-standalone ::selection {
 /* 引用：左侧 3px 浅灰竖线，无背景 */
 .milkdown .ProseMirror blockquote {
   border-left: 3px solid #ddd;
-  color: #777;
+  color: var(--ne-muted, #71767d);
   margin: 1em 0;
   padding: 0 0 0 14px;
 }
@@ -274,11 +276,11 @@ body.note-standalone ::selection {
 
 /* 全局唯一强调色：链接；下划线细且低调 */
 .milkdown .ProseMirror a {
-  color: #4183c4;
+  color: var(--ne-accent, #3873b3);
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
-  text-decoration-color: rgba(65, 131, 196, 0.4);
+  text-decoration-color: rgba(56, 115, 179, 0.4);
 }
 
 /* 表格：仅横向细分割线，无斑马纹 */
@@ -621,14 +623,15 @@ body.note-standalone *::-webkit-scrollbar-thumb:hover {
    主题按钮循环 自动/浅色/深色,「自动」时由页面 JS 按系统偏好加/去该类。
    仍只作用于 body.note-standalone,历史只读页(带应用外壳)保持浅色。 */
 
+/* 深色色板：正文/次级文字整体提亮一档，保证深底可读性 */
 .ne-dark body.note-standalone {
   --ne-bg: #1e1e1e;
-  --ne-fg: #d4d4d4;
-  --ne-heading: #e3e3e3;
-  --ne-muted: #808080;
-  --ne-faint: #555555;
-  --ne-line: #333333;
-  --ne-accent: #6ca0dc;
+  --ne-fg: #d9dce1;      /* 正文 */
+  --ne-heading: #edeff2; /* 标题 */
+  --ne-muted: #9aa1a9;   /* 次级：原 #808080 太暗 */
+  --ne-faint: #6a7077;   /* 装饰：原 #555 太暗 */
+  --ne-line: #34373c;
+  --ne-accent: #7aa7d8;
 }
 
 .ne-dark body.note-standalone .note-save-status.ne-status-err {
@@ -651,23 +654,10 @@ body.note-standalone *::-webkit-scrollbar-thumb:hover {
   background: rgba(108, 160, 220, 0.12);
 }
 
-.ne-dark body.note-standalone .milkdown .ProseMirror {
-  color: #d4d4d4;
-  caret-color: #6ca0dc;
-}
 
-.ne-dark body.note-standalone .milkdown .ProseMirror h1,
-.ne-dark body.note-standalone .milkdown .ProseMirror h2,
-.ne-dark body.note-standalone .milkdown .ProseMirror h3,
-.ne-dark body.note-standalone .milkdown .ProseMirror h4,
-.ne-dark body.note-standalone .milkdown .ProseMirror h5,
-.ne-dark body.note-standalone .milkdown .ProseMirror h6 {
-  color: #e3e3e3;
-}
 
 .ne-dark body.note-standalone .milkdown .ProseMirror blockquote {
-  border-left-color: #444;
-  color: #999;
+  border-left-color: #3e4146;
 }
 
 .ne-dark body.note-standalone .milkdown .ProseMirror code {
@@ -688,8 +678,7 @@ body.note-standalone *::-webkit-scrollbar-thumb:hover {
 }
 
 .ne-dark body.note-standalone .milkdown .ProseMirror a {
-  color: #6ca0dc;
-  text-decoration-color: rgba(108, 160, 220, 0.4);
+  text-decoration-color: rgba(122, 167, 216, 0.4); /* 颜色本身走 var(--ne-accent) */
 }
 
 .ne-dark body.note-standalone .milkdown .ProseMirror th,
@@ -716,7 +705,7 @@ body.note-standalone *::-webkit-scrollbar-thumb:hover {
 }
 
 .ne-dark body.note-standalone .ne-table-toolbar button {
-  color: #999;
+  color: var(--ne-muted);
 }
 
 .ne-dark body.note-standalone .ne-table-toolbar button:hover {
@@ -730,33 +719,33 @@ body.note-standalone *::-webkit-scrollbar-thumb:hover {
 
 .ne-dark body.note-standalone .milkdown .ProseMirror pre.note-frontmatter {
   background: none;
-  border-left-color: #333;
-  color: #808080;
+  border-left-color: #34373c;
+  color: var(--ne-muted);
 }
 
 .ne-dark body.note-standalone .milkdown .ProseMirror span[data-type='html'] {
-  color: #808080;
+  color: var(--ne-muted);
   background: rgba(150, 150, 150, 0.12);
 }
 
 /* 历史版本弹层（us-* 组件）在深色独立页里的最小适配 */
 .ne-dark body.note-standalone .modal-box {
   background: #252526;
-  color: #d4d4d4;
+  color: var(--ne-fg);
 }
 
 .ne-dark body.note-standalone .modal-box .modal-title {
-  color: #e3e3e3;
+  color: var(--ne-heading);
 }
 
 .ne-dark body.note-standalone .modal-box .us-table th,
 .ne-dark body.note-standalone .modal-box .us-table td {
   border-color: #3a3a3a;
-  color: #d4d4d4;
+  color: var(--ne-fg);
 }
 
 .ne-dark body.note-standalone .modal-box .us-empty-title {
-  color: #d4d4d4;
+  color: var(--ne-fg);
 }
 
 html.ne-dark,

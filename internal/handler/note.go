@@ -102,27 +102,36 @@ func NotesPage(database *db.DB) http.HandlerFunc {
 	}
 }
 
-// NotesPanel GET /notes/panel — 编辑页左侧面板的文档列表片段。
+// notesPanelData 编辑页侧栏「文件」视图的数据。
 // 公共文档 = 所有人的非私有笔记；私人文档 = 自己的私有笔记（ListNotes 的
 // 可见性规则本就如此，这里只按 IsPrivate 分组）。
+func notesPanelData(database *db.DB, userID int64) (map[string]any, error) {
+	notes, err := database.ListNotes(userID, "")
+	if err != nil {
+		return nil, err
+	}
+	var public, private []*model.Note
+	for _, n := range notes {
+		if n.IsPrivate {
+			private = append(private, n)
+		} else {
+			public = append(public, n)
+		}
+	}
+	return map[string]any{"Public": public, "Private": private}, nil
+}
+
+// NotesPanel GET /notes/panel — 侧栏文档列表片段。
+// 编辑页首屏由 NoteEditPage 直出同一片段（跨境高 RTT 下不必等 fetch），
+// 本端点只用于打开侧栏时的后台刷新。
 func NotesPanel(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
-		notes, err := database.ListNotes(u.ID, "")
+		data, err := notesPanelData(database, UserFromContext(r).ID)
 		if err != nil {
 			http.Error(w, "查询失败", http.StatusInternalServerError)
 			return
 		}
-		var public, private []*model.Note
-		for _, n := range notes {
-			if n.IsPrivate {
-				private = append(private, n)
-			} else {
-				public = append(public, n)
-			}
-		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		data := map[string]any{"Public": public, "Private": private}
 		if err := PartialTmpl.ExecuteTemplate(w, "notes_panel_partial.html", data); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
@@ -152,8 +161,14 @@ func NoteEditPage(database *db.DB) http.HandlerFunc {
 		if n == nil {
 			return
 		}
+		// 侧栏文档列表随页面直出（查询失败不阻塞编辑，Panel 为 nil 时
+		// 模板显示占位，前端打开侧栏时再 fetch 补拉）
+		panel, err := notesPanelData(database, UserFromContext(r).ID)
+		if err != nil {
+			panel = nil
+		}
 		pd := pageData(r, "notes")
-		pd.Data = map[string]any{"Note": n}
+		pd.Data = map[string]any{"Note": n, "Panel": panel}
 		renderStandalone(w, "note_edit.html", pd)
 	}
 }

@@ -86,9 +86,11 @@ func buildTmplMap() map[string]*template.Template {
 		"note_revision.html"}
 
 	m := make(map[string]*template.Template)
-	// note_edit.html 是独立标签页（Typora 式极简编辑器），不套 base.html 外壳
+	// note_edit.html 是独立标签页（Typora 式极简编辑器），不套 base.html 外壳；
+	// 侧栏「文件」视图片段随页直出（同一片段也被 /notes/panel 用于刷新）
 	m["note_edit.html"] = template.Must(template.New("").Funcs(funcMap).ParseFiles(
 		"templates/note_edit.html",
+		"templates/notes_panel_partial.html",
 	))
 	// notes.html 内嵌列表片段（搜索时 HTMX 单独刷新该片段）
 	m["notes.html"] = template.Must(template.New("").Funcs(funcMap).ParseFiles(

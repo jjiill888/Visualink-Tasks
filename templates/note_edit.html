@@ -78,7 +78,8 @@
        鼠标在窗口左缘停留临时探出；顶栏「侧栏」按钮 = 常驻开关。 -->
   <aside id="ne-panel" aria-label="文件与大纲">
     <div class="ne-panel-body">
-      <div id="ne-panel-docs" class="ne-panel-view"><div class="ne-panel-empty">加载中…</div></div>
+      {{/* 文件列表随页直出（跨境高 RTT 不等 fetch）；Panel 取数失败时留占位，打开侧栏后 JS 补拉 */}}
+      <div id="ne-panel-docs" class="ne-panel-view">{{if .Data.Panel}}{{template "notes_panel_partial.html" .Data.Panel}}{{else}}<div class="ne-panel-empty">加载中…</div>{{end}}</div>
       <nav id="ne-panel-toc" class="ne-panel-view" hidden><div class="ne-panel-empty">暂无标题</div></nav>
     </div>
     <footer class="ne-panel-footer">
@@ -140,7 +141,9 @@
     var root = document.getElementById('note-editor-root');
     var noteId = root.dataset.noteId;
     var pinned = localStorage.getItem('ne-panel-pinned') === '1';
-    var openTimer = null, closeTimer = null, lastFetch = 0;
+    var openTimer = null, closeTimer = null;
+    /* 列表已随页直出时,首次打开侧栏不必立即重拉 */
+    var lastFetch = docsEl.querySelector('.ne-panel-list') ? Date.now() : 0;
 
     function isOpen() { return panel.classList.contains('ne-open'); }
 
@@ -213,24 +216,39 @@
       if (e.key === 'Escape' && isOpen() && !pinned) setOpen(false);
     });
 
-    /* 文档列表：打开时拉取，30 秒内不重复请求 */
+    /* 当前文档高亮（直出与刷新后各标一次） */
+    function markActive() {
+      var cur = docsEl.querySelector('a[data-note-id="' + noteId + '"]');
+      if (cur) cur.classList.add('ne-active');
+    }
+    markActive();
+
+    /* 文档列表已随页直出；打开侧栏时后台刷新，30 秒内不重复请求。
+       fetch 带 10 秒超时——跨境慢链路上请求可能排在大资产后面长时间挂起 */
     function refreshDocs() {
       if (Date.now() - lastFetch < 30000) return;
       lastFetch = Date.now();
-      fetch('/notes/panel', { credentials: 'same-origin' })
+      var ctl = new AbortController();
+      var timer = setTimeout(function () { ctl.abort(); }, 10000);
+      fetch('/notes/panel', { credentials: 'same-origin', signal: ctl.signal })
         .then(function (r) {
-          if (!r.ok) throw new Error(String(r.status));
+          if (!r.ok) throw new Error('HTTP ' + r.status);
           return r.text();
         })
         .then(function (html) {
           docsEl.innerHTML = html;
-          var cur = docsEl.querySelector('a[data-note-id="' + noteId + '"]');
-          if (cur) cur.classList.add('ne-active');
+          markActive();
         })
-        .catch(function () {
+        .catch(function (err) {
           lastFetch = 0; /* 失败后下次打开重试 */
-          docsEl.innerHTML = '<div class="ne-panel-empty">加载失败，重新打开侧栏重试</div>';
-        });
+          /* 直出内容还在就保留旧列表，只有占位/空白时才提示失败 */
+          if (!docsEl.querySelector('.ne-panel-list')) {
+            docsEl.innerHTML = '<div class="ne-panel-empty">加载失败（' +
+              (err && err.name === 'AbortError' ? '超时' : (err && err.message || '网络错误')) +
+              '），重新打开侧栏重试</div>';
+          }
+        })
+        .finally(function () { clearTimeout(timer); });
     }
 
     /* 目录：从编辑器 DOM 取标题；内容变化（含挂载完成）防抖重建 */
