@@ -6,7 +6,8 @@ WORKDIR /app/web/notes-editor
 COPY web/notes-editor/package.json web/notes-editor/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 COPY web/notes-editor/src ./src
-# build 脚本输出到 ../../static/，即 /app/static/notes-editor.{js,css}
+# build 脚本输出到 ../../static/，即 /app/static/notes-editor.js
+# （编辑页 CSS 是手写的 static/css/notes-editor.css，不经 esbuild）
 RUN npm run build
 
 # ── Build stage ──────────────────────────────────────────────────────────────
@@ -37,7 +38,8 @@ COPY --from=builder /app/featuretrack .
 COPY templates/ templates/
 COPY static/    static/
 # 用容器内新鲜构建的编辑器产物覆盖仓库里提交的版本，保证与源码一致
-COPY --from=assets /app/static/notes-editor.js /app/static/notes-editor.css static/
+COPY --from=assets /app/static/notes-editor.js static/
+COPY --from=assets /app/static/vendor/katex static/vendor/katex
 
 EXPOSE 8080
 CMD ["./featuretrack"]

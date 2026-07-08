@@ -1,54 +1,102 @@
-{{template "base.html" .}}
+{{/* 笔记编辑页 —— 独立标签页，Typora 式极简风格，不套 base.html 应用外壳。
+     样式在 static/css/notes-editor.css；style.min.css 仅供历史弹层等 us-* 组件使用。 */}}
+{{$n := .Data.Note}}<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>{{if $n.Title}}{{$n.Title}}{{else}}无标题笔记{{end}} — 笔记</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%234f46e5'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-weight='bold' font-size='16' fill='white'>VT</text></svg>">
+  {{/* 跨境高 RTT 优化：只有编辑页自身样式阻塞渲染；
+       style.min.css（仅弹层/按钮用）用 media 切换技巧异步加载；
+       KaTeX 不在此加载——文档出现公式时编辑器岛按需注入（见 __notesKatex） */}}
+  <link rel="stylesheet" href="/static/css/notes-editor.css?v={{notesEditorCSSVersion}}">
+  <link rel="stylesheet" href="/static/css/style.min.css?v=18" media="print" onload="this.media='all'">
+  <script>
+  window.__notesKatex = {
+    js: '/static/vendor/katex/katex.min.js?v={{notesEditorVersion}}',
+    css: '/static/vendor/katex/katex.min.css?v={{notesEditorVersion}}'
+  };
+  </script>
+</head>
+<body class="note-standalone" hx-ext="morph,loading-states,response-targets">
 
-{{define "title"}}{{if .Data.Note.Title}}{{.Data.Note.Title}}{{else}}无标题笔记{{end}} — 笔记{{end}}
-
-{{define "head"}}
-<link rel="stylesheet" href="/static/notes-editor.css?v={{notesEditorCSSVersion}}">
-{{end}}
-
-{{define "content"}}
-{{$n := .Data.Note}}
-<div class="note-editor-page">
-  <div class="note-editor-toolbar">
-    <a href="/notes" class="us-btn us-btn-sm us-btn-outline">← 返回列表</a>
-    <div style="display:flex;align-items:center;gap:12px">
-      <!-- 保存状态由编辑器岛通过 notes-save-status 事件驱动 -->
-      <span class="note-save-status" x-data="{ s: 'idle' }"
-        @notes-save-status.window="s = $event.detail.state">
-        <span x-show="s==='saving'" style="color:#71767a">保存中…</span>
-        <span x-show="s==='saved'" style="color:#16a34a">已保存</span>
-        <span x-show="s==='error'" style="color:#dc2626">保存失败，稍后自动重试</span>
-        <span x-show="s==='conflict'" style="color:#dc2626">
-          笔记已被他人修改，<a href="javascript:location.reload()">刷新页面</a>后再编辑
-        </span>
-      </span>
-      {{if eq .CurrentUser.ID $n.OwnerID}}
-      <label class="us-checkbox" title="勾选后仅自己可见">
-        <input type="checkbox" id="note-private" {{if $n.IsPrivate}}checked{{end}}> 私有
-      </label>
-      {{end}}
-      <button type="button" class="us-btn us-btn-sm us-btn-outline"
+  <!-- 顶栏：默认近乎隐形，悬停显现 -->
+  <header class="ne-topbar">
+    <a class="ne-link" href="/notes">← 笔记列表</a>
+    <div class="ne-right">
+      {{/* 保存状态：一个词；成功 2 秒后淡出，失败变红且不消失（冲突时点击刷新） */}}
+      <span class="note-save-status" x-data="{ s: 'idle', t: null }"
+        @notes-save-status.window="clearTimeout(t); s = $event.detail.state; if (s === 'saved') t = setTimeout(() => { s = 'idle' }, 2000)"
+        :class="{ 'ne-status-show': s !== 'idle', 'ne-status-err': s === 'error' || s === 'conflict' }"
+        :style="s === 'conflict' ? 'cursor:pointer' : ''"
+        :title="s === 'conflict' ? '笔记已被他人修改，点击刷新页面后再编辑' : (s === 'error' ? '保存失败，将自动重试' : '')"
+        @click="if (s === 'conflict') location.reload()"
+        x-text="({ saving: '保存中…', saved: '已保存', error: '保存失败', conflict: '保存失败' })[s] || ''"></span>
+      <button type="button" class="ne-link"
         onclick="window.dispatchEvent(new CustomEvent('open-modal')); htmx.ajax('GET', '/notes/{{$n.ID}}/history', {target:'#modal-content', swap:'innerHTML'})">
         历史版本
       </button>
+      {{if eq .CurrentUser.ID $n.OwnerID}}
+      <label class="ne-check" title="勾选后仅自己可见">
+        <input type="checkbox" id="note-private" {{if $n.IsPrivate}}checked{{end}}> 私有
+      </label>
+      {{end}}
     </div>
-  </div>
+  </header>
 
-  <div class="us-card note-editor-card">
-    <input type="text" id="note-title" class="note-title-input"
-      value="{{$n.Title}}" placeholder="笔记标题" maxlength="200" autocomplete="off">
+  <!-- 正文：单栏居中，标题就是文档第一行 -->
+  <main class="ne-page">
+    <input type="text" id="note-title" class="ne-title"
+      value="{{$n.Title}}" placeholder="无标题" maxlength="200" autocomplete="off" spellcheck="false">
     <div id="note-editor-root"
       data-note-id="{{$n.ID}}"
       data-updated-at="{{$n.UpdatedAt}}"
       data-save-url="/notes/{{$n.ID}}"
-      data-upload-url="/notes/{{$n.ID}}/attachments"></div>
-  </div>
+      data-upload-url="/notes/{{$n.ID}}/attachments"><div class="ne-placeholder" id="note-placeholder"></div></div>
+  </main>
 
   {{/* 初始 Markdown 放在隐藏 textarea 里，天然 HTML 转义，编辑器岛读 .value */}}
   <textarea id="note-initial" hidden>{{$n.ContentMD}}</textarea>
-</div>
-{{end}}
 
-{{define "scripts"}}
-<script defer src="/static/notes-editor.js?v={{notesEditorVersion}}"></script>
-{{end}}
+  <script>
+  /* 秒出正文：编辑器 JS（br 后约 260KB）在跨境链路上加载期间，
+     先把 Markdown 原文以纯文本展示，编辑器挂载完成后由 main.js 移除 */
+  document.getElementById('note-placeholder').textContent =
+    document.getElementById('note-initial').value;
+  </script>
+
+  <!-- 历史版本弹窗（base.html 全局弹窗在独立页面的本地副本） -->
+  <div id="feature-modal"
+    x-data="{ open: false }"
+    @open-modal.window="open = true; document.body.classList.add('modal-open')"
+    @close-modal.window="open = false; document.body.classList.remove('modal-open'); document.getElementById('modal-content').innerHTML = ''"
+    x-show="open"
+    style="display:none"
+    class="modal-overlay"
+    @click.self="open = false; document.body.classList.remove('modal-open'); document.getElementById('modal-content').innerHTML = ''"
+    @keydown.escape.window="if(open){ open = false; document.body.classList.remove('modal-open'); document.getElementById('modal-content').innerHTML = '' }">
+    <div class="modal-box">
+      <div id="modal-content"></div>
+    </div>
+  </div>
+
+  <!-- 全局错误提示 Toast（历史恢复等 HTMX 请求失败时） -->
+  <div id="htmx-error-toast" onclick="this.textContent=''"></div>
+
+  <script defer src="/static/js/bundle.js?v={{bundleVersion}}"></script>
+  <script defer src="/static/notes-editor.js?v={{notesEditorVersion}}"></script>
+  <script>
+  document.addEventListener('htmx:afterRequest', function(e) {
+    if (e.detail.successful) return;
+    var xhr = e.detail.xhr;
+    if (!xhr || xhr.status === 0) return;
+    var toast = document.getElementById('htmx-error-toast');
+    toast.textContent = xhr.responseText.trim() || '操作失败，请重试';
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(function() { toast.textContent = ''; }, 4000);
+  });
+  </script>
+</body>
+</html>

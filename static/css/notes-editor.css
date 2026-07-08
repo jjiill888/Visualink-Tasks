@@ -1,0 +1,648 @@
+/* 云笔记编辑器样式 —— Typora 式极简风格。
+   由 main.go 按内容 hash 生成 ?v= 版本号（notesEditorCSSVersion）。
+   使用页面：
+     - templates/note_edit.html   独立标签页（body.note-standalone，无应用外壳）
+     - templates/note_revision.html 历史版本只读页（带应用外壳，只用到排版部分）
+   约定：不进入 style.css 的 us-* 体系；独立页专属规则一律挂在
+   body.note-standalone 作用域下，避免影响带外壳的页面。 */
+
+/* ── 1. 独立编辑页骨架 ─────────────────────────────────────────── */
+
+body.note-standalone {
+  --ne-bg: #ffffff;
+  --ne-fg: #333333;
+  --ne-heading: #262626;
+  --ne-muted: #999999;
+  --ne-faint: #cccccc;
+  --ne-line: #eeeeee;
+  --ne-accent: #4183c4;
+  background: var(--ne-bg);
+  color: var(--ne-fg);
+  font-family: -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+}
+
+/* 顶栏：40px，默认近乎隐形，指针移入才完全显现 */
+.ne-topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  z-index: 50;
+  background: var(--ne-bg);
+}
+
+.ne-topbar:hover {
+  box-shadow: 0 1px 0 var(--ne-line);
+}
+
+.ne-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.ne-link,
+.ne-check {
+  opacity: 0.35;
+  transition: opacity 0.15s ease;
+}
+
+.ne-topbar:hover .ne-link,
+.ne-topbar:hover .ne-check,
+.ne-topbar:focus-within .ne-link,
+.ne-topbar:focus-within .ne-check {
+  opacity: 1;
+}
+
+.ne-link {
+  font: inherit;
+  font-size: 13px;
+  color: var(--ne-muted);
+  text-decoration: none;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.ne-link:hover {
+  color: var(--ne-fg);
+}
+
+.ne-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--ne-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.ne-check input {
+  accent-color: var(--ne-muted);
+  margin: 0;
+}
+
+/* 保存状态：一个词，12px 浅灰；成功 2 秒后由 Alpine 置回 idle 触发淡出 */
+.note-save-status {
+  font-size: 12px;
+  color: var(--ne-muted);
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+.note-save-status.ne-status-show {
+  opacity: 1;
+}
+
+.note-save-status.ne-status-err {
+  color: #dc2626;
+}
+
+/* 正文区：单栏居中 760px，只有内容 */
+.ne-page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 100px 32px 48px; /* 顶部 = 40px 顶栏 + 60px 留白 */
+}
+
+/* 标题：视觉上是文档第一行，不是表单控件 */
+.ne-title {
+  display: block;
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--ne-heading);
+  padding: 0;
+  margin: 0 0 16px;
+}
+
+.ne-title::placeholder {
+  color: var(--ne-faint);
+}
+
+/* 独立页里编辑区底部留白充足，方便点击尾部继续输入 */
+body.note-standalone .milkdown .ProseMirror {
+  padding-bottom: 30vh;
+}
+
+/* 编辑器 JS 加载期间的纯文本占位（Markdown 原文秒出，挂载后移除）。
+   排版对齐编辑器正文，颜色继承 --ne-fg，深浅色自动适配 */
+.ne-placeholder {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-size: 16px;
+  line-height: 1.75;
+  padding: 4px 0 40px;
+  min-height: 50vh;
+}
+
+/* 编辑器挂载失败时的顶部提示（占位原文保留可读） */
+.ne-load-error {
+  font-size: 13px;
+  color: #dc2626;
+  margin-bottom: 12px;
+}
+
+/* selection：浅蓝、低饱和 */
+body.note-standalone ::selection {
+  background: rgba(90, 140, 200, 0.18);
+}
+
+/* ── 2. 正文排版（.milkdown .ProseMirror，独立页与历史只读页共用） ── */
+
+.milkdown .ProseMirror {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  outline: none;
+  min-height: 50vh;
+  padding: 4px 0 40px;
+  font-family: -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  font-size: 16px;
+  line-height: 1.75;
+  color: #333;
+  caret-color: #4183c4;
+}
+
+.milkdown .ProseMirror-selectednode {
+  outline: 2px solid rgba(150, 150, 150, 0.4);
+  border-radius: 3px;
+}
+
+.milkdown .ProseMirror > :first-child {
+  margin-top: 0;
+}
+
+.milkdown .ProseMirror p {
+  margin: 0.75em 0;
+}
+
+/* 标题层级只靠字号和留白区分；上方留白明显大于下方 */
+.milkdown .ProseMirror h1,
+.milkdown .ProseMirror h2,
+.milkdown .ProseMirror h3,
+.milkdown .ProseMirror h4,
+.milkdown .ProseMirror h5,
+.milkdown .ProseMirror h6 {
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 1.6em 0 0.5em;
+  color: #262626;
+}
+
+.milkdown .ProseMirror h1 { font-size: 28px; }
+.milkdown .ProseMirror h2 { font-size: 22px; }
+.milkdown .ProseMirror h3 { font-size: 18px; }
+.milkdown .ProseMirror h4 { font-size: 16px; }
+
+.milkdown .ProseMirror ul,
+.milkdown .ProseMirror ol {
+  padding-left: 1.8em;
+  margin: 0.75em 0;
+}
+
+.milkdown .ProseMirror li {
+  margin: 0.25em 0;
+}
+
+.milkdown .ProseMirror li p {
+  margin: 0;
+}
+
+/* 引用：左侧 3px 浅灰竖线，无背景 */
+.milkdown .ProseMirror blockquote {
+  border-left: 3px solid #ddd;
+  color: #777;
+  margin: 1em 0;
+  padding: 0 0 0 14px;
+}
+
+/* 代码：低调灰阶，无花哨高亮 */
+.milkdown .ProseMirror code {
+  background: #f5f5f5;
+  border-radius: 3px;
+  padding: 2px 5px;
+  font-size: 14px;
+  font-family: "SF Mono", "JetBrains Mono", Consolas, monospace;
+}
+
+.milkdown .ProseMirror pre {
+  background: #f8f8f8;
+  border: 1px solid #eee;
+  border-radius: 3px;
+  padding: 12px 16px;
+  margin: 1em 0;
+  overflow-x: auto;
+}
+
+.milkdown .ProseMirror pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* 图片：居中，2px 圆角。
+   注意排除 ProseMirror 的内部占位图（.ProseMirror-separator，
+   行尾是公式等原子节点时自动插入），否则段落会被撑出大空隙 */
+.milkdown .ProseMirror img:not(.ProseMirror-separator) {
+  display: block;
+  max-width: 100%;
+  margin: 1em auto;
+  border-radius: 2px;
+}
+
+.milkdown .ProseMirror hr {
+  border: none;
+  border-top: 1px solid #e5e5e5;
+  margin: 2em 0;
+}
+
+/* 全局唯一强调色：链接；下划线细且低调 */
+.milkdown .ProseMirror a {
+  color: #4183c4;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: rgba(65, 131, 196, 0.4);
+}
+
+/* 表格：仅横向细分割线，无斑马纹 */
+.milkdown .ProseMirror table {
+  border-collapse: collapse;
+  margin: 1em 0;
+  width: 100%;
+  font-size: 15px;
+}
+
+.milkdown .ProseMirror th,
+.milkdown .ProseMirror td {
+  border: none;
+  border-bottom: 1px solid #e8e8e8;
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.milkdown .ProseMirror th {
+  border-bottom: 1px solid #d9d9d9;
+  font-weight: 600;
+}
+
+/* ── 表格编辑组件（tableBlock：悬停出现加行/加列/对齐/拖拽 UI） ──
+   基础部分来自 prosemirror-tables 官方 tables.css，按需内联 */
+
+.milkdown .ProseMirror .tableWrapper,
+.milkdown .ProseMirror .table-wrapper {
+  overflow-x: auto;
+}
+
+.milkdown .ProseMirror td,
+.milkdown .ProseMirror th {
+  vertical-align: top;
+  box-sizing: border-box;
+  position: relative;
+}
+
+/* 选中单元格的浅色遮罩（低饱和浅蓝） */
+.milkdown .ProseMirror .selectedCell::after {
+  z-index: 2;
+  position: absolute;
+  content: '';
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(90, 140, 200, 0.12);
+  pointer-events: none;
+}
+
+.milkdown .ProseMirror .selectedCell ::selection {
+  background: transparent;
+}
+
+/* 表格工具条（table-toolbar.js 挂在 body 下，文档坐标绝对定位于表格左上方）
+   白底灰阶小按钮，与整页极简风一致 */
+.ne-table-toolbar {
+  position: absolute;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px;
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.ne-table-toolbar button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: #777;
+  padding: 5px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 4px;
+}
+
+.ne-table-toolbar button:hover {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.ne-table-toolbar .ne-tt-sep {
+  width: 1px;
+  height: 14px;
+  margin: 0 3px;
+  background: #e5e5e5;
+}
+
+/* 任务列表（GFM） */
+.milkdown .ProseMirror li[data-item-type='task'] {
+  list-style: none;
+  margin-left: -1.2em;
+}
+
+.milkdown .ProseMirror li[data-item-type='task'] > label {
+  margin-right: 6px;
+}
+
+.milkdown .ProseMirror li[data-item-type='task'] input {
+  accent-color: #999;
+}
+
+/* 上传中的占位 widget */
+.milkdown .ProseMirror .milkdown-upload-loading,
+.milkdown .ProseMirror span[data-type='upload'] {
+  color: #999;
+  font-size: 13px;
+}
+
+/* 数学公式（KaTeX 渲染，双击编辑源码） */
+.milkdown .ProseMirror span[data-type='math-inline'] {
+  cursor: pointer;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+
+.milkdown .ProseMirror span[data-type='math-inline']:hover {
+  background: rgba(150, 150, 150, 0.12);
+}
+
+.milkdown .ProseMirror div[data-type='math-block'] {
+  text-align: center;
+  margin: 1em 0;
+  padding: 8px 0;
+  cursor: pointer;
+  border-radius: 3px;
+  overflow-x: auto;
+}
+
+.milkdown .ProseMirror div[data-type='math-block']:hover {
+  background: rgba(150, 150, 150, 0.08);
+}
+
+/* YAML front matter：文档顶部元数据，低调的预格式块 */
+.milkdown .ProseMirror pre.note-frontmatter {
+  background: none;
+  border: none;
+  border-left: 3px solid #eee;
+  border-radius: 0;
+  padding: 4px 0 4px 14px;
+  margin: 0 0 1.5em;
+  color: #999;
+  font-size: 13px;
+  font-family: "SF Mono", "JetBrains Mono", Consolas, monospace;
+  line-height: 1.6;
+}
+
+/* 原样保留的 HTML 标签（不渲染执行，样式区分出来避免与正文混淆） */
+.milkdown .ProseMirror span[data-type='html'] {
+  color: #999;
+  font-size: 14px;
+  font-family: "SF Mono", "JetBrains Mono", Consolas, monospace;
+  background: rgba(150, 150, 150, 0.08);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+/* ── 3. 滚动条：细窄 overlay 风格（本 CSS 只在笔记编辑/历史页加载） ── */
+
+html {
+  scrollbar-width: thin;
+  scrollbar-color: #d9d9d9 transparent;
+}
+
+html::-webkit-scrollbar,
+body.note-standalone *::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+  background: transparent;
+}
+
+html::-webkit-scrollbar-thumb,
+body.note-standalone *::-webkit-scrollbar-thumb {
+  background: #d9d9d9;
+  border-radius: 4px;
+}
+
+html::-webkit-scrollbar-thumb:hover,
+body.note-standalone *::-webkit-scrollbar-thumb:hover {
+  background: #bbb;
+}
+
+/* ── 4. 深色模式（仅独立编辑页；历史只读页带应用外壳保持浅色） ── */
+
+@media (prefers-color-scheme: dark) {
+  body.note-standalone {
+    --ne-bg: #1e1e1e;
+    --ne-fg: #d4d4d4;
+    --ne-heading: #e3e3e3;
+    --ne-muted: #808080;
+    --ne-faint: #555555;
+    --ne-line: #333333;
+    --ne-accent: #6ca0dc;
+  }
+
+  body.note-standalone .note-save-status.ne-status-err {
+    color: #f87171;
+  }
+
+  body.note-standalone ::selection {
+    background: rgba(90, 140, 200, 0.3);
+  }
+
+  body.note-standalone .milkdown .ProseMirror {
+    color: #d4d4d4;
+    caret-color: #6ca0dc;
+  }
+
+  body.note-standalone .milkdown .ProseMirror h1,
+  body.note-standalone .milkdown .ProseMirror h2,
+  body.note-standalone .milkdown .ProseMirror h3,
+  body.note-standalone .milkdown .ProseMirror h4,
+  body.note-standalone .milkdown .ProseMirror h5,
+  body.note-standalone .milkdown .ProseMirror h6 {
+    color: #e3e3e3;
+  }
+
+  body.note-standalone .milkdown .ProseMirror blockquote {
+    border-left-color: #444;
+    color: #999;
+  }
+
+  body.note-standalone .milkdown .ProseMirror code {
+    background: #2c2c2c;
+  }
+
+  body.note-standalone .milkdown .ProseMirror pre {
+    background: #262626;
+    border-color: #333;
+  }
+
+  body.note-standalone .milkdown .ProseMirror pre code {
+    background: none;
+  }
+
+  body.note-standalone .milkdown .ProseMirror hr {
+    border-top-color: #333;
+  }
+
+  body.note-standalone .milkdown .ProseMirror a {
+    color: #6ca0dc;
+    text-decoration-color: rgba(108, 160, 220, 0.4);
+  }
+
+  body.note-standalone .milkdown .ProseMirror th,
+  body.note-standalone .milkdown .ProseMirror td {
+    border-bottom-color: #333;
+  }
+
+  body.note-standalone .milkdown .ProseMirror th {
+    border-bottom-color: #444;
+  }
+
+  body.note-standalone .milkdown .ProseMirror-selectednode {
+    outline-color: rgba(150, 150, 150, 0.5);
+  }
+
+  body.note-standalone .milkdown .ProseMirror .selectedCell::after {
+    background: rgba(90, 140, 200, 0.2);
+  }
+
+  body.note-standalone .ne-table-toolbar {
+    background: #2c2c2c;
+    border-color: #3a3a3a;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+
+  body.note-standalone .ne-table-toolbar button {
+    color: #999;
+  }
+
+  body.note-standalone .ne-table-toolbar button:hover {
+    background: #383838;
+    color: #d4d4d4;
+  }
+
+  body.note-standalone .ne-table-toolbar .ne-tt-sep {
+    background: #3a3a3a;
+  }
+
+  body.note-standalone .milkdown .ProseMirror pre.note-frontmatter {
+    background: none;
+    border-left-color: #333;
+    color: #808080;
+  }
+
+  body.note-standalone .milkdown .ProseMirror span[data-type='html'] {
+    color: #808080;
+    background: rgba(150, 150, 150, 0.12);
+  }
+
+  /* 历史版本弹层（us-* 组件）在深色独立页里的最小适配 */
+  body.note-standalone .modal-box {
+    background: #252526;
+    color: #d4d4d4;
+  }
+
+  body.note-standalone .modal-box .modal-title {
+    color: #e3e3e3;
+  }
+
+  body.note-standalone .modal-box .us-table th,
+  body.note-standalone .modal-box .us-table td {
+    border-color: #3a3a3a;
+    color: #d4d4d4;
+  }
+
+  body.note-standalone .modal-box .us-empty-title {
+    color: #d4d4d4;
+  }
+
+  html,
+  body.note-standalone * {
+    scrollbar-color: #424242 transparent;
+  }
+
+  html::-webkit-scrollbar-thumb,
+  body.note-standalone *::-webkit-scrollbar-thumb {
+    background: #424242;
+  }
+
+  html::-webkit-scrollbar-thumb:hover,
+  body.note-standalone *::-webkit-scrollbar-thumb:hover {
+    background: #555;
+  }
+}
+
+/* ── 5. 历史版本只读页（note_revision.html，带应用外壳）沿用的布局 ── */
+
+.note-editor-page {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.note-editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.note-editor-card {
+  padding: 24px 32px 40px;
+}
+
+.note-title-input {
+  display: block;
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: #1f2328;
+  padding: 4px 0 12px;
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 4px;
+}

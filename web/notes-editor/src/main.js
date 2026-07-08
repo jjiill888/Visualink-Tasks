@@ -15,8 +15,12 @@ import { history } from '@milkdown/kit/plugin/history';
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener';
 import { clipboard } from '@milkdown/kit/plugin/clipboard';
 import { upload, uploadConfig } from '@milkdown/kit/plugin/upload';
+import { getMarkdown } from '@milkdown/kit/utils';
 
-import './editor.css';
+import { markdownExtra } from './markdown-extra.js';
+import { tableToolbar } from './table-toolbar.js';
+
+// 样式不再走 esbuild：编辑页全部样式在手写的 static/css/notes-editor.css
 
 function emitStatus(state) {
   window.dispatchEvent(new CustomEvent('notes-save-status', { detail: { state } }));
@@ -156,6 +160,11 @@ async function mountEditor(root) {
     .config((ctx) => {
       ctx.set(rootCtx, root);
       ctx.set(defaultValueCtx, initial);
+      // 关闭浏览器拼写检查：contenteditable 默认开启，英文单词会满屏红色波浪线
+      ctx.update(editorViewOptionsCtx, (prev) => ({
+        ...prev,
+        attributes: { spellcheck: 'false', autocorrect: 'off', autocapitalize: 'off' },
+      }));
       if (readonly) {
         ctx.update(editorViewOptionsCtx, (prev) => ({ ...prev, editable: () => false }));
       } else {
@@ -173,6 +182,8 @@ async function mountEditor(root) {
     })
     .use(commonmark)
     .use(gfm)
+    .use(tableToolbar)
+    .use(markdownExtra)
     .use(history)
     .use(listener)
     .use(clipboard)
@@ -191,15 +202,27 @@ async function mountEditor(root) {
     window.addEventListener('beforeunload', () => autosave.flushOnUnload());
   }
 
+  // 调试/测试钩子：读取当前序列化后的 Markdown（阶段二快照回写也会用到）
+  window.__notesEditorMarkdown = () => editor.action(getMarkdown());
+
   return editor;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   const root = document.getElementById('note-editor-root');
-  if (root) {
-    mountEditor(root).catch((err) => {
+  if (!root) return;
+  mountEditor(root)
+    .then(() => {
+      // 编辑器就绪，移除模板里的纯文本占位（跨境慢链路下的秒出内容）
+      const ph = document.getElementById('note-placeholder');
+      if (ph) ph.remove();
+    })
+    .catch((err) => {
       console.error('notes editor mount failed:', err);
-      root.textContent = '编辑器加载失败，请刷新页面重试';
+      // 保留占位原文可读，只在顶部加提示，不清空内容
+      const notice = document.createElement('div');
+      notice.className = 'ne-load-error';
+      notice.textContent = '编辑器加载失败，以下为只读原文，请刷新页面重试';
+      root.prepend(notice);
     });
-  }
 });

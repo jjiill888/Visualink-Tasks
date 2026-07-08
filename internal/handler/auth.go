@@ -46,6 +46,20 @@ func render(w http.ResponseWriter, r *http.Request, name string, data *model.Pag
 	}
 }
 
+// renderStandalone 渲染不套 base.html 应用外壳的独立整页（如笔记编辑页），
+// 模板以自身文件名为入口。
+func renderStandalone(w http.ResponseWriter, name string, data *model.PageData) {
+	t, ok := tmplMap[name]
+	if !ok {
+		http.Error(w, "template not found: "+name, 500)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := t.ExecuteTemplate(w, name, data); err != nil {
+		http.Error(w, err.Error(), 500)
+	}
+}
+
 func redirect(w http.ResponseWriter, r *http.Request, url string) {
 	http.Redirect(w, r, url, http.StatusSeeOther)
 }

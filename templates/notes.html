@@ -2,6 +2,13 @@
 
 {{define "title"}}笔记 — VisualLink Tasks{{end}}
 
+{{define "head"}}
+{{/* 跨境高 RTT 优化：浏览列表时空闲预取编辑器资产（immutable 缓存），
+     点开笔记时编辑器秒开；bundle.js 本页已加载、KaTeX 按需加载，均不预取 */}}
+<link rel="prefetch" href="/static/notes-editor.js?v={{notesEditorVersion}}">
+<link rel="prefetch" href="/static/css/notes-editor.css?v={{notesEditorCSSVersion}}">
+{{end}}
+
 {{define "content"}}
 {{$d := .Data}}
 <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px">
@@ -9,9 +16,8 @@
     <div class="us-page-title">云笔记</div>
     <div class="us-page-sub">团队共享的 Markdown 笔记，非私有笔记所有人可查看和编辑</div>
   </div>
-  <form method="POST" action="/notes">
-    <button type="submit" class="us-btn us-btn-primary">+ 新建笔记</button>
-  </form>
+  {{/* 新建走 GET /notes/new：创建空笔记后 302 到编辑页，在新标签打开 */}}
+  <a href="/notes/new" target="_blank" rel="noopener" class="us-btn us-btn-primary">+ 新建笔记</a>
 </div>
 
 <div class="us-card" style="margin-top:16px">

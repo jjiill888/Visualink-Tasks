@@ -83,9 +83,13 @@ func buildTmplMap() map[string]*template.Template {
 	withRow := []string{"dashboard.html", "mine.html", "group_detail.html"}
 	// Pages that extend base.html, no partials needed
 	plain := []string{"login.html", "register.html", "groups.html", "submit_standalone.html",
-		"note_edit.html", "note_revision.html"}
+		"note_revision.html"}
 
 	m := make(map[string]*template.Template)
+	// note_edit.html 是独立标签页（Typora 式极简编辑器），不套 base.html 外壳
+	m["note_edit.html"] = template.Must(template.New("").Funcs(funcMap).ParseFiles(
+		"templates/note_edit.html",
+	))
 	// notes.html 内嵌列表片段（搜索时 HTMX 单独刷新该片段）
 	m["notes.html"] = template.Must(template.New("").Funcs(funcMap).ParseFiles(
 		"templates/base.html",
@@ -184,16 +188,17 @@ func main() {
 		rawSize, gzSize, brSize, bundleVer)
 
 	// 笔记编辑器岛（esbuild 产物，构建方式见 web/notes-editor/）。
-	// 复用 assets.Bundle 获得内容 hash + 预压缩；CSS 走 /static/* 文件服务，
+	// 复用 assets.Bundle 获得内容 hash + 预压缩；CSS 是手写的
+	// static/css/notes-editor.css（Typora 式编辑页样式），走 /static/* 文件服务，
 	// 单独按内容算 hash 作为 ?v= 参数。
 	notesBundle, err := assets.NewBundle("static", []string{"notes-editor.js"})
 	if err != nil {
 		log.Fatal("bundle notes editor (先运行 web/notes-editor 下的 npm run build):", err)
 	}
 	notesEditorVer = notesBundle.Version()
-	cssBytes, err := os.ReadFile("static/notes-editor.css")
+	cssBytes, err := os.ReadFile("static/css/notes-editor.css")
 	if err != nil {
-		log.Fatal("read notes-editor.css (先运行 web/notes-editor 下的 npm run build):", err)
+		log.Fatal("read static/css/notes-editor.css:", err)
 	}
 	cssSum := sha256.Sum256(cssBytes)
 	notesEditorCSSVer = hex.EncodeToString(cssSum[:6])
@@ -309,7 +314,7 @@ func main() {
 
 		// 云笔记
 		r.Get("/notes", handler.NotesPage(database))
-		r.Post("/notes", handler.CreateNote(database))
+		r.Get("/notes/new", handler.NewNote(database))
 		r.Get("/notes/{id}", handler.NoteEditPage(database))
 		r.Put("/notes/{id}", handler.SaveNote(database))
 		r.Delete("/notes/{id}", handler.DeleteNote(database))

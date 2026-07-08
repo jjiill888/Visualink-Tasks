@@ -15,7 +15,7 @@
       {{range .Notes}}
       <tr>
         <td>
-          <a href="/notes/{{.ID}}" style="text-decoration:none;color:inherit;font-weight:500">
+          <a href="/notes/{{.ID}}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;font-weight:500">
             {{if .Title}}{{.Title}}{{else}}无标题笔记{{end}}
           </a>
           {{if .IsPrivate}}<span class="us-badge" title="仅自己可见">私有</span>{{end}}
@@ -23,7 +23,7 @@
         <td class="text-muted">{{if .UpdaterName}}{{.UpdaterName}}{{else}}{{.OwnerName}}{{end}}</td>
         <td class="text-muted">{{.UpdatedAtLabel}}</td>
         <td class="text-right">
-          <a href="/notes/{{.ID}}" class="us-btn us-btn-sm us-btn-outline">编辑</a>
+          <a href="/notes/{{.ID}}" target="_blank" rel="noopener" class="us-btn us-btn-sm us-btn-outline">编辑</a>
           {{if eq .OwnerID $uid}}
           <button class="us-btn us-btn-sm us-btn-danger"
             hx-delete="/notes/{{.ID}}"

@@ -102,8 +102,10 @@ func NotesPage(database *db.DB) http.HandlerFunc {
 	}
 }
 
-// CreateNote POST /notes — 新建空笔记后跳转编辑页。
-func CreateNote(database *db.DB) http.HandlerFunc {
+// NewNote GET /notes/new — 创建空笔记后 302 到编辑页。
+// 用 GET 是为了让列表页的「新建笔记」做成 target="_blank" 的普通链接，
+// 直接在新标签页里落到新笔记的编辑器。
+func NewNote(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := UserFromContext(r)
 		id, err := database.CreateNote(u.ID, "无标题笔记")
@@ -111,11 +113,12 @@ func CreateNote(database *db.DB) http.HandlerFunc {
 			http.Error(w, "创建失败", http.StatusInternalServerError)
 			return
 		}
-		redirect(w, r, fmt.Sprintf("/notes/%d", id))
+		http.Redirect(w, r, fmt.Sprintf("/notes/%d", id), http.StatusFound)
 	}
 }
 
 // NoteEditPage GET /notes/{id} — 编辑页（Milkdown 客户端渲染岛）。
+// 独立标签页打开，不套 base.html 应用外壳（Typora 式极简风格）。
 func NoteEditPage(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		n := loadNote(w, r, database)
@@ -124,7 +127,7 @@ func NoteEditPage(database *db.DB) http.HandlerFunc {
 		}
 		pd := pageData(r, "notes")
 		pd.Data = map[string]any{"Note": n}
-		render(w, r, "note_edit.html", pd)
+		renderStandalone(w, "note_edit.html", pd)
 	}
 }
 
