@@ -40,6 +40,7 @@ COPY static/    static/
 # 用容器内新鲜构建的编辑器产物覆盖仓库里提交的版本，保证与源码一致
 COPY --from=assets /app/static/notes-editor.js static/
 COPY --from=assets /app/static/vendor/katex static/vendor/katex
+COPY --from=assets /app/static/vendor/hljs static/vendor/hljs
 
 EXPOSE 8080
 CMD ["./featuretrack"]

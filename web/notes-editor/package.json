@@ -3,11 +3,13 @@
   "private": true,
   "description": "云笔记 Milkdown WYSIWYG 编辑器岛，esbuild 打包为 static/notes-editor.js；样式在手写的 static/css/notes-editor.css",
   "scripts": {
-    "build": "esbuild src/main.js --bundle --minify --format=iife --target=es2020 --define:__VUE_OPTIONS_API__=false --define:__VUE_PROD_DEVTOOLS__=false --define:__VUE_PROD_HYDRATION_MISMATCH_DETAILS__=false --outfile=../../static/notes-editor.js --log-level=info && npm run copy-katex",
+    "build": "esbuild src/main.js --bundle --minify --format=iife --target=es2020 --define:__VUE_OPTIONS_API__=false --define:__VUE_PROD_DEVTOOLS__=false --define:__VUE_PROD_HYDRATION_MISMATCH_DETAILS__=false --outfile=../../static/notes-editor.js --log-level=info && npm run build:hljs && npm run copy-katex",
+    "build:hljs": "esbuild src/hljs-entry.js --bundle --minify --format=iife --target=es2020 --outfile=../../static/vendor/hljs/hljs.min.js --log-level=info",
     "copy-katex": "rm -rf ../../static/vendor/katex && mkdir -p ../../static/vendor/katex/fonts && cp node_modules/katex/dist/katex.min.js node_modules/katex/dist/katex.min.css ../../static/vendor/katex/ && cp node_modules/katex/dist/fonts/*.woff2 ../../static/vendor/katex/fonts/"
   },
   "dependencies": {
     "@milkdown/kit": "^7.15.0",
+    "highlight.js": "^11.11.1",
     "katex": "^0.17.0",
     "remark-frontmatter": "^5.0.0",
     "remark-math": "^6.0.0"

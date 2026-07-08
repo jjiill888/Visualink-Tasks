@@ -2,6 +2,14 @@
 
 本文件作为功能跟踪文档，按阶段记录重要改动（新→旧）。
 
+## 2026-07-08 云笔记 · 多语言代码高亮 + 顶栏简化
+
+- **代码块语法高亮**（highlight.js 11，29 种常用语言 + 各自别名：js/ts/py/go/java/c/cpp/cs/rust/kotlin/swift/php/ruby/lua/sql/bash/powershell/json/yaml/html/css/scss/md/dockerfile/makefile/nginx/ini/diff 等）：
+  - 不进主 bundle（主包仅 +1.5KB 装饰逻辑）：自建 `static/vendor/hljs/hljs.min.js`（esbuild 单独打包 133KB，`npm run build:hljs`），文档出现**带语言标注**的代码块时才按需注入加载（同 KaTeX 做法，URL 经 `window.__notesHljs`）；Dockerfile 已同步复制
+  - 实现为 ProseMirror 装饰（`web/notes-editor/src/code-highlight.js`）：hljs 输出走 DOM 映射成 inline decoration，**不改文档内容，序列化零影响**；语言不认识（```flow 等）或加载失败保持素颜纯文本
+  - token 配色 GitHub 系克制风格，浅/深两套写在 notes-editor.css 随主题切换；历史只读页同样生效
+- **顶栏简化**：移除左上角「← 笔记列表」链接，「侧栏」开关移到左上角（文件/大纲都在侧栏里，列表页入口由侧栏「文件」视图承担）
+
 ## 2026-07-08 云笔记 · 文字配色体系重整 + 侧栏文件列表直出
 
 - **配色**（用户反馈：深色下有的字太暗、浅色下正文不够黑）：深浅两套色板收敛为 4 档灰阶 + 1 个低饱和强调蓝，全部走 CSS 变量。浅色正文 #333→#1f2329（近黑）、标题 #15181d；深色次级文字 #808080→#9aa1a9、正文 #d4d4d4→#d9dce1、装饰 #555→#6a7077。排版规则里的硬编码颜色改为 `var(--ne-*, 回退值)`（回退兼容带外壳的历史只读页），深色段删掉一批随变量自动切换的冗余规则

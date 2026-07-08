@@ -48,7 +48,7 @@ go run .             # 启动，监听 :8080
 
 所见即所得的 Markdown 笔记（Milkdown 编辑器，输入 `## ` 自动变标题），支持中文全文搜索（SQLite FTS5 trigram）、历史版本、图片/文件附件。
 
-Markdown 兼容 CommonMark + GFM（表格对齐、任务列表、删除线、自动链接），另支持：数学公式 `$...$` / `$$...$$`（KaTeX 自托管渲染，双击编辑源码）、Emoji 短代码（`:smiley:` → 😃）、YAML front matter；内联 HTML 标签原样保留显示（不渲染执行）。
+Markdown 兼容 CommonMark + GFM（表格对齐、任务列表、删除线、自动链接），另支持：数学公式 `$...$` / `$$...$$`（KaTeX 自托管渲染，双击编辑源码）、Emoji 短代码（`:smiley:` → 😃）、YAML front matter、代码块多语言语法高亮（highlight.js 自托管按需加载，29 种常用语言，```` ```go ````/```` ```py ```` 等标注即生效）；内联 HTML 标签原样保留显示（不渲染执行）。
 
 表格：输入 `|3x2|` + 空格插入 3 列 2 行表格；光标进入表格时浮出加行/加列/删行/删列/对齐/删表工具条，Tab 在单元格间移动。
 

@@ -19,6 +19,7 @@ import { getMarkdown } from '@milkdown/kit/utils';
 
 import { markdownExtra } from './markdown-extra.js';
 import { tableToolbar } from './table-toolbar.js';
+import { codeHighlight } from './code-highlight.js';
 
 // 样式不再走 esbuild：编辑页全部样式在手写的 static/css/notes-editor.css
 
@@ -183,6 +184,7 @@ async function mountEditor(root) {
     .use(commonmark)
     .use(gfm)
     .use(tableToolbar)
+    .use(codeHighlight)
     .use(markdownExtra)
     .use(history)
     .use(listener)

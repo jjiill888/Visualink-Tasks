@@ -258,6 +258,69 @@ body.note-standalone ::selection {
   line-height: 1.6;
 }
 
+/* 代码高亮 token（.hljs-* 类由 code-highlight.js 的装饰产生，hljs 按需加载）。
+   GitHub 系克制配色，与整页低饱和风格一致；深色版在深色段覆盖 */
+.milkdown .ProseMirror pre .hljs-comment,
+.milkdown .ProseMirror pre .hljs-quote {
+  color: #6e7781;
+  font-style: italic;
+}
+
+.milkdown .ProseMirror pre .hljs-keyword,
+.milkdown .ProseMirror pre .hljs-doctag,
+.milkdown .ProseMirror pre .hljs-template-tag,
+.milkdown .ProseMirror pre .hljs-type {
+  color: #cf222e;
+}
+
+.milkdown .ProseMirror pre .hljs-string,
+.milkdown .ProseMirror pre .hljs-regexp {
+  color: #0a3069;
+}
+
+.milkdown .ProseMirror pre .hljs-number,
+.milkdown .ProseMirror pre .hljs-literal,
+.milkdown .ProseMirror pre .hljs-variable,
+.milkdown .ProseMirror pre .hljs-template-variable,
+.milkdown .ProseMirror pre .hljs-attr,
+.milkdown .ProseMirror pre .hljs-attribute,
+.milkdown .ProseMirror pre .hljs-operator {
+  color: #0550ae;
+}
+
+.milkdown .ProseMirror pre .hljs-title,
+.milkdown .ProseMirror pre .hljs-meta {
+  color: #8250df;
+}
+
+.milkdown .ProseMirror pre .hljs-built_in,
+.milkdown .ProseMirror pre .hljs-symbol {
+  color: #953800;
+}
+
+.milkdown .ProseMirror pre .hljs-name,
+.milkdown .ProseMirror pre .hljs-tag,
+.milkdown .ProseMirror pre .hljs-section,
+.milkdown .ProseMirror pre .hljs-selector-tag,
+.milkdown .ProseMirror pre .hljs-selector-class,
+.milkdown .ProseMirror pre .hljs-selector-id,
+.milkdown .ProseMirror pre .hljs-bullet {
+  color: #116329;
+}
+
+.milkdown .ProseMirror pre .hljs-addition {
+  color: #116329;
+  background: rgba(74, 194, 107, 0.12);
+}
+
+.milkdown .ProseMirror pre .hljs-deletion {
+  color: #82071e;
+  background: rgba(255, 129, 130, 0.15);
+}
+
+.milkdown .ProseMirror pre .hljs-emphasis { font-style: italic; }
+.milkdown .ProseMirror pre .hljs-strong { font-weight: 600; }
+
 /* 图片：居中，2px 圆角。
    注意排除 ProseMirror 的内部占位图（.ProseMirror-separator，
    行尾是公式等原子节点时自动插入），否则段落会被撑出大空隙 */
@@ -715,6 +778,64 @@ body.note-standalone *::-webkit-scrollbar-thumb:hover {
 
 .ne-dark body.note-standalone .ne-table-toolbar .ne-tt-sep {
   background: #3a3a3a;
+}
+
+/* 代码高亮 token 深色版（GitHub Dark 系） */
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-comment,
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-quote {
+  color: #8b949e;
+}
+
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-keyword,
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-doctag,
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-template-tag,
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-type {
+  color: #ff7b72;
+}
+
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-string,
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-regexp {
+  color: #a5d6ff;
+}
+
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-number,
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-literal,
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-variable,
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-template-variable,
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-attr,
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-attribute,
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-operator {
+  color: #79c0ff;
+}
+
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-title,
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-meta {
+  color: #d2a8ff;
+}
+
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-built_in,
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-symbol {
+  color: #ffa657;
+}
+
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-name,
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-tag,
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-section,
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-selector-tag,
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-selector-class,
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-selector-id,
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-bullet {
+  color: #7ee787;
+}
+
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-addition {
+  color: #aff5b4;
+  background: rgba(46, 160, 67, 0.15);
+}
+
+.ne-dark body.note-standalone .milkdown .ProseMirror pre .hljs-deletion {
+  color: #ffdcd7;
+  background: rgba(248, 81, 73, 0.15);
 }
 
 .ne-dark body.note-standalone .milkdown .ProseMirror pre.note-frontmatter {
