@@ -21,6 +21,15 @@
   <link rel="stylesheet" href="/static/css/notes-editor.css?v={{notesEditorCSSVersion}}">
   {{/* 跨境高 RTT 优化：浏览列表时空闲预取编辑器资产（immutable 缓存），点开笔记秒开 */}}
   <link rel="prefetch" href="/static/notes-editor.js?v={{notesEditorVersion}}">
+  {{/* 悬停笔记链接时预取整页 HTML（Chrome 108+，其他浏览器忽略）。
+       排除 /notes/new——GET 有建笔记副作用，绝不能预取 */}}
+  <script type="speculationrules">
+  {"prefetch":[{"source":"document","where":{"and":[
+    {"href_matches":"/notes/*"},
+    {"not":{"href_matches":"/notes/new"}},
+    {"not":{"href_matches":"/notes/*/*"}}
+  ]},"eagerness":"moderate"}]}
+  </script>
 </head>
 <body class="note-standalone ne-library">
 

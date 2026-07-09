@@ -33,6 +33,19 @@
   window.__notesHljs = {
     js: '/static/vendor/hljs/hljs.min.js?v={{notesEditorVersion}}'
   };
+  /* 新建直出：/notes/new 不再 302（跨境省一跳），地址栏归一到真实地址，
+     防止刷新重复建；正常打开时是同址 no-op */
+  history.replaceState(null, '', '/notes/{{$n.ID}}');
+  </script>
+  {{/* 跨境高 RTT 优化：悬停侧栏文档链接时预取整页 HTML（Chrome 108+，
+       其他浏览器忽略），点击切换文档近乎即时。排除 /notes/new（GET 有
+       建笔记副作用，绝不能预取）与更深路径（history/revisions） */}}
+  <script type="speculationrules">
+  {"prefetch":[{"source":"document","where":{"and":[
+    {"href_matches":"/notes/*"},
+    {"not":{"href_matches":"/notes/new"}},
+    {"not":{"href_matches":"/notes/*/*"}}
+  ]},"eagerness":"moderate"}]}
   </script>
 </head>
 <body class="note-standalone" hx-ext="morph,loading-states,response-targets">

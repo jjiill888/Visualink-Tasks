@@ -138,9 +138,23 @@ func NotesPanel(database *db.DB) http.HandlerFunc {
 	}
 }
 
-// NewNote GET /notes/new — 创建空笔记后 302 到编辑页。
-// 用 GET 是为了让列表页的「新建笔记」做成 target="_blank" 的普通链接，
-// 直接在新标签页里落到新笔记的编辑器。
+// renderNoteEdit 渲染编辑页（NoteEditPage 与 NewNote 共用）。
+// 侧栏文档列表随页面直出（查询失败不阻塞编辑，Panel 为 nil 时
+// 模板显示占位，前端打开侧栏时再 fetch 补拉）。
+func renderNoteEdit(w http.ResponseWriter, r *http.Request, database *db.DB, n *model.Note) {
+	panel, err := notesPanelData(database, UserFromContext(r).ID)
+	if err != nil {
+		panel = nil
+	}
+	pd := pageData(r, "notes")
+	pd.Data = map[string]any{"Note": n, "Panel": panel}
+	renderStandalone(w, "note_edit.html", pd)
+}
+
+// NewNote GET /notes/new — 创建空笔记后**直出**编辑页，不再 302。
+// 跨境高 RTT 下 302+跟随 = 两个串行来回；直出省掉一跳，模板里的
+// history.replaceState 把地址栏归一到 /notes/{id}（防刷新重复建）。
+// 用 GET 是为了让「新建笔记」做成 target="_blank" 的普通链接。
 func NewNote(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := UserFromContext(r)
@@ -149,7 +163,13 @@ func NewNote(database *db.DB) http.HandlerFunc {
 			http.Error(w, "创建失败", http.StatusInternalServerError)
 			return
 		}
-		http.Redirect(w, r, fmt.Sprintf("/notes/%d", id), http.StatusFound)
+		n, err := database.GetNote(id)
+		if err != nil || n == nil {
+			// 建成了但读不回来（几乎不可能），退回跳转兜底
+			http.Redirect(w, r, fmt.Sprintf("/notes/%d", id), http.StatusFound)
+			return
+		}
+		renderNoteEdit(w, r, database, n)
 	}
 }
 
@@ -161,15 +181,7 @@ func NoteEditPage(database *db.DB) http.HandlerFunc {
 		if n == nil {
 			return
 		}
-		// 侧栏文档列表随页面直出（查询失败不阻塞编辑，Panel 为 nil 时
-		// 模板显示占位，前端打开侧栏时再 fetch 补拉）
-		panel, err := notesPanelData(database, UserFromContext(r).ID)
-		if err != nil {
-			panel = nil
-		}
-		pd := pageData(r, "notes")
-		pd.Data = map[string]any{"Note": n, "Panel": panel}
-		renderStandalone(w, "note_edit.html", pd)
+		renderNoteEdit(w, r, database, n)
 	}
 }
 
