@@ -92,11 +92,11 @@ func buildTmplMap() map[string]*template.Template {
 		"templates/note_edit.html",
 		"templates/notes_panel_partial.html",
 	))
-	// notes.html 内嵌列表片段（搜索时 HTMX 单独刷新该片段）
+	// notes.html 也是独立页（极简文库风格，与编辑页同一套 ne-* 设计语言），
+	// 不套 base.html；内嵌列表片段（搜索时 HTMX 单独刷新该片段）
 	m["notes.html"] = template.Must(template.New("").Funcs(funcMap).ParseFiles(
-		"templates/base.html",
-		"templates/notes_list_partial.html",
 		"templates/notes.html",
+		"templates/notes_list_partial.html",
 	))
 	for _, page := range withRow {
 		t := template.Must(template.New("").Funcs(funcMap).ParseFiles(

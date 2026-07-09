@@ -86,7 +86,7 @@ func notesList(w http.ResponseWriter, r *http.Request, database *db.DB, fullPage
 	if fullPage {
 		pd := pageData(r, "notes")
 		pd.Data = data
-		render(w, r, "notes.html", pd)
+		renderStandalone(w, "notes.html", pd)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

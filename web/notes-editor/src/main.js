@@ -138,7 +138,15 @@ async function mountEditor(root) {
   const initialEl = document.getElementById('note-initial');
   const initial = initialEl ? initialEl.value : '';
   const titleEl = document.getElementById('note-title');
-  const privateEl = document.getElementById('note-private');
+  // 可见性开关：顶栏文字按钮（仅 owner 有），显示当前状态，点击切换并立即保存
+  const privateBtn = document.getElementById('ne-private-toggle');
+  let isPrivate = privateBtn ? privateBtn.dataset.private === '1' : false;
+  function renderPrivate() {
+    privateBtn.textContent = isPrivate ? '私有' : '公开';
+    privateBtn.title = isPrivate ? '仅自己可见，点击改为所有人可见' : '所有人可见，点击改为仅自己可见';
+    privateBtn.classList.toggle('ne-on', isPrivate);
+  }
+  if (privateBtn) renderPrivate();
 
   let currentMarkdown = initial;
   let autosave = null;
@@ -156,7 +164,7 @@ async function mountEditor(root) {
           title: titleEl ? titleEl.value : '',
           content_md: currentMarkdown,
         };
-        if (privateEl) payload.is_private = privateEl.checked;
+        if (privateBtn) payload.is_private = isPrivate;
         return payload;
       },
     });
@@ -211,7 +219,13 @@ async function mountEditor(root) {
       el.addEventListener('compositionend', () => autosave.setComposing(false));
     }
     if (titleEl) titleEl.addEventListener('input', () => autosave.markDirty());
-    if (privateEl) privateEl.addEventListener('change', () => autosave.saveNow());
+    if (privateBtn) {
+      privateBtn.addEventListener('click', () => {
+        isPrivate = !isPrivate;
+        renderPrivate();
+        autosave.saveNow();
+      });
+    }
     // 离开页面前把未保存内容冲出去
     window.addEventListener('beforeunload', () => autosave.flushOnUnload());
   }
@@ -250,7 +264,7 @@ async function mountEditor(root) {
       editor.action((ctx) => ctx.get(editorViewCtx).setProps({}));
       srcEl.hidden = !split;
       document.body.classList.toggle('ne-split', split);
-      modeBtn.classList.toggle('ne-mode-on', split);
+      modeBtn.classList.toggle('ne-on', split);
       localStorage.setItem('ne-mode', split ? 'split' : 'wysiwyg');
       if (split) {
         srcEl.focus();

@@ -48,16 +48,13 @@ body.note-standalone {
   gap: 16px;
 }
 
-.ne-link,
-.ne-check {
+.ne-link {
   opacity: 0.35;
   transition: opacity 0.15s ease;
 }
 
 .ne-topbar:hover .ne-link,
-.ne-topbar:hover .ne-check,
-.ne-topbar:focus-within .ne-link,
-.ne-topbar:focus-within .ne-check {
+.ne-topbar:focus-within .ne-link {
   opacity: 1;
 }
 
@@ -76,19 +73,10 @@ body.note-standalone {
   color: var(--ne-fg);
 }
 
-.ne-check {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  color: var(--ne-muted);
-  cursor: pointer;
-  user-select: none;
-}
-
-.ne-check input {
-  accent-color: var(--ne-muted);
-  margin: 0;
+/* 顶栏按钮的「开启」态（分屏中 / 私有中）：不随顶栏淡出，强调蓝常亮 */
+.ne-link.ne-on {
+  opacity: 1;
+  color: var(--ne-accent);
 }
 
 /* 保存状态：一个词，12px 浅灰；成功 2 秒后由 Alpine 置回 idle 触发淡出 */
@@ -227,15 +215,193 @@ body.note-standalone.ne-split #note-editor-root {
   }
 }
 
-/* 顶栏「源码/预览」按钮：模式开启时常亮（不随顶栏淡出），提示当前处于分屏 */
-.ne-link.ne-mode-on {
-  opacity: 1;
-  color: var(--ne-accent);
-}
-
 /* selection：浅蓝、低饱和 */
 body.note-standalone ::selection {
   background: rgba(90, 140, 200, 0.18);
+}
+
+/* ── 「文库」列表页（notes.html，body.ne-library）────────────────
+   与编辑页同一语言：无卡片无表格，一行一篇，排版即界面 */
+body.ne-library .ne-page {
+  padding-top: 96px;
+}
+
+.ne-lib-head {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--ne-heading);
+  margin: 0 0 6px;
+}
+
+/* 搜索：一条安静的文字行，聚焦才出现下划线 */
+.ne-lib-search {
+  display: block;
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid transparent;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ne-fg);
+  padding: 6px 0;
+  margin-bottom: 22px;
+}
+
+.ne-lib-search::placeholder {
+  color: var(--ne-faint);
+}
+
+.ne-lib-search:focus {
+  border-bottom-color: var(--ne-line);
+}
+
+.ne-lib-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 0;
+}
+
+.ne-lib-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  color: var(--ne-fg);
+  text-decoration: none;
+}
+
+.ne-lib-row:hover .ne-lib-title {
+  color: var(--ne-accent);
+}
+
+.ne-lib-tag {
+  flex: none;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--ne-faint);
+  border: 1px solid var(--ne-line);
+  border-radius: 3px;
+  padding: 0 5px;
+}
+
+.ne-lib-meta {
+  flex: none;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--ne-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 删除：行悬停才浮现的文字动作，不再是红色实心按钮 */
+.ne-lib-del {
+  flex: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ne-muted);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.ne-lib-row:hover .ne-lib-del,
+.ne-lib-del:focus-visible {
+  opacity: 1;
+}
+
+.ne-lib-del:hover {
+  color: #dc2626;
+}
+
+/* 触屏没有 hover，删除按钮常显 */
+@media (hover: none) {
+  .ne-lib-del {
+    opacity: 1;
+  }
+}
+
+.ne-lib-empty {
+  padding: 32px 0;
+  font-size: 14px;
+  color: var(--ne-faint);
+}
+
+/* ── 历史版本弹窗内容（ne-hist，编辑页 #modal-content）──────────
+   无表头纯列表；「查看/恢复」为文字动作，悬停染强调色 */
+.ne-hist {
+  font-size: 13px;
+}
+
+.ne-hist-head {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ne-heading);
+  margin-bottom: 10px;
+}
+
+.ne-hist-note {
+  font-weight: 400;
+  color: var(--ne-faint);
+  margin-left: 8px;
+}
+
+.ne-hist-list {
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.ne-hist-row {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding: 7px 0;
+}
+
+.ne-hist-time {
+  color: var(--ne-fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.ne-hist-saver {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ne-muted);
+}
+
+.ne-hist-act {
+  flex: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ne-muted);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.ne-hist-act:hover {
+  color: var(--ne-accent);
+}
+
+.ne-hist-hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--ne-faint);
+}
+
+.ne-hist-empty {
+  padding: 12px 0;
+  color: var(--ne-faint);
 }
 
 /* ── 2. 正文排版（.milkdown .ProseMirror，独立页与历史只读页共用） ── */
@@ -678,6 +844,11 @@ body.note-standalone ::selection {
   background: rgba(150, 150, 150, 0.1);
 }
 
+/* 当前所在节（scroll spy，编辑页内联 JS 维护） */
+#ne-panel-toc a.ne-toc-on {
+  color: var(--ne-accent);
+}
+
 #ne-panel-toc .ne-toc-2 { padding-left: 28px; }
 #ne-panel-toc .ne-toc-3 { padding-left: 40px; }
 #ne-panel-toc .ne-toc-4 { padding-left: 52px; }
@@ -925,23 +1096,10 @@ body.note-standalone *::-webkit-scrollbar-thumb:hover {
   background: rgba(150, 150, 150, 0.12);
 }
 
-/* 历史版本弹层（us-* 组件）在深色独立页里的最小适配 */
+/* 历史版本弹层容器（modal-box 来自 style.min.css）深色适配；
+   弹窗内容本身是 ne-hist（见上），颜色全走变量自动跟随 */
 .ne-dark body.note-standalone .modal-box {
   background: #252526;
-  color: var(--ne-fg);
-}
-
-.ne-dark body.note-standalone .modal-box .modal-title {
-  color: var(--ne-heading);
-}
-
-.ne-dark body.note-standalone .modal-box .us-table th,
-.ne-dark body.note-standalone .modal-box .us-table td {
-  border-color: #3a3a3a;
-  color: var(--ne-fg);
-}
-
-.ne-dark body.note-standalone .modal-box .us-empty-title {
   color: var(--ne-fg);
 }
 

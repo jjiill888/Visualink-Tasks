@@ -1,37 +1,73 @@
-{{template "base.html" .}}
+{{/* 笔记列表页 —— 独立极简「文库」页，与编辑页同一套 ne-* 设计语言，
+     不套 base.html 应用外壳。样式在 static/css/notes-editor.css（ne-lib-*）。 */}}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <script>
+  /* 主题先行：与编辑页共用 ne-theme（auto/light/dark），样式前定好 .ne-dark 防闪烁 */
+  (function () {
+    var t = localStorage.getItem('ne-theme');
+    if (t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('ne-dark');
+    }
+    if (t === 'light' || t === 'dark') document.documentElement.style.colorScheme = t;
+  })();
+  </script>
+  <title>笔记 — VisualLink Tasks</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%234f46e5'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-weight='bold' font-size='16' fill='white'>VT</text></svg>">
+  <link rel="stylesheet" href="/static/css/notes-editor.css?v={{notesEditorCSSVersion}}">
+  {{/* 跨境高 RTT 优化：浏览列表时空闲预取编辑器资产（immutable 缓存），点开笔记秒开 */}}
+  <link rel="prefetch" href="/static/notes-editor.js?v={{notesEditorVersion}}">
+</head>
+<body class="note-standalone ne-library">
 
-{{define "title"}}笔记 — VisualLink Tasks{{end}}
+  <header class="ne-topbar">
+    <a class="ne-link" href="/dashboard">← 看板</a>
+    <div class="ne-right">
+      <a class="ne-link" href="/notes/new" target="_blank" rel="noopener" title="新建笔记，在新标签页打开">＋ 新建</a>
+      <button type="button" class="ne-link" id="ne-theme-toggle" title="切换配色：自动 → 浅色 → 深色">自动</button>
+    </div>
+  </header>
 
-{{define "head"}}
-{{/* 跨境高 RTT 优化：浏览列表时空闲预取编辑器资产（immutable 缓存），
-     点开笔记时编辑器秒开；bundle.js 本页已加载、KaTeX 按需加载，均不预取 */}}
-<link rel="prefetch" href="/static/notes-editor.js?v={{notesEditorVersion}}">
-<link rel="prefetch" href="/static/css/notes-editor.css?v={{notesEditorCSSVersion}}">
-{{end}}
-
-{{define "content"}}
-{{$d := .Data}}
-<div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px">
-  <div>
-    <div class="us-page-title">云笔记</div>
-    <div class="us-page-sub">团队共享的 Markdown 笔记，非私有笔记所有人可查看和编辑</div>
-  </div>
-  {{/* 新建走 GET /notes/new：创建空笔记后 302 到编辑页，在新标签打开 */}}
-  <a href="/notes/new" target="_blank" rel="noopener" class="us-btn us-btn-primary">+ 新建笔记</a>
-</div>
-
-<div class="us-card" style="margin-top:16px">
-  <div class="us-card-head">
-    <span class="us-card-title">全部笔记</span>
-    <input type="search" id="note-search" name="q" class="us-input" style="max-width:280px"
-      placeholder="搜索标题或内容…" value="{{$d.Query}}"
+  <main class="ne-page">
+    <h1 class="ne-lib-head">笔记</h1>
+    <input type="search" id="note-search" name="q" class="ne-lib-search"
+      placeholder="搜索标题或内容…" value="{{.Data.Query}}"
+      autocomplete="off" spellcheck="false"
       hx-get="/notes"
       hx-trigger="keyup changed delay:300ms, search"
       hx-target="#notes-list"
       hx-swap="innerHTML">
-  </div>
-  <div class="us-card-body" id="notes-list">
-    {{template "notes_list_partial.html" $d}}
-  </div>
-</div>
-{{end}}
+    <div id="notes-list">
+      {{template "notes_list_partial.html" .Data}}
+    </div>
+  </main>
+
+  <script defer src="/static/js/bundle.js?v={{bundleVersion}}"></script>
+  <script>
+  /* 配色切换：与编辑页同一逻辑（自动 → 浅色 → 深色，记 localStorage） */
+  (function () {
+    var btn = document.getElementById('ne-theme-toggle');
+    var media = matchMedia('(prefers-color-scheme: dark)');
+    function apply() {
+      var t = localStorage.getItem('ne-theme') || 'auto';
+      var dark = t === 'dark' || (t === 'auto' && media.matches);
+      document.documentElement.classList.toggle('ne-dark', dark);
+      document.documentElement.style.colorScheme = t === 'auto' ? '' : t;
+      btn.textContent = { auto: '自动', light: '浅色', dark: '深色' }[t];
+    }
+    btn.addEventListener('click', function () {
+      var order = ['auto', 'light', 'dark'];
+      var cur = localStorage.getItem('ne-theme') || 'auto';
+      localStorage.setItem('ne-theme', order[(order.indexOf(cur) + 1) % order.length]);
+      apply();
+    });
+    media.addEventListener('change', apply);
+    apply();
+  })();
+  </script>
+</body>
+</html>

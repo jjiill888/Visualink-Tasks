@@ -1,39 +1,25 @@
 {{define "note_history.html"}}
-<div class="modal-header">
-  <div class="modal-title">历史版本 — {{if .Note.Title}}{{.Note.Title}}{{else}}无标题笔记{{end}}</div>
+{{/* 历史版本弹窗内容（编辑页 #modal-content）—— ne-* 极简风格：
+     无表头纯列表，「查看/恢复」为文字链接；深浅色跟随编辑页主题。 */}}
+<div class="ne-hist">
+  <div class="ne-hist-head">历史版本<span class="ne-hist-note">{{if .Note.Title}}{{.Note.Title}}{{else}}无标题笔记{{end}}</span></div>
+  {{if .Revisions}}
+  <div class="ne-hist-list">
+    {{$noteID := .Note.ID}}
+    {{range .Revisions}}
+    <div class="ne-hist-row">
+      <span class="ne-hist-time">{{.SavedAtLabel}}</span>
+      <span class="ne-hist-saver">{{.SaverName}}</span>
+      <a class="ne-hist-act" href="/notes/{{$noteID}}/revisions/{{.ID}}" target="_blank" rel="noopener">查看</a>
+      <button type="button" class="ne-hist-act"
+        hx-post="/notes/{{$noteID}}/restore/{{.ID}}"
+        hx-confirm="恢复到 {{.SavedAtLabel}} 的版本？当前内容会先自动存为一条历史版本。">恢复</button>
+    </div>
+    {{end}}
+  </div>
+  <p class="ne-hist-hint">正文有变化且距上次快照超过 5 分钟才会产生新版本，每篇最多保留 100 条。</p>
+  {{else}}
+  <div class="ne-hist-empty">暂无历史版本 —— 保存过至少一次修改后，这里会出现版本快照</div>
+  {{end}}
 </div>
-{{if .Revisions}}
-<div class="us-table-wrap" style="max-height:420px;overflow-y:auto">
-  <table class="us-table">
-    <thead>
-      <tr>
-        <th>保存时间</th>
-        <th>保存人</th>
-        <th style="width:160px"></th>
-      </tr>
-    </thead>
-    <tbody>
-      {{$noteID := .Note.ID}}
-      {{range .Revisions}}
-      <tr>
-        <td>{{.SavedAtLabel}}</td>
-        <td>{{.SaverName}}</td>
-        <td class="text-right">
-          <a href="/notes/{{$noteID}}/revisions/{{.ID}}" class="us-btn us-btn-sm us-btn-outline">查看</a>
-          <button class="us-btn us-btn-sm us-btn-primary"
-            hx-post="/notes/{{$noteID}}/restore/{{.ID}}"
-            hx-confirm="恢复到 {{.SavedAtLabel}} 的版本？当前内容会先自动存为一条历史版本。">恢复</button>
-        </td>
-      </tr>
-      {{end}}
-    </tbody>
-  </table>
-</div>
-<p class="us-hint" style="margin-top:8px">正文有变化且距上次快照超过 5 分钟才会产生新版本，每篇最多保留 100 条。</p>
-{{else}}
-<div class="us-empty">
-  <div class="us-empty-title">暂无历史版本</div>
-  <p style="font-size:13px;color:#71767a">保存过至少一次修改后，这里会出现版本快照</p>
-</div>
-{{end}}
 {{end}}

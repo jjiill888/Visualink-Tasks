@@ -56,10 +56,10 @@
         历史版本
       </button>
       <button type="button" class="ne-link" id="ne-theme-toggle" title="切换配色：自动 → 浅色 → 深色">自动</button>
+      {{/* 可见性开关：文字按钮显示当前状态（公开/私有），点击切换，与顶栏其他按钮同语言 */}}
       {{if eq .CurrentUser.ID $n.OwnerID}}
-      <label class="ne-check" title="勾选后仅自己可见">
-        <input type="checkbox" id="note-private" {{if $n.IsPrivate}}checked{{end}}> 私有
-      </label>
+      <button type="button" class="ne-link{{if $n.IsPrivate}} ne-on{{end}}" id="ne-private-toggle"
+        data-private="{{if $n.IsPrivate}}1{{else}}0{{end}}"></button>
       {{end}}
     </div>
   </header>
@@ -261,8 +261,10 @@
     }
 
     /* 目录：从编辑器 DOM 取标题；内容变化（含挂载完成）防抖重建 */
+    var tocHeads = [], tocLinks = [];
     function buildToc() {
       var hs = root.querySelectorAll('h1, h2, h3, h4, h5, h6');
+      tocHeads = []; tocLinks = [];
       if (!hs.length) {
         tocEl.innerHTML = '<div class="ne-panel-empty">暂无标题</div>';
         return;
@@ -276,9 +278,12 @@
           h.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
         frag.appendChild(a);
+        tocHeads.push(h);
+        tocLinks.push(a);
       });
       tocEl.innerHTML = '';
       tocEl.appendChild(frag);
+      tocSpy();
     }
 
     var tocTimer = null;
@@ -287,6 +292,28 @@
       tocTimer = setTimeout(buildToc, 300);
     }).observe(root, { childList: true, subtree: true, characterData: true });
     buildToc();
+
+    /* 大纲当前所在节高亮（scroll spy）：视口顶部（顶栏下方 90px）之上
+       最后一个标题即当前节。普通模式滚动容器是窗口，分屏时是编辑器面板 */
+    var spyTicking = false;
+    function tocSpy() {
+      if (!tocHeads.length) return;
+      var refTop = document.body.classList.contains('ne-split')
+        ? root.getBoundingClientRect().top : 0;
+      var idx = 0;
+      for (var i = 0; i < tocHeads.length; i++) {
+        if (tocHeads[i].getBoundingClientRect().top - refTop <= 90) idx = i;
+        else break;
+      }
+      tocLinks.forEach(function (a, i) { a.classList.toggle('ne-toc-on', i === idx); });
+    }
+    function onSpyScroll() {
+      if (spyTicking) return;
+      spyTicking = true;
+      requestAnimationFrame(function () { spyTicking = false; tocSpy(); });
+    }
+    window.addEventListener('scroll', onSpyScroll, { passive: true });
+    root.addEventListener('scroll', onSpyScroll, { passive: true }); /* 分屏模式 */
 
     if (pinned) setOpen(true);
   })();
