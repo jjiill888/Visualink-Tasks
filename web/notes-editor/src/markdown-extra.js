@@ -1,6 +1,9 @@
 // Markdown 兼容增强（对照 Editor.md 全语法测试模板补齐）：
 //   1. 数学公式：remark-math 解析 $...$ / $$...$$，KaTeX 渲染
 //      （@milkdown/plugin-math 已停更于 7.5.x，与 kit 7.21 不兼容，故自实现轻量节点）
+//      Editor.md 系的围栏式公式块 ```math / ```katex / ```latex / ```tex
+//      也转成公式块渲染（fence 记在节点属性里，保存时原样写回同语言围栏）；
+//      行内 $\(...\)$ / 块级 \[...\] 的包裹符剥掉（KaTeX 不认 \( \)，会红字报错）
 //   2. Emoji 短代码：自写轻量映射（见 emoji-lite.js，替代拖入 213KB 数据库的 remark-emoji）
 //   3. YAML front matter：remark-frontmatter + yaml 节点，防止 ---...--- 被误解析成
 //      setext 标题导致保存时内容损坏；显示为低调的预格式块，可直接编辑
@@ -51,7 +54,46 @@ function renderKatex(el, value, displayMode) {
     .catch(() => {});
 }
 
+// ── 围栏式公式块 + 公式内容归一 ──
+const MATH_FENCE_LANGS = ['math', 'katex', 'latex', 'tex'];
+
+// 剥掉 \(...\) / \[...\] 包裹（Editor.md 模板写法，KaTeX 不认这两个定界符）
+function normalizeMathValue(v) {
+  const s = v.trim();
+  if (s.startsWith('\\(') && s.endsWith('\\)')) return s.slice(2, -2).trim();
+  if (s.startsWith('\\[') && s.endsWith('\\]')) return s.slice(2, -2).trim();
+  return s;
+}
+
+// ```math 等围栏代码块转 math 节点（fenceLang 记住围栏语言，序列化原样写回）。
+// 内容里的 \_ 还原成 _：Editor.md 的模板经过其 markdown 管线会先解转义，
+// 我们的围栏内容是逐字的，\_ 会被 KaTeX 渲染成下划线字符而非下标
+function remarkMathFences() {
+  return (tree) => {
+    (function walk(node) {
+      if (!Array.isArray(node.children)) return;
+      for (let i = 0; i < node.children.length; i++) {
+        const child = node.children[i];
+        if (child.type === 'code' && MATH_FENCE_LANGS.includes((child.lang || '').toLowerCase())) {
+          node.children[i] = {
+            type: 'math',
+            fenceLang: child.lang.toLowerCase(),
+            value: child.value.replace(/\\_/g, '_').trim(),
+          };
+          continue;
+        }
+        if (child.type === 'math' || child.type === 'inlineMath') {
+          child.value = normalizeMathValue(child.value || '');
+          continue;
+        }
+        walk(child);
+      }
+    })(tree);
+  };
+}
+
 const remarkMathPlugin = $remark('remarkMath', () => remarkMath);
+const remarkMathFencesPlugin = $remark('remarkMathFences', () => remarkMathFences);
 const remarkEmojiPlugin = $remark('remarkEmojiLite', () => remarkEmojiLite);
 // 注意：$remark 不传 initialOptions 时会给插件塞空对象 {}，
 // 而 remark-frontmatter 要求 {} 里必须有 type 字段 —— 显式传 'yaml' 预设
@@ -89,20 +131,22 @@ const mathInlineSchema = $nodeSchema('math_inline', () => ({
   },
 }));
 
-// 块级公式 $$...$$ 独占段落（remark-math 的 math 节点）
+// 块级公式：$$...$$（remark-math 的 math 节点）或 ```math 系围栏
+// （remarkMathFences 转换，fence 属性记住围栏语言，保存时原样写回）
 const mathBlockSchema = $nodeSchema('math_block', () => ({
   group: 'block',
   atom: true,
   marks: '',
-  attrs: { value: { default: '' } },
+  attrs: { value: { default: '' }, fence: { default: '' } },
   parseDOM: [{
     tag: 'div[data-type="math-block"]',
-    getAttrs: (dom) => ({ value: dom.dataset.value || '' }),
+    getAttrs: (dom) => ({ value: dom.dataset.value || '', fence: dom.dataset.fence || '' }),
   }],
   toDOM: (node) => {
     const div = document.createElement('div');
     div.dataset.type = 'math-block';
     div.dataset.value = node.attrs.value;
+    if (node.attrs.fence) div.dataset.fence = node.attrs.fence;
     div.title = '双击编辑公式';
     renderKatex(div, node.attrs.value, true);
     return div;
@@ -110,13 +154,17 @@ const mathBlockSchema = $nodeSchema('math_block', () => ({
   parseMarkdown: {
     match: (node) => node.type === 'math',
     runner: (state, node, type) => {
-      state.addNode(type, { value: node.value });
+      state.addNode(type, { value: node.value, fence: node.fenceLang || '' });
     },
   },
   toMarkdown: {
     match: (node) => node.type.name === 'math_block',
     runner: (state, node) => {
-      state.addNode('math', undefined, node.attrs.value);
+      if (node.attrs.fence) {
+        state.addNode('code', undefined, node.attrs.value, { lang: node.attrs.fence });
+      } else {
+        state.addNode('math', undefined, node.attrs.value);
+      }
     },
   },
 }));
@@ -163,6 +211,7 @@ const frontmatterSchema = $nodeSchema('yaml', () => ({
 // 供 main.js 一次性 .use() 的插件集合
 export const markdownExtra = [
   remarkMathPlugin,
+  remarkMathFencesPlugin,
   remarkEmojiPlugin,
   remarkFrontmatterPlugin,
   mathInlineSchema,
