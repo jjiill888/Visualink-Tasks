@@ -14,6 +14,7 @@
   - 带属性的标签、跨段落的标签对不处理，保持源码原样显示（不吞内容）；未识别的行内 HTML 源码加了低调的代码色提示
 - **GFM 任务列表复选框**（`web/notes-editor/src/task-list.js`）：list_item NodeView——task 项渲染 `label>input[checkbox]` + `.ne-task-body`（li 转 flex），嵌套任务列表同样生效；编辑态点击勾选走 `setNodeMarkup` 改 checked → 触发自动保存；只读页/分屏预览由 CSS 关掉指针事件；勾选项文字置灰划线
 - **列表序列化保真**（main.js `remarkStringifyOptionsCtx`）：列表符号 `*` → `-`；修 Milkdown 的 spread 串型 bug——解析层把 spread 存成字符串 `"false"`（真值），紧凑列表保存后每项之间会多出空行，用 join 覆盖强制紧凑（往返验证：`- [x]` 嵌套任务列表逐字保持）
+- **代码块一键复制**（`web/notes-editor/src/code-copy.js`）：code_block NodeView 包一层 `.ne-codeblock` wrapper，复制按钮钉在**右上角**、悬停浮现（触屏常显），点击复制整块源码、图标变对勾 1.5s。按钮必须挂 wrapper 而非 pre——pre 是 overflow-x 滚动容器，absolute 按钮会跟内容横向滚走；复制走 navigator.clipboard，非安全上下文（生产 http）回退 execCommand；hljs 高亮装饰在 NodeView 的 contentDOM 里不受影响（已验证）；编辑/只读/分屏预览三处通用
 - 嵌套列表上下间距收紧（0.75em → 0.25em）
 - 验证：headless Chromium 跑 Editor.md 全语法样例 + 边界集（引用内 HTML/硬换行/嵌套引用/删除线嵌套加粗/空行保留），渲染 DOM 与序列化往返均通过；编辑/只读两模式挂载正常
 

@@ -20,6 +20,7 @@ import { getMarkdown, replaceAll } from '@milkdown/kit/utils';
 import { markdownExtra } from './markdown-extra.js';
 import { inlineHtml } from './inline-html.js';
 import { taskListItemView } from './task-list.js';
+import { codeCopyView } from './code-copy.js';
 import { tableToolbar } from './table-toolbar.js';
 import { codeHighlight } from './code-highlight.js';
 import { createScrollSync } from './scroll-sync.js';
@@ -222,6 +223,7 @@ async function mountEditor(root) {
     .use(markdownExtra)
     .use(inlineHtml)
     .use(taskListItemView)
+    .use(codeCopyView)
     .use(history)
     .use(listener)
     .use(clipboard)

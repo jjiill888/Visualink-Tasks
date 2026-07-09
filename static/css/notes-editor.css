@@ -498,6 +498,58 @@ body.ne-library .ne-page {
   overflow-x: auto;
 }
 
+/* 代码块一键复制（code-copy.js）：wrapper 是定位锚点（pre 自己会横向
+   滚动，按钮放 pre 里会跟着滚走），按钮钉在右上角，悬停浮现 */
+.milkdown .ProseMirror .ne-codeblock {
+  position: relative;
+  margin: 1em 0;
+}
+
+.milkdown .ProseMirror .ne-codeblock > pre {
+  margin: 0;
+}
+
+.ne-code-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid #e2e2e2;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #888;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s;
+}
+
+.milkdown .ProseMirror .ne-codeblock:hover .ne-code-copy,
+.ne-code-copy:focus-visible {
+  opacity: 1;
+}
+
+.ne-code-copy:hover {
+  color: #333;
+}
+
+.ne-code-copy.ne-copied {
+  opacity: 1;
+  color: #3a9a5c;
+}
+
+/* 触屏没有悬停，常显 */
+@media (hover: none) {
+  .ne-code-copy {
+    opacity: 1;
+  }
+}
+
 .milkdown .ProseMirror pre code {
   background: none;
   border: none;
@@ -1043,6 +1095,20 @@ body.note-standalone *::-webkit-scrollbar-thumb:hover {
 .ne-dark body.note-standalone .milkdown .ProseMirror pre {
   background: #262626;
   border-color: #333;
+}
+
+.ne-dark body.note-standalone .ne-code-copy {
+  border-color: #3a3a3a;
+  background: rgba(38, 38, 38, 0.9);
+  color: #777;
+}
+
+.ne-dark body.note-standalone .ne-code-copy:hover {
+  color: #ccc;
+}
+
+.ne-dark body.note-standalone .ne-code-copy.ne-copied {
+  color: #5cb87e;
 }
 
 .ne-dark body.note-standalone .milkdown .ProseMirror pre code {
