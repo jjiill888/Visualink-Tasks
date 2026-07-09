@@ -214,9 +214,19 @@
     themeMedia.addEventListener('change', applyTheme); /* 「自动」下实时跟随系统切换 */
     applyTheme();
 
+    function cancelClose() { clearTimeout(closeTimer); closeTimer = null; }
+    function scheduleClose(delay) {
+      if (pinned || !isOpen() || closeTimer) return;
+      /* 触发时再验一次 pinned：预约期间可能刚点了「侧栏」转常驻 */
+      closeTimer = setTimeout(function () { closeTimer = null; if (!pinned) setOpen(false); }, delay);
+    }
+
     /* 左缘悬停弹出：左侧 16px 内停留 180ms 才触发防误弹；
        面板展开后覆盖该区域，不会反复触发。
-       （放左边也避开了右缘滚动条——指针悬在滚动条上时收不到 mousemove） */
+       （放左边也避开了右缘滚动条——指针悬在滚动条上时收不到 mousemove）
+       悬停探出的面板遵守一条统一规则：指针只要在面板外面移动就预约缩回、
+       回到面板上取消——「扫过左缘但没停留」的面板会在指针继续移动时自动收掉。
+       故意不用 :hover 判断：Chrome 在面板滑到静止指针下方时不更新 hover 态 */
     document.addEventListener('mousemove', function (e) {
       var inZone = e.clientX <= 16;
       if (inZone && !openTimer && !isOpen()) {
@@ -225,14 +235,28 @@
         clearTimeout(openTimer);
         openTimer = null;
       }
+      if (isOpen() && !pinned) {
+        if (panel.contains(e.target)) cancelClose();
+        else scheduleClose(300);
+      }
     });
 
-    panel.addEventListener('mouseenter', function () { clearTimeout(closeTimer); });
-    panel.addEventListener('mouseleave', function () {
-      if (pinned) return;
-      clearTimeout(closeTimer);
-      closeTimer = setTimeout(function () { setOpen(false); }, 300);
-    });
+    /* 指针离开浏览器窗口 / 切到别的程序：撤销待弹出的定时器，未常驻的面板缩回。
+       没有这层时，鼠标出窗后收不到任何 mousemove/mouseleave，
+       180ms 定时器会在鼠标已经不在的情况下把面板弹出并永远留在那 */
+    function abortHover() {
+      clearTimeout(openTimer);
+      openTimer = null;
+      if (isOpen() && !pinned) {
+        cancelClose();
+        setOpen(false);
+      }
+    }
+    document.documentElement.addEventListener('mouseleave', abortHover);
+    window.addEventListener('blur', abortHover);
+
+    panel.addEventListener('mouseenter', cancelClose);
+    panel.addEventListener('mouseleave', function () { scheduleClose(300); });
 
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && isOpen() && !pinned) setOpen(false);
