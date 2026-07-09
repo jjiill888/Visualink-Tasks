@@ -2,6 +2,21 @@
 
 本文件作为功能跟踪文档，按阶段记录重要改动（新→旧）。
 
+## 2026-07-09 云笔记 · Markdown 兼容性补齐（删除线/上标下标/行内 HTML/GFM 任务列表）
+
+用户反馈：删除线只显示一部分、上标下标无法实现、引用行内混合有问题、GFM 任务列表有问题。排查结论：前三者同根——Milkdown 把行内 HTML（`<s>` `<sup>` `<sub>` 等）渲染成裸标签文字；任务列表则是 preset-gfm 只给 li 标属性、复选框本该由主题渲染而本项目无主题，从未画出来。
+
+- **行内 HTML 白名单渲染**（`web/notes-editor/src/inline-html.js`）：remark 解析后把成对的白名单行内标签折叠成自定义 mdast 节点，再由 ProseMirror mark 渲染成真实元素，支持嵌套（`<sup><u>x</u></sup>`）
+  - `<sup>/<sub>/<u>/<ins>/<kbd>/<mark>` → 同名 mark，序列化**原样写回** `<tag>...</tag>`（源码不损失）；kbd 键帽样式、mark 黄底高亮见 CSS
+  - `<s>/<del>/<strike>` → 直接转 mdast delete 复用 GFM 删除线 mark（保存归一为 `~~...~~`，语义等价）
+  - `<abbr title="全称">缩写</abbr>` → 唯一放行属性的标签（**仅 title**，双/单引号皆可，实体正确解码/回转义），虚线下划线 + 悬停显示全称；带其他属性（如 class）不折叠、保持源码显示
+  - 正文中的 `<br />` → 硬换行（保存归一为行尾 `\`）。此前被 preset-commonmark 的 remark-preserve-empty-line **误删**（它把 `<br />` 当空行标记全树回收）——本插件不走 `$remark` 追加注册，改为手动**前插** `remarkPluginsCtx` 抢在其之前运行；root 级 `<br />` 仍留给空行保留机制，空行往返不受影响（已回归验证）
+  - 带属性的标签、跨段落的标签对不处理，保持源码原样显示（不吞内容）；未识别的行内 HTML 源码加了低调的代码色提示
+- **GFM 任务列表复选框**（`web/notes-editor/src/task-list.js`）：list_item NodeView——task 项渲染 `label>input[checkbox]` + `.ne-task-body`（li 转 flex），嵌套任务列表同样生效；编辑态点击勾选走 `setNodeMarkup` 改 checked → 触发自动保存；只读页/分屏预览由 CSS 关掉指针事件；勾选项文字置灰划线
+- **列表序列化保真**（main.js `remarkStringifyOptionsCtx`）：列表符号 `*` → `-`；修 Milkdown 的 spread 串型 bug——解析层把 spread 存成字符串 `"false"`（真值），紧凑列表保存后每项之间会多出空行，用 join 覆盖强制紧凑（往返验证：`- [x]` 嵌套任务列表逐字保持）
+- 嵌套列表上下间距收紧（0.75em → 0.25em）
+- 验证：headless Chromium 跑 Editor.md 全语法样例 + 边界集（引用内 HTML/硬换行/嵌套引用/删除线嵌套加粗/空行保留），渲染 DOM 与序列化往返均通过；编辑/只读两模式挂载正常
+
 ## 2026-07-09 云笔记 · 跨境再提速（新疆用户反馈「编辑/新建慢」）
 
 新疆 → 美国服务器是最长链路（RTT 300ms+），砍掉关键路径上还剩的整来回：

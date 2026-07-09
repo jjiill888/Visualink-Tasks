@@ -462,6 +462,12 @@ body.ne-library .ne-page {
   margin: 0.25em 0;
 }
 
+/* 嵌套列表不继承块级列表的大间距 */
+.milkdown .ProseMirror li ul,
+.milkdown .ProseMirror li ol {
+  margin: 0.25em 0;
+}
+
 .milkdown .ProseMirror li p {
   margin: 0;
 }
@@ -680,18 +686,78 @@ body.ne-library .ne-page {
   background: #e5e5e5;
 }
 
-/* 任务列表（GFM） */
+/* 任务列表（GFM）：li 为 flex，label(checkbox) + .ne-task-body(正文/子列表)，
+   结构由 task-list.js 的 NodeView 生成 */
 .milkdown .ProseMirror li[data-item-type='task'] {
   list-style: none;
   margin-left: -1.2em;
+  display: flex;
+  align-items: flex-start;
 }
 
 .milkdown .ProseMirror li[data-item-type='task'] > label {
+  flex: none;
   margin-right: 6px;
+  user-select: none;
+  cursor: pointer;
 }
 
 .milkdown .ProseMirror li[data-item-type='task'] input {
   accent-color: #999;
+  margin: 0;
+  vertical-align: -1px;
+  cursor: pointer;
+}
+
+.milkdown .ProseMirror li[data-item-type='task'] > .ne-task-body {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 完成项文字置灰划线 */
+.milkdown .ProseMirror li[data-item-type='task'][data-checked='true'] > .ne-task-body > p {
+  color: #9aa0a6;
+  text-decoration: line-through;
+}
+
+/* 只读页与分屏预览里复选框不可点 */
+.milkdown .ProseMirror[contenteditable='false'] li[data-item-type='task'] input {
+  pointer-events: none;
+}
+
+/* 行内 HTML 白名单标签（inline-html.js 渲染成真实元素） */
+.milkdown .ProseMirror kbd {
+  padding: 1px 5px;
+  border: 1px solid #d4d4d4;
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: #f8f8f8;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: 0.85em;
+}
+
+.milkdown .ProseMirror mark {
+  padding: 0 2px;
+  border-radius: 2px;
+  background: #fff1a8;
+}
+
+.milkdown .ProseMirror sup,
+.milkdown .ProseMirror sub {
+  font-size: 0.75em;
+}
+
+.milkdown .ProseMirror abbr[title] {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: help;
+}
+
+/* 未识别的行内 HTML 仍显示源码，给个低调的代码样式提示 */
+.milkdown .ProseMirror span[data-type='html'] {
+  color: #b06f00;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: 0.85em;
 }
 
 /* 上传中的占位 widget */

@@ -8,7 +8,7 @@
 //   #note-private       私有开关（仅 owner 可见，可选）
 // 状态通过 window 事件 `notes-save-status` 通知页面上的 Alpine 组件：
 //   detail.state ∈ idle | saving | saved | error | conflict
-import { Editor, rootCtx, defaultValueCtx, editorViewOptionsCtx, editorViewCtx } from '@milkdown/kit/core';
+import { Editor, rootCtx, defaultValueCtx, editorViewOptionsCtx, editorViewCtx, remarkStringifyOptionsCtx } from '@milkdown/kit/core';
 import { commonmark } from '@milkdown/kit/preset/commonmark';
 import { gfm } from '@milkdown/kit/preset/gfm';
 import { history } from '@milkdown/kit/plugin/history';
@@ -18,6 +18,8 @@ import { upload, uploadConfig } from '@milkdown/kit/plugin/upload';
 import { getMarkdown, replaceAll } from '@milkdown/kit/utils';
 
 import { markdownExtra } from './markdown-extra.js';
+import { inlineHtml } from './inline-html.js';
+import { taskListItemView } from './task-list.js';
 import { tableToolbar } from './table-toolbar.js';
 import { codeHighlight } from './code-highlight.js';
 import { createScrollSync } from './scroll-sync.js';
@@ -174,6 +176,21 @@ async function mountEditor(root) {
     .config((ctx) => {
       ctx.set(rootCtx, root);
       ctx.set(defaultValueCtx, initial);
+      // 序列化保真：列表符号用 - 而非默认的 *；
+      // 修 Milkdown 的 spread 串型 bug —— list/listItem 的 spread 被解析层
+      // 存成字符串 "false"（真值），导致紧凑列表保存后每项之间多出空行，
+      // 这里用 join 覆盖强制紧凑
+      ctx.update(remarkStringifyOptionsCtx, (prev) => ({
+        ...prev,
+        bullet: '-',
+        join: [
+          ...(prev.join || []),
+          (left, right, parent) => {
+            if ((parent.type === 'list' || parent.type === 'listItem') && parent.spread === 'false') return 0;
+            return undefined;
+          },
+        ],
+      }));
       // 关闭浏览器拼写检查：contenteditable 默认开启，英文单词会满屏红色波浪线
       ctx.update(editorViewOptionsCtx, (prev) => ({
         ...prev,
@@ -203,6 +220,8 @@ async function mountEditor(root) {
     .use(tableToolbar)
     .use(codeHighlight)
     .use(markdownExtra)
+    .use(inlineHtml)
+    .use(taskListItemView)
     .use(history)
     .use(listener)
     .use(clipboard)
