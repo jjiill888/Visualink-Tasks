@@ -49,6 +49,8 @@
         :title="s === 'conflict' ? '笔记已被他人修改，点击刷新页面后再编辑' : (s === 'error' ? '保存失败，将自动重试' : '')"
         @click="if (s === 'conflict') location.reload()"
         x-text="({ saving: '保存中…', saved: '已保存', error: '保存失败', conflict: '保存失败' })[s] || ''"></span>
+      <button type="button" class="ne-link" id="ne-mode-toggle"
+        title="左侧编辑 Markdown 源码，右侧实时预览；再点回到所见即所得">源码/预览</button>
       <button type="button" class="ne-link"
         onclick="window.dispatchEvent(new CustomEvent('open-modal')); htmx.ajax('GET', '/notes/{{$n.ID}}/history', {target:'#modal-content', swap:'innerHTML'})">
         历史版本
@@ -66,6 +68,10 @@
   <main class="ne-page">
     <input type="text" id="note-title" class="ne-title"
       value="{{$n.Title}}" placeholder="无标题" maxlength="200" autocomplete="off" spellcheck="false">
+    {{/* 「源码/预览」分屏模式的左栏：纯 Markdown 源码。默认隐藏，
+         由编辑器岛在进入分屏时填入当前源码并显示（body.ne-split 控制布局） */}}
+    <textarea id="note-source" hidden autocomplete="off" spellcheck="false"
+      placeholder="在此编辑 Markdown 源码"></textarea>
     <div id="note-editor-root"
       data-note-id="{{$n.ID}}"
       data-updated-at="{{$n.UpdatedAt}}"

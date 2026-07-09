@@ -2,6 +2,20 @@
 
 本文件作为功能跟踪文档，按阶段记录重要改动（新→旧）。
 
+## 2026-07-09 云笔记 · 「源码/预览」分屏模式
+
+编辑页顶栏新增「源码/预览」开关：左栏纯 Markdown 源码编辑，右栏实时渲染预览；再点回到所见即所得。
+
+- **滚动/光标同步**（`web/notes-editor/src/scroll-sync.js`）：不用滚动百分比（代码块/图片/表格两侧高度不成比例会越滚越偏），改为**块锚点 + 分段线性插值**——remark 解析出每个顶层块的源码 offset（unified/remark-parse/remark-gfm 都是 Milkdown 传递依赖，bundle 仅 +2.8KB），左侧用隐藏镜像 div（复刻 textarea 字体/宽度/换行）逐块包 span 量出真实像素 y（软换行也准确），右侧取 ProseMirror 顶层节点 offsetTop，配成锚点对做双向插值映射
+  - 源码滚动 → 预览跟随；预览滚动 → 源码跟随（lock 标记来源抑制回环，平滑滚动动画期间锁窗口放宽 700ms）
+  - **光标跟随**：输入（防抖后随预览更新）与光标移动（点击/方向键，selectionchange 防抖 200ms）都把预览带到光标对应位置；目标已在预览可视区中部 25%~70% 区间则不动，避免每次击键微调；光标像素 y 用镜像 div + marker span 精确测量
+  - 锚点重建时机：进入分屏、预览内容更新、窗口 resize（防抖 200ms）、滚动时发现预览 scrollHeight 变化（hljs/KaTeX/图片迟到撑高）；两侧块数不齐时按序配对+单调性保护，解析失败退化为首尾两点（≈按比例）
+
+- **布局**：开启后整页变视口高度网格（`body.ne-split`），标题横跨两栏，左右两栏独立滚动；左栏等宽字体 textarea（`#note-source`），右栏复用现有 Milkdown 实例转只读（不另起渲染器，代码高亮/KaTeX/表格等能力天然一致）；≤800px 退化为上下堆叠
+- **同步与保存**：分屏下源码 textarea 是唯一事实来源——输入防抖 400ms 后 `replaceAll` 灌入预览，自动保存直接存**源码原文**（`markdownUpdated` 监听器在分屏下跳过，避免序列化归一结果反向覆盖用户敲的源码）；切回所见即所得时源码灌回编辑器恢复可编辑（空 `setProps` 触发 ProseMirror 重估 `editable()`）
+- **细节**：模式选择记 localStorage（`ne-mode`），刷新保持；开启时按钮常亮强调蓝提示当前处于分屏；源码 textarea 挂 IME 组字监听（组字期间不触发保存）；调试钩子 `__notesEditorMarkdown` 分屏下返回源码原文（预览有防抖可能滞后）
+- 历史版本只读页不提供此模式
+
 ## 2026-07-08 云笔记 · 多语言代码高亮 + 顶栏简化
 
 - **代码块语法高亮**（highlight.js 11，29 种常用语言 + 各自别名：js/ts/py/go/java/c/cpp/cs/rust/kotlin/swift/php/ruby/lua/sql/bash/powershell/json/yaml/html/css/scss/md/dockerfile/makefile/nginx/ini/diff 等）：

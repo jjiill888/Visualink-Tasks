@@ -8,18 +8,19 @@
 //   #note-private       私有开关（仅 owner 可见，可选）
 // 状态通过 window 事件 `notes-save-status` 通知页面上的 Alpine 组件：
 //   detail.state ∈ idle | saving | saved | error | conflict
-import { Editor, rootCtx, defaultValueCtx, editorViewOptionsCtx } from '@milkdown/kit/core';
+import { Editor, rootCtx, defaultValueCtx, editorViewOptionsCtx, editorViewCtx } from '@milkdown/kit/core';
 import { commonmark } from '@milkdown/kit/preset/commonmark';
 import { gfm } from '@milkdown/kit/preset/gfm';
 import { history } from '@milkdown/kit/plugin/history';
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener';
 import { clipboard } from '@milkdown/kit/plugin/clipboard';
 import { upload, uploadConfig } from '@milkdown/kit/plugin/upload';
-import { getMarkdown } from '@milkdown/kit/utils';
+import { getMarkdown, replaceAll } from '@milkdown/kit/utils';
 
 import { markdownExtra } from './markdown-extra.js';
 import { tableToolbar } from './table-toolbar.js';
 import { codeHighlight } from './code-highlight.js';
+import { createScrollSync } from './scroll-sync.js';
 
 // 样式不再走 esbuild：编辑页全部样式在手写的 static/css/notes-editor.css
 
@@ -141,6 +142,10 @@ async function mountEditor(root) {
 
   let currentMarkdown = initial;
   let autosave = null;
+  // 「源码/预览」分屏模式：true 时源码 textarea 是唯一事实来源，
+  // Milkdown 只作只读渲染预览（uiEditable=false）
+  let sourceMode = false;
+  let uiEditable = true;
 
   if (!readonly) {
     autosave = createAutosave({
@@ -169,8 +174,12 @@ async function mountEditor(root) {
       if (readonly) {
         ctx.update(editorViewOptionsCtx, (prev) => ({ ...prev, editable: () => false }));
       } else {
+        ctx.update(editorViewOptionsCtx, (prev) => ({ ...prev, editable: () => uiEditable }));
         ctx.get(listenerCtx).markdownUpdated((_ctx, markdown, prevMarkdown) => {
           if (markdown === prevMarkdown) return;
+          // 分屏模式下预览由 textarea 灌入（replaceAll），序列化结果不能
+          // 反向覆盖 currentMarkdown——保存的必须是用户敲的源码原文
+          if (sourceMode) return;
           currentMarkdown = markdown;
           autosave.markDirty();
         });
@@ -192,9 +201,12 @@ async function mountEditor(root) {
     .use(upload)
     .create();
 
+  const srcEl = document.getElementById('note-source');
+  const modeBtn = document.getElementById('ne-mode-toggle');
+
   if (!readonly) {
-    // IME 组字保护：编辑区与标题框都挂 composition 监听
-    for (const el of [root, titleEl].filter(Boolean)) {
+    // IME 组字保护：编辑区、标题框、源码 textarea 都挂 composition 监听
+    for (const el of [root, titleEl, srcEl].filter(Boolean)) {
       el.addEventListener('compositionstart', () => autosave.setComposing(true));
       el.addEventListener('compositionend', () => autosave.setComposing(false));
     }
@@ -204,8 +216,84 @@ async function mountEditor(root) {
     window.addEventListener('beforeunload', () => autosave.flushOnUnload());
   }
 
-  // 调试/测试钩子：读取当前序列化后的 Markdown（阶段二快照回写也会用到）
-  window.__notesEditorMarkdown = () => editor.action(getMarkdown());
+  // ── 「源码/预览」分屏模式 ─────────────────────────────────────
+  // 左栏 textarea 编辑 Markdown 源码，右栏现有 Milkdown 实例转只读渲染预览；
+  // 输入防抖 400ms 后 replaceAll 灌入预览。保存内容始终是源码原文。
+  if (!readonly && srcEl && modeBtn) {
+    let previewTimer = null;
+    let previewPending = false; // 源码已改、预览还没灌入（防抖期内）
+    let caretTimer = null;
+
+    // 滚动/光标同步（块锚点 + 分段线性插值，见 scroll-sync.js）
+    const scrollSync = createScrollSync({
+      srcEl,
+      previewEl: root, // #note-editor-root 在分屏下是预览侧滚动容器
+      getPmRoot: () => root.querySelector('.ProseMirror'),
+    });
+
+    function setMode(split) {
+      if (split === sourceMode) return;
+      if (split) {
+        // 进入分屏：以编辑器当前序列化结果为源码初值
+        currentMarkdown = editor.action(getMarkdown());
+        srcEl.value = currentMarkdown;
+      } else {
+        // 回到所见即所得：源码灌回编辑器（sourceMode 先置回，
+        // 让 markdownUpdated 恢复接管 currentMarkdown）
+        clearTimeout(previewTimer);
+        currentMarkdown = srcEl.value;
+      }
+      sourceMode = split;
+      uiEditable = !split;
+      if (!split) editor.action(replaceAll(srcEl.value));
+      // 空 setProps 触发 ProseMirror 重估 editable()，切换 contenteditable
+      editor.action((ctx) => ctx.get(editorViewCtx).setProps({}));
+      srcEl.hidden = !split;
+      document.body.classList.toggle('ne-split', split);
+      modeBtn.classList.toggle('ne-mode-on', split);
+      localStorage.setItem('ne-mode', split ? 'split' : 'wysiwyg');
+      if (split) {
+        srcEl.focus();
+        scrollSync.enable(); // 布局类已切换，此时测量的分栏宽度才是真实值
+      } else {
+        scrollSync.disable();
+      }
+    }
+
+    srcEl.addEventListener('input', () => {
+      if (!sourceMode) return;
+      currentMarkdown = srcEl.value;
+      autosave.markDirty();
+      previewPending = true;
+      clearTimeout(previewTimer);
+      previewTimer = setTimeout(() => {
+        if (!sourceMode) { previewPending = false; return; }
+        editor.action(replaceAll(srcEl.value));
+        previewPending = false;
+        // 等一帧让 ProseMirror 完成布局，再重建锚点并把预览带到光标处
+        requestAnimationFrame(() => scrollSync.previewChanged());
+      }, 400);
+    });
+
+    // 光标移动（点击/方向键）也让预览跟随；输入期间预览还没更新（锚点是旧的），
+    // 交给上面 previewChanged 处理，这里跳过
+    document.addEventListener('selectionchange', () => {
+      if (!sourceMode || document.activeElement !== srcEl) return;
+      clearTimeout(caretTimer);
+      caretTimer = setTimeout(() => {
+        if (sourceMode && !previewPending) scrollSync.syncToCaret();
+      }, 200);
+    });
+
+    modeBtn.addEventListener('click', () => setMode(!sourceMode));
+    // 记住上次的模式选择
+    if (localStorage.getItem('ne-mode') === 'split') setMode(true);
+  }
+
+  // 调试/测试钩子：读取当前序列化后的 Markdown（阶段二快照回写也会用到）。
+  // 分屏模式下以源码 textarea 为准——预览灌入有 400ms 防抖，可能滞后
+  window.__notesEditorMarkdown = () =>
+    sourceMode && srcEl ? srcEl.value : editor.action(getMarkdown());
 
   return editor;
 }
