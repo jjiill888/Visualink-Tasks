@@ -2,8 +2,10 @@
 //   1. 数学公式：remark-math 解析 $...$ / $$...$$，KaTeX 渲染
 //      （@milkdown/plugin-math 已停更于 7.5.x，与 kit 7.21 不兼容，故自实现轻量节点）
 //      Editor.md 系的围栏式公式块 ```math / ```katex / ```latex / ```tex
-//      也转成公式块渲染（fence 记在节点属性里，保存时原样写回同语言围栏）；
-//      行内 $\(...\)$ / 块级 \[...\] 的包裹符剥掉（KaTeX 不认 \( \)，会红字报错）
+//      也转成公式块渲染（fence 记在节点属性里，保存时原样写回同语言围栏；
+//      编辑态手敲的围栏在光标离开时由 mathFenceLiveConvert 就地转公式）；
+//      行内 $\(...\)$ / 块级 \[...\] 的包裹符剥掉（KaTeX 不认 \( \)，会红字报错）；
+//      AI 聊天复制出的裸括号行内公式 (A\subseteq\mathbb{R}) 按白名单命令识别
 //   2. Emoji 短代码：自写轻量映射（见 emoji-lite.js，替代拖入 213KB 数据库的 remark-emoji）
 //   3. YAML front matter：remark-frontmatter + yaml 节点，防止 ---...--- 被误解析成
 //      setext 标题导致保存时内容损坏；显示为低调的预格式块，可直接编辑
@@ -13,7 +15,7 @@
 import remarkMath from 'remark-math';
 import remarkFrontmatter from 'remark-frontmatter';
 import { $remark, $nodeSchema, $prose } from '@milkdown/kit/utils';
-import { Plugin } from '@milkdown/kit/prose/state';
+import { Plugin, PluginKey } from '@milkdown/kit/prose/state';
 
 import remarkEmojiLite from './emoji-lite.js';
 
@@ -57,6 +59,72 @@ function renderKatex(el, value, displayMode) {
 // ── 围栏式公式块 + 公式内容归一 ──
 const MATH_FENCE_LANGS = ['math', 'katex', 'latex', 'tex'];
 
+// AI 聊天（ChatGPT 等）复制出的行内公式常是裸括号形态 (A\subseteq\mathbb{R})：
+// 原文的 \( \) 定界符在 markdown 转义解析中丢失（\( 被解析成字符转义 → 括号）。
+// 只把「括号内含白名单 LaTeX 命令」的片段识别为行内公式，白名单避免把
+// Windows 路径 (C:\Users\x) 之类的普通括号误判成公式
+const KATEX_HINT_COMMANDS = new Set([
+  // 希腊字母
+  'alpha', 'beta', 'gamma', 'delta', 'epsilon', 'varepsilon', 'zeta', 'eta',
+  'theta', 'vartheta', 'iota', 'kappa', 'lambda', 'mu', 'nu', 'xi', 'pi',
+  'rho', 'sigma', 'tau', 'upsilon', 'phi', 'varphi', 'chi', 'psi', 'omega',
+  'Gamma', 'Delta', 'Theta', 'Lambda', 'Xi', 'Pi', 'Sigma', 'Upsilon', 'Phi', 'Psi', 'Omega',
+  // 关系与运算
+  'le', 'ge', 'ne', 'leq', 'geq', 'neq', 'in', 'notin', 'ni',
+  'subset', 'subseteq', 'supset', 'supseteq', 'cup', 'cap', 'setminus',
+  'cdot', 'times', 'div', 'pm', 'mp', 'oplus', 'otimes', 'circ',
+  'approx', 'equiv', 'sim', 'simeq', 'cong', 'propto', 'prec', 'succ',
+  'll', 'gg', 'mid', 'nmid', 'parallel', 'perp', 'angle',
+  // 大型运算与函数
+  'sum', 'prod', 'int', 'iint', 'oint', 'lim', 'limsup', 'liminf',
+  'sup', 'inf', 'max', 'min', 'gcd', 'det', 'dim', 'ker', 'deg', 'Pr',
+  'log', 'ln', 'lg', 'exp', 'sin', 'cos', 'tan', 'cot', 'sec', 'csc',
+  'arcsin', 'arccos', 'arctan', 'sinh', 'cosh', 'tanh',
+  // 结构与装饰
+  'frac', 'dfrac', 'tfrac', 'binom', 'sqrt', 'overline', 'underline',
+  'hat', 'bar', 'vec', 'tilde', 'dot', 'ddot', 'widehat', 'widetilde',
+  'mathbb', 'mathbf', 'mathrm', 'mathcal', 'mathsf', 'mathfrak', 'boldsymbol',
+  'text', 'operatorname', 'left', 'right', 'quad', 'qquad',
+  // 箭头与逻辑
+  'to', 'mapsto', 'rightarrow', 'leftarrow', 'Rightarrow', 'Leftarrow',
+  'Leftrightarrow', 'leftrightarrow', 'implies', 'iff', 'forall', 'exists',
+  'neg', 'land', 'lor', 'vee', 'wedge',
+  // 杂项
+  'infty', 'partial', 'nabla', 'emptyset', 'varnothing', 'prime',
+  'dots', 'ldots', 'cdots', 'vdots', 'ddots',
+  'langle', 'rangle', 'lfloor', 'rfloor', 'lceil', 'rceil', 'vert', 'Vert',
+]);
+
+// 括号片段是否「像一段 LaTeX」：出现任意一个白名单命令就认
+// （伴随的未知命令交给 KaTeX 的 throwOnError:false 红字兜底）
+function looksLikeLatex(s) {
+  const cmds = s.match(/\\[a-zA-Z]+/g);
+  if (!cmds) return false;
+  return cmds.some((c) => KATEX_HINT_COMMANDS.has(c.slice(1)));
+}
+
+// 文本节点里扫出 (…\cmd…) 片段拆成 inlineMath；允许一层内嵌括号（如 f(x)）
+const PAREN_MATH_RE = /\(([^()\n]*(?:\([^()\n]*\)[^()\n]*)*)\)/g;
+
+function splitParenMath(textNode) {
+  const src = textNode.value || '';
+  if (!src.includes('\\')) return null;
+  const out = [];
+  let last = 0;
+  let m;
+  PAREN_MATH_RE.lastIndex = 0;
+  while ((m = PAREN_MATH_RE.exec(src)) !== null) {
+    const inner = m[1].trim();
+    if (!inner || !looksLikeLatex(inner)) continue;
+    if (m.index > last) out.push({ type: 'text', value: src.slice(last, m.index) });
+    out.push({ type: 'inlineMath', value: inner });
+    last = m.index + m[0].length;
+  }
+  if (!out.length) return null;
+  if (last < src.length) out.push({ type: 'text', value: src.slice(last) });
+  return out;
+}
+
 // 剥掉 \(...\) / \[...\] 包裹（Editor.md 模板写法，KaTeX 不认这两个定界符）
 function normalizeMathValue(v) {
   const s = v.trim();
@@ -84,6 +152,14 @@ function remarkMathFences() {
         }
         if (child.type === 'math' || child.type === 'inlineMath') {
           child.value = normalizeMathValue(child.value || '');
+          continue;
+        }
+        if (child.type === 'text') {
+          const parts = splitParenMath(child);
+          if (parts) {
+            node.children.splice(i, 1, ...parts);
+            i += parts.length - 1;
+          }
           continue;
         }
         walk(child);
@@ -169,6 +245,51 @@ const mathBlockSchema = $nodeSchema('math_block', () => ({
   },
 }));
 
+// 所见即所得里手动敲 ```math 回车，commonmark 输入规则生成的是普通代码块
+// （remarkMathFences 只在 markdown 解析时生效，管不到编辑态）。这里监听：
+// 光标一离开 math 系语言的代码块（或编辑器失焦，如敲完直接点保存/切窗口），
+// 就地转成 math_block 渲染成公式。
+// 光标还在块内且未失焦时不动（正在输入 LaTeX）；空块不转（转了是个看不见的原子节点）
+const mathFenceConvertKey = new PluginKey('notesMathFenceConvert');
+
+const mathFenceLiveConvert = $prose(() => new Plugin({
+  key: mathFenceConvertKey,
+  props: {
+    handleDOMEvents: {
+      blur(view) {
+        view.dispatch(view.state.tr.setMeta(mathFenceConvertKey, 'blur'));
+        return false;
+      },
+    },
+  },
+  appendTransaction(transactions, _oldState, newState) {
+    const blurred = transactions.some((tr) => tr.getMeta(mathFenceConvertKey) === 'blur');
+    if (!blurred && !transactions.some((tr) => tr.docChanged || tr.selectionSet)) return null;
+    const codeType = newState.schema.nodes.code_block;
+    const mathType = newState.schema.nodes.math_block;
+    if (!codeType || !mathType) return null;
+    const sel = newState.selection;
+    const targets = [];
+    newState.doc.descendants((node, pos) => {
+      if (node.type !== codeType) return;
+      const lang = (node.attrs.language || '').toLowerCase();
+      if (!MATH_FENCE_LANGS.includes(lang)) return false;
+      if (!blurred && sel.from >= pos && sel.to <= pos + node.nodeSize) return false; // 还在编辑
+      const value = node.textContent.trim();
+      if (value) targets.push({ pos, size: node.nodeSize, value, lang });
+      return false;
+    });
+    if (!targets.length) return null;
+    const tr = newState.tr;
+    // 从后往前替换，避免前面的替换让后面的位置失效
+    for (let i = targets.length - 1; i >= 0; i--) {
+      const t = targets[i];
+      tr.replaceWith(t.pos, t.pos + t.size, mathType.create({ value: t.value, fence: t.lang }));
+    }
+    return tr;
+  },
+}));
+
 // 公式是原子节点，不能在正文里直接改：双击弹出输入框编辑 LaTeX 源码
 const mathEditPlugin = $prose(() => new Plugin({
   props: {
@@ -216,6 +337,7 @@ export const markdownExtra = [
   remarkFrontmatterPlugin,
   mathInlineSchema,
   mathBlockSchema,
+  mathFenceLiveConvert,
   mathEditPlugin,
   frontmatterSchema,
 ].flat();
