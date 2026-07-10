@@ -92,6 +92,26 @@ body.note-standalone {
   color: var(--ne-accent);
 }
 
+/* 主题切换：极简图标按钮（三枚内联 SVG 常驻 DOM，按 data-theme 只显一枚，
+   切换不重建节点；stroke 取 currentColor，跟随 ne-link 的悬停变色） */
+#ne-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+}
+
+#ne-theme-toggle svg {
+  display: none;
+  width: 17px;
+  height: 17px;
+}
+
+#ne-theme-toggle[data-theme="auto"] .ne-ico-auto,
+#ne-theme-toggle[data-theme="light"] .ne-ico-sun,
+#ne-theme-toggle[data-theme="dark"] .ne-ico-moon {
+  display: block;
+}
+
 /* 保存状态：一个词，12px 浅灰；成功 2 秒后由 Alpine 置回 idle 触发淡出 */
 .note-save-status {
   font-size: 13px;
@@ -1013,28 +1033,92 @@ body.ne-library .ne-page {
   padding: 4px 0 12px;
 }
 
-/* 分组小标签（公共文档/私人文档）：极淡，只起分隔作用 */
+/* 分组头（公共/共享/私人）：VSCode 资源管理器式可折叠节点。
+   整行可点，左端箭头展开时朝下、折叠时转回朝右（.ne-fold 由编辑页 JS
+   维护并存 localStorage）。箭头用 CSS mask 画，取 currentColor 着色 */
 .ne-panel-head {
-  padding: 12px 16px 3px;
-  font-size: 11px;
-  color: var(--ne-faint);
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 2px;
+  padding: 3px 8px 3px 5px;
+  margin-top: 6px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ne-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
   user-select: none;
+}
+
+.ne-panel-head:hover {
+  color: var(--ne-fg);
+  background: var(--ne-bg-hover, rgba(150, 150, 150, 0.1));
+}
+
+.ne-panel-head::before {
+  content: '';
+  flex: none;
+  width: 16px;
+  height: 16px;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M6 4l4 4-4 4' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 16px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M6 4l4 4-4 4' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 16px no-repeat;
+  transform: rotate(90deg);
+  transition: transform 0.12s ease;
+}
+
+.ne-panel-group.ne-fold .ne-panel-head::before {
+  transform: none;
+}
+
+.ne-panel-group.ne-fold .ne-panel-list,
+.ne-panel-group.ne-fold .ne-panel-empty {
+  display: none;
 }
 
 .ne-panel-list {
   list-style: none;
   margin: 0;
   padding: 0;
+  position: relative;
+}
+
+/* 缩进参考线：对齐分组箭头中心的 1px 竖线（VSCode 树的 indent guide） */
+.ne-panel-list::before {
+  content: '';
+  position: absolute;
+  left: 12px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--ne-line);
 }
 
 .ne-panel-list a {
   display: block;
-  padding: 4px 16px;
+  padding: 2px 8px 2px 24px;
+  line-height: 20px;
   color: var(--ne-fg);
   text-decoration: none;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 行首文件图标：单条 mask 规则全列表共享，不给每行加 DOM */
+.ne-panel-list a::before {
+  content: '';
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 5px;
+  vertical-align: -2px;
+  background: var(--ne-muted);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 1.5h5L12.5 5v9a.5.5 0 0 1-.5.5H4a.5.5 0 0 1-.5-.5v-12a.5.5 0 0 1 .5-.5zM9 1.5V5h3.5' fill='none' stroke='%23000' stroke-width='1.2' stroke-linejoin='round'/%3E%3C/svg%3E") center / 14px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 1.5h5L12.5 5v9a.5.5 0 0 1-.5.5H4a.5.5 0 0 1-.5-.5v-12a.5.5 0 0 1 .5-.5zM9 1.5V5h3.5' fill='none' stroke='%23000' stroke-width='1.2' stroke-linejoin='round'/%3E%3C/svg%3E") center / 14px no-repeat;
 }
 
 .ne-panel-list a:hover {
@@ -1045,11 +1129,15 @@ body.ne-library .ne-page {
   color: var(--ne-fg);
   background: var(--ne-accent-muted, rgba(65, 131, 196, 0.08));
   border-left: 2px solid var(--ne-accent);
-  padding-left: 14px; /* 16 - 2px 竖线，文字不因边框移位 */
+  padding-left: 22px; /* 24 - 2px 竖线，文字不因边框移位 */
+}
+
+.ne-panel-list a.ne-active::before {
+  background: var(--ne-accent);
 }
 
 .ne-panel-empty {
-  padding: 4px 16px;
+  padding: 2px 8px 2px 24px;
   color: var(--ne-faint);
 }
 

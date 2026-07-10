@@ -80,7 +80,13 @@
         onclick="window.dispatchEvent(new CustomEvent('open-modal')); htmx.ajax('GET', '/notes/{{$n.ID}}/history', {target:'#modal-content', swap:'innerHTML'})">
         历史版本
       </button>
-      <button type="button" class="ne-link" id="ne-theme-toggle" title="切换配色：自动 → 浅色 → 深色">自动</button>
+      {{/* 主题切换图标按钮：半圆=自动、太阳=浅色、月亮=深色，
+           三枚内联 SVG 共约 0.6KB，CSS 按 data-theme 只显一枚 */}}
+      <button type="button" class="ne-link" id="ne-theme-toggle" data-theme="auto" title="切换配色：自动 → 浅色 → 深色">
+        <svg class="ne-ico-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none"/></svg>
+        <svg class="ne-ico-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.5 1.5M17.2 17.2l1.5 1.5M5.3 18.7l1.5-1.5M17.2 6.8l1.5-1.5"/></svg>
+        <svg class="ne-ico-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.6A8.2 8.2 0 1 1 10.4 3.4a6.6 6.6 0 0 0 10.2 10.2z"/></svg>
+      </button>
       {{/* 权限开关（仅创建者）：单击按「公开 → 私有 → 受限」循环切换，
            与旁边的主题按钮同一交互语言；标签用各档状态色。
            切到受限时才弹出成员面板（搜索添加 + 名单，自动聚焦） */}}
@@ -230,7 +236,8 @@
       var dark = t === 'dark' || (t === 'auto' && themeMedia.matches);
       document.documentElement.classList.toggle('ne-dark', dark);
       document.documentElement.style.colorScheme = t === 'auto' ? '' : t; /* '' 回落到 meta 的 light dark */
-      themeBtn.textContent = { auto: '自动', light: '浅色', dark: '深色' }[t];
+      themeBtn.dataset.theme = t; /* CSS 据此显示对应图标（半圆/太阳/月亮） */
+      themeBtn.title = '配色：' + { auto: '自动（跟随系统）', light: '浅色', dark: '深色' }[t] + '，点击切换';
     }
     themeBtn.addEventListener('click', function () {
       var order = ['auto', 'light', 'dark'];
@@ -289,10 +296,42 @@
       if (e.key === 'Escape' && isOpen() && !pinned) setOpen(false);
     });
 
-    /* 当前文档高亮（直出与刷新后各标一次） */
+    /* VSCode 式分组折叠：点分组头折叠/展开，状态存 localStorage
+       （键=分组的 data-group），列表 innerHTML 刷新后由 markActive 重放 */
+    var folds = {};
+    try { folds = JSON.parse(localStorage.getItem('ne-panel-fold') || '{}'); } catch (e) {}
+    function saveFolds() { localStorage.setItem('ne-panel-fold', JSON.stringify(folds)); }
+    docsEl.addEventListener('click', function (e) {
+      var head = e.target.closest('.ne-panel-head');
+      if (!head) return;
+      var g = head.parentElement;
+      var fold = !g.classList.contains('ne-fold');
+      g.classList.toggle('ne-fold', fold);
+      folds[g.dataset.group] = fold;
+      saveFolds();
+    });
+
+    /* 当前文档高亮（直出与刷新后各标一次），顺带重放折叠状态；
+       首次载入若当前文档在折叠分组里则展开该组（仿 VSCode reveal），
+       之后的刷新尊重用户手动折叠 */
+    var revealed = false;
     function markActive() {
+      docsEl.querySelectorAll('.ne-panel-group').forEach(function (g) {
+        g.classList.toggle('ne-fold', !!folds[g.dataset.group]);
+      });
       var cur = docsEl.querySelector('a[data-note-id="' + noteId + '"]');
-      if (cur) cur.classList.add('ne-active');
+      if (cur) {
+        cur.classList.add('ne-active');
+        if (!revealed) {
+          var g = cur.closest('.ne-panel-group');
+          if (g && g.classList.contains('ne-fold')) {
+            g.classList.remove('ne-fold');
+            delete folds[g.dataset.group];
+            saveFolds();
+          }
+        }
+      }
+      revealed = true;
     }
     markActive();
 
