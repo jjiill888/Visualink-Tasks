@@ -1,28 +1,26 @@
 {{define "note_perms_partial.html"}}
 {{/* 权限弹层（编辑页顶栏「权限」按钮，仅创建者可见）。
+     与顶栏同一套语言：文字即按钮，无表单控件——三档一行（当前档强调蓝），
+     名单行的角色词就是开关（当前角色蓝、备选灰点击即切），「移除」悬停浮现。
      所有写操作返回本片段并 outerHTML 原地替换；顶栏按钮标签由
      note_edit.html 里的 htmx:afterSwap 钩子按 data-vis 同步。 */}}
 {{$n := .Note}}
 <div class="ne-perm" id="ne-perm-panel" data-vis="{{$n.Visibility}}" data-vis-label="{{$n.VisibilityLabel}}">
-  <div class="ne-perm-vis">
-    <label class="ne-perm-visopt{{if eq $n.Visibility "public"}} ne-perm-visopt-on{{end}}">
-      <input type="radio" name="visibility" value="public" {{if eq $n.Visibility "public"}}checked{{end}}
-        hx-put="/notes/{{$n.ID}}/visibility" hx-target="#ne-perm-panel" hx-swap="outerHTML">
-      <span class="ne-perm-visname">公开</span>
-      <span class="ne-perm-visdesc">所有人可读写</span>
-    </label>
-    <label class="ne-perm-visopt{{if eq $n.Visibility "restricted"}} ne-perm-visopt-on{{end}}">
-      <input type="radio" name="visibility" value="restricted" {{if eq $n.Visibility "restricted"}}checked{{end}}
-        hx-put="/notes/{{$n.ID}}/visibility" hx-target="#ne-perm-panel" hx-swap="outerHTML">
-      <span class="ne-perm-visname">受限</span>
-      <span class="ne-perm-visdesc">仅创建者与以下成员</span>
-    </label>
-    <label class="ne-perm-visopt{{if eq $n.Visibility "private"}} ne-perm-visopt-on{{end}}">
-      <input type="radio" name="visibility" value="private" {{if eq $n.Visibility "private"}}checked{{end}}
-        hx-put="/notes/{{$n.ID}}/visibility" hx-target="#ne-perm-panel" hx-swap="outerHTML">
-      <span class="ne-perm-visname">私有</span>
-      <span class="ne-perm-visdesc">仅自己</span>
-    </label>
+  <div class="ne-perm-tiers">
+    <button type="button" class="ne-perm-tier{{if eq $n.Visibility "public"}} ne-on{{end}}"
+      hx-put="/notes/{{$n.ID}}/visibility" hx-vals='{"visibility":"public"}'
+      hx-target="#ne-perm-panel" hx-swap="outerHTML">公开</button>
+    <button type="button" class="ne-perm-tier{{if eq $n.Visibility "restricted"}} ne-on{{end}}"
+      hx-put="/notes/{{$n.ID}}/visibility" hx-vals='{"visibility":"restricted"}'
+      hx-target="#ne-perm-panel" hx-swap="outerHTML">受限</button>
+    <button type="button" class="ne-perm-tier{{if eq $n.Visibility "private"}} ne-on{{end}}"
+      hx-put="/notes/{{$n.ID}}/visibility" hx-vals='{"visibility":"private"}'
+      hx-target="#ne-perm-panel" hx-swap="outerHTML">私有</button>
+  </div>
+  <div class="ne-perm-desc">
+    {{- if eq $n.Visibility "public"}}所有人可读写；添加成员后转为「受限」
+    {{- else if eq $n.Visibility "restricted"}}仅你与名单内成员可见
+    {{- else}}仅自己可见{{end -}}
   </div>
 
   <div class="ne-perm-sep"></div>
@@ -35,16 +33,22 @@
   <div id="ne-perm-results"></div>
 
   {{if .Shares}}
+  <div class="ne-perm-head">成员</div>
   <div class="ne-perm-list">
     {{range .Shares}}
     <div class="ne-perm-row">
       <span class="ne-perm-name" title="@{{.Username}}">{{.DisplayName}}</span>
-      <select class="ne-perm-role" name="role"
-        hx-post="/notes/{{$n.ID}}/shares" hx-vals='{"user_id":"{{.UserID}}"}'
-        hx-target="#ne-perm-panel" hx-swap="outerHTML">
-        <option value="editor" {{if eq .Role "editor"}}selected{{end}}>可编辑</option>
-        <option value="reader" {{if eq .Role "reader"}}selected{{end}}>仅阅读</option>
-      </select>
+      {{if eq .Role "editor"}}
+      <span class="ne-perm-role ne-on">可编辑</span>
+      <button type="button" class="ne-perm-role" title="改为仅阅读"
+        hx-post="/notes/{{$n.ID}}/shares" hx-vals='{"user_id":"{{.UserID}}","role":"reader"}'
+        hx-target="#ne-perm-panel" hx-swap="outerHTML">仅阅读</button>
+      {{else}}
+      <button type="button" class="ne-perm-role" title="改为可编辑"
+        hx-post="/notes/{{$n.ID}}/shares" hx-vals='{"user_id":"{{.UserID}}","role":"editor"}'
+        hx-target="#ne-perm-panel" hx-swap="outerHTML">可编辑</button>
+      <span class="ne-perm-role ne-on">仅阅读</span>
+      {{end}}
       <button type="button" class="ne-perm-del"
         hx-delete="/notes/{{$n.ID}}/shares/{{.UserID}}"
         hx-target="#ne-perm-panel" hx-swap="outerHTML">移除</button>
@@ -52,32 +56,27 @@
     {{end}}
   </div>
   {{else if eq $n.Visibility "restricted"}}
-  <div class="ne-perm-empty">名单为空——受限状态下暂时只有你自己可见</div>
-  {{end}}
-
-  {{if eq $n.Visibility "public"}}
-  <div class="ne-perm-hint">添加第一个成员后自动切换为「受限」</div>
+  <div class="ne-perm-empty">名单为空——暂时只有你自己可见</div>
   {{end}}
 </div>
 {{end}}
 
 {{define "note_share_results"}}
-{{/* 搜索候选：点「＋可编辑 / ＋仅阅读」即加入名单并刷新整个弹层 */}}
+{{/* 搜索候选：点角色词即以该权限加入名单并刷新整个弹层 */}}
 {{if .Users}}
 {{$n := .Note}}
-<div class="ne-perm-cands">
-  {{range .Users}}
-  <div class="ne-perm-row">
-    <span class="ne-perm-name" title="@{{.Username}}">{{.DisplayName}}</span>
-    <button type="button" class="ne-perm-add"
-      hx-post="/notes/{{$n.ID}}/shares" hx-vals='{"user_id":"{{.ID}}","role":"editor"}'
-      hx-target="#ne-perm-panel" hx-swap="outerHTML">＋可编辑</button>
-    <button type="button" class="ne-perm-add"
-      hx-post="/notes/{{$n.ID}}/shares" hx-vals='{"user_id":"{{.ID}}","role":"reader"}'
-      hx-target="#ne-perm-panel" hx-swap="outerHTML">＋仅阅读</button>
-  </div>
-  {{end}}
+<div class="ne-perm-head">添加为</div>
+{{range .Users}}
+<div class="ne-perm-row">
+  <span class="ne-perm-name" title="@{{.Username}}">{{.DisplayName}}</span>
+  <button type="button" class="ne-perm-role"
+    hx-post="/notes/{{$n.ID}}/shares" hx-vals='{"user_id":"{{.ID}}","role":"editor"}'
+    hx-target="#ne-perm-panel" hx-swap="outerHTML">可编辑</button>
+  <button type="button" class="ne-perm-role"
+    hx-post="/notes/{{$n.ID}}/shares" hx-vals='{"user_id":"{{.ID}}","role":"reader"}'
+    hx-target="#ne-perm-panel" hx-swap="outerHTML">仅阅读</button>
 </div>
+{{end}}
 {{else if .Query}}
 <div class="ne-perm-empty">没有匹配「{{.Query}}」的用户</div>
 {{end}}

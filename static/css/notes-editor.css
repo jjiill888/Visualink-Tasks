@@ -1372,16 +1372,16 @@ html.ne-dark::-webkit-scrollbar-thumb:hover,
   margin-bottom: 4px;
 }
 
-/* ── 6. 权限弹层（顶栏「权限」按钮，仅创建者）与只读标记 ──────────────
-   颜色全走 --ne-* 变量，深浅色自动跟随编辑页主题 */
+/* ── 6. 权限弹层与只读标记 ────────────────────────────────────────────
+   与顶栏同一套语言：文字即按钮，无表单控件感。三档一行（当前档强调蓝，
+   同 ne-on），描述一行浅灰；搜索框与文库页同款无边框（focus 才有细下划线）；
+   名单行的角色词就是开关（当前角色蓝、备选浅灰点击即切），
+   「移除」仅行悬停浮现（同文库列表的删除）。颜色全走 --ne-* 变量 */
 
 .ne-readonly-tag {
   font-size: 12px;
-  color: var(--ne-warn);
-  border: 1px solid currentColor;
-  border-radius: 4px;
-  padding: 1px 6px;
-  opacity: 0.9;
+  color: var(--ne-muted);
+  user-select: none;
 }
 
 .ne-perm-wrap {
@@ -1391,106 +1391,94 @@ html.ne-dark::-webkit-scrollbar-thumb:hover,
 
 #ne-perm-pop {
   position: absolute;
-  top: 28px;
-  right: 0;
-  width: 300px;
+  top: 30px;
+  right: -8px;
+  width: 264px;
   background: var(--ne-bg);
-  border: 1px solid var(--ne-line-strong);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-  padding: 10px;
+  border: 1px solid var(--ne-line);
+  border-radius: 6px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
+  padding: 14px 16px 12px;
   z-index: 60;
   font-size: 13px;
   color: var(--ne-fg);
+  text-align: left;
 }
 
-/* 可见性三档：整行可点的 radio 选项 */
-.ne-perm-vis {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+/* 内容加载前不闪空框（弹层 innerHTML 由 HTMX 填充） */
+#ne-perm-pop:empty {
+  display: none;
 }
 
-.ne-perm-visopt {
+.ne-perm-tiers {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 6px;
+  gap: 16px;
+}
+
+.ne-perm-tier {
+  font: inherit;
+  font-size: 13px;
+  color: var(--ne-muted);
+  background: none;
+  border: none;
+  padding: 0;
   cursor: pointer;
 }
 
-.ne-perm-visopt:hover {
-  background: var(--ne-bg-hover);
+.ne-perm-tier:hover {
+  color: var(--ne-fg);
 }
 
-.ne-perm-visopt-on {
-  background: var(--ne-accent-muted);
+.ne-perm-tier.ne-on {
+  color: var(--ne-accent);
 }
 
-.ne-perm-visopt input {
-  accent-color: var(--ne-accent);
-  margin: 0;
-  align-self: center;
-}
-
-.ne-perm-visname {
-  font-weight: 600;
-  color: var(--ne-heading);
-  white-space: nowrap;
-}
-
-.ne-perm-visdesc {
-  color: var(--ne-muted);
+.ne-perm-desc {
+  margin-top: 6px;
   font-size: 12px;
+  color: var(--ne-faint);
+  line-height: 1.5;
 }
 
 .ne-perm-sep {
   height: 1px;
   background: var(--ne-line);
-  margin: 10px 0;
+  margin: 12px 0 2px;
 }
 
 .ne-perm-search {
+  display: block;
   width: 100%;
-  box-sizing: border-box;
+  border: none;
+  border-bottom: 1px solid transparent;
+  outline: none;
+  background: transparent;
   font: inherit;
   font-size: 13px;
   color: var(--ne-fg);
-  background: var(--ne-bg-surface);
-  border: 1px solid var(--ne-line-strong);
-  border-radius: 6px;
-  padding: 5px 8px;
-  outline: none;
+  padding: 6px 0;
+}
+
+.ne-perm-search::placeholder {
+  color: var(--ne-faint);
 }
 
 .ne-perm-search:focus {
-  border-color: var(--ne-accent);
+  border-bottom-color: var(--ne-line);
 }
 
-/* 搜索候选区与名单共用行布局 */
-.ne-perm-cands {
-  margin-top: 6px;
-  border: 1px solid var(--ne-line);
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.ne-perm-list {
-  margin-top: 8px;
+/* 分组小标（同侧栏 ne-panel-head 的语言）：候选区「添加为」/名单区「成员」 */
+.ne-perm-head {
+  margin: 10px 0 1px;
+  font-size: 11px;
+  color: var(--ne-faint);
+  user-select: none;
 }
 
 .ne-perm-row {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 8px;
-  border-radius: 6px;
-}
-
-.ne-perm-list .ne-perm-row:hover,
-.ne-perm-cands .ne-perm-row:hover {
-  background: var(--ne-bg-hover);
+  align-items: baseline;
+  padding: 5px 0;
 }
 
 .ne-perm-name {
@@ -1501,44 +1489,60 @@ html.ne-dark::-webkit-scrollbar-thumb:hover,
   white-space: nowrap;
 }
 
+/* 角色词：按钮（可点切换/加入）与 span（当前角色，仅指示）共用外观 */
 .ne-perm-role {
   font: inherit;
   font-size: 12px;
-  color: var(--ne-muted);
-  background: transparent;
-  border: 1px solid var(--ne-line-strong);
-  border-radius: 5px;
-  padding: 1px 4px;
-  cursor: pointer;
-}
-
-.ne-perm-add,
-.ne-perm-del {
-  font: inherit;
-  font-size: 12px;
-  color: var(--ne-accent);
+  color: var(--ne-faint);
   background: none;
   border: none;
   padding: 0;
+  margin-left: 12px;
   cursor: pointer;
   white-space: nowrap;
 }
 
+button.ne-perm-role:hover {
+  color: var(--ne-fg);
+}
+
+.ne-perm-role.ne-on {
+  color: var(--ne-accent);
+  cursor: default;
+}
+
 .ne-perm-del {
+  font: inherit;
+  font-size: 12px;
   color: var(--ne-muted);
+  background: none;
+  border: none;
+  padding: 0;
+  margin-left: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.ne-perm-row:hover .ne-perm-del,
+.ne-perm-del:focus-visible {
+  opacity: 1;
 }
 
 .ne-perm-del:hover {
   color: var(--ne-err);
 }
 
-.ne-perm-add:hover {
-  color: var(--ne-accent-hover);
+/* 触屏无 hover：移除按钮常显 */
+@media (hover: none) {
+  .ne-perm-del {
+    opacity: 1;
+  }
 }
 
-.ne-perm-empty,
-.ne-perm-hint {
-  margin-top: 8px;
+.ne-perm-empty {
+  margin-top: 10px;
   font-size: 12px;
   color: var(--ne-faint);
   line-height: 1.5;
@@ -1546,5 +1550,10 @@ html.ne-dark::-webkit-scrollbar-thumb:hover,
 
 /* 深色下弹层投影加重一点，浮层边界才看得清 */
 .ne-dark body.note-standalone #ne-perm-pop {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+}
+
+/* 原生搜索清除钮（webkit 蓝 ×）与极简语言冲突，隐藏——退格/全选删除即可清空 */
+.ne-perm-search::-webkit-search-cancel-button {
+  -webkit-appearance: none;
 }
