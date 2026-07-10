@@ -17,7 +17,7 @@
         <button type="button" class="ne-dir-name"><span class="ne-dir-label">{{.Name}}</span></button>
         {{if .Own}}
         <a class="ne-dir-act" href="/notes/new?group={{.ID}}" title="在「{{.Name}}」内新建文档">＋</a>
-        <button type="button" class="ne-dir-act ne-dir-del" title="删除文档组（组内文档回到未分组，不删除文档）">删</button>
+        <button type="button" class="ne-dir-act ne-dir-del" title="删除文档组（组内文档回到未分组，不删除文档）">－</button>
         {{end}}
       </div>
       {{if .Notes}}
