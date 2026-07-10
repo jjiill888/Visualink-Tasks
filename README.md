@@ -60,7 +60,7 @@ Markdown 兼容 CommonMark + GFM（表格对齐、任务列表、删除线、自
 
 - **部署**：`docker-compose.yml` 已含 `ysweet` 服务（数据存 `./data/ysweet/`，只在 compose 内网、不映射宿主端口）。首次部署前生成密钥对并写入 compose 同目录的 `.env`：
   ```bash
-  docker run --rm ghcr.io/jamsocket/y-sweet:latest gen-auth --json
+  docker run --rm ghcr.io/jamsocket/y-sweet:latest y-sweet gen-auth --json
   # 输出 private_key → .env 的 YSWEET_PRIVATE_KEY（给 y-sweet 的 --auth）
   # 输出 server_token → .env 的 YSWEET_SERVER_TOKEN（给 app 调管理 API）
   ```

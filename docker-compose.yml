@@ -26,13 +26,15 @@ services:
   # 反代访问，未登录用户连不上；房间 token 由 app 校验笔记权限后代签。
   #
   # 首次部署前生成密钥对，写入本文件同目录的 .env：
-  #   docker run --rm ghcr.io/jamsocket/y-sweet:latest gen-auth --json
+  #   docker run --rm ghcr.io/jamsocket/y-sweet:latest y-sweet gen-auth --json
   #   → private_key  写 YSWEET_PRIVATE_KEY   （y-sweet 的 --auth，校验用）
   #   → server_token 写 YSWEET_SERVER_TOKEN  （app 调 y-sweet 管理 API 的凭据）
   # 注意两者不通用：server_token 由 private_key 派生，串用会 401。
+  # command 首项必须是程序名 y-sweet：镜像 entrypoint 不是二进制本身，
+  # 省掉会报 exec: "serve": executable file not found（部署实测踩过）。
   ysweet:
     image: ghcr.io/jamsocket/y-sweet:latest
-    command: ["serve", "/data", "--host", "0.0.0.0", "--auth", "${YSWEET_PRIVATE_KEY}", "--prod"]
+    command: ["y-sweet", "serve", "/data", "--host", "0.0.0.0", "--auth", "${YSWEET_PRIVATE_KEY}", "--prod"]
     volumes:
       - ./data/ysweet:/data     # 房间状态落盘，随 ./data 一起备份
     restart: unless-stopped
