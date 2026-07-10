@@ -8,9 +8,31 @@ services:
     environment:
       - DB_PATH=/app/data/app.db
       - TZ=Asia/Shanghai
+      # 云笔记实时协作（阶段二）。两个变量都来自 gen-auth（见 ysweet 服务注释）；
+      # 不想启用协作时删掉这两行即可，编辑页自动回到单人模式
+      - Y_SWEET_URL=http://ysweet:8080
+      - Y_SWEET_AUTH=${YSWEET_SERVER_TOKEN}
+    depends_on:
+      - ysweet
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/login"]
       interval: 30s
       timeout: 5s
       retries: 3
+
+  # y-sweet：云笔记实时协作的 Yjs CRDT 服务器。
+  # 只在 compose 内网暴露（不映射宿主端口）——浏览器一律经 app 的 /collab
+  # 反代访问，未登录用户连不上；房间 token 由 app 校验笔记权限后代签。
+  #
+  # 首次部署前生成密钥对，写入本文件同目录的 .env：
+  #   docker run --rm ghcr.io/jamsocket/y-sweet:latest gen-auth --json
+  #   → private_key  写 YSWEET_PRIVATE_KEY   （y-sweet 的 --auth，校验用）
+  #   → server_token 写 YSWEET_SERVER_TOKEN  （app 调 y-sweet 管理 API 的凭据）
+  # 注意两者不通用：server_token 由 private_key 派生，串用会 401。
+  ysweet:
+    image: ghcr.io/jamsocket/y-sweet:latest
+    command: ["serve", "/data", "--host", "0.0.0.0", "--auth", "${YSWEET_PRIVATE_KEY}", "--prod"]
+    volumes:
+      - ./data/ysweet:/data     # 房间状态落盘，随 ./data 一起备份
+    restart: unless-stopped

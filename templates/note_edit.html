@@ -54,6 +54,8 @@
   <header class="ne-topbar">
     <button type="button" class="ne-link" id="ne-panel-toggle" title="文件与大纲（鼠标移到窗口左缘也会弹出）">侧栏</button>
     <div class="ne-right">
+      {{/* 协作状态：编辑器岛维护——「N 人在线」/降级提示；非协作模式保持空 */}}
+      <span id="ne-collab-status" class="ne-collab-status"></span>
       {{/* 保存状态：一个词；成功 2 秒后淡出，失败变红且不消失（冲突时点击刷新） */}}
       <span class="note-save-status" x-data="{ s: 'idle', t: null }"
         @notes-save-status.window="clearTimeout(t); s = $event.detail.state; if (s === 'saved') t = setTimeout(() => { s = 'idle' }, 2000)"
@@ -89,7 +91,9 @@
       data-note-id="{{$n.ID}}"
       data-updated-at="{{$n.UpdatedAt}}"
       data-save-url="/notes/{{$n.ID}}"
-      data-upload-url="/notes/{{$n.ID}}/attachments"><div class="ne-placeholder" id="note-placeholder"></div></div>
+      data-upload-url="/notes/{{$n.ID}}/attachments"
+      {{if .Data.Collab}}data-collab="1"{{end}}
+      data-username="{{.CurrentUser.Username}}"><div class="ne-placeholder" id="note-placeholder"></div></div>
   </main>
 
   {{/* 初始 Markdown 放在隐藏 textarea 里，天然 HTML 转义，编辑器岛读 .value */}}

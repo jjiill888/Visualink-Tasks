@@ -18,6 +18,7 @@ import { upload, uploadConfig } from '@milkdown/kit/plugin/upload';
 import { getMarkdown, replaceAll } from '@milkdown/kit/utils';
 
 import { markdownExtra } from './markdown-extra.js';
+import { collab, startCollab } from './collab.js';
 import { inlineHtml } from './inline-html.js';
 import { taskListItemView } from './task-list.js';
 import { codeCopyView } from './code-copy.js';
@@ -60,6 +61,9 @@ function createUploader(uploadUrl) {
 // 409（乐观锁冲突）后停止自动保存，提示用户刷新。
 // IME 组字期间（compositionstart→compositionend）绝不发起保存，
 // 避免中途序列化出半个拼音/注音的内容。
+// 协作模式下 setLockFree(true)：base_updated_at 发空串跳过乐观锁——
+// Yjs 才是并发事实来源，多客户端快照同一内容，409 反而是误伤。
+// 锁基线仍持续跟踪服务器时间戳，降级回单人模式时无缝恢复乐观锁。
 function createAutosave(opts) {
   let timer = null;
   let composing = false;
@@ -67,6 +71,7 @@ function createAutosave(opts) {
   let pendingAfterFlight = false;
   let conflicted = false;
   let dirty = false;
+  let lockFree = false;
   let baseUpdatedAt = opts.baseUpdatedAt;
 
   async function save() {
@@ -81,7 +86,7 @@ function createAutosave(opts) {
         method: 'PUT',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...opts.payload(), base_updated_at: baseUpdatedAt }),
+        body: JSON.stringify({ ...opts.payload(), base_updated_at: lockFree ? '' : baseUpdatedAt }),
       });
       if (resp.status === 409) {
         conflicted = true;
@@ -109,7 +114,7 @@ function createAutosave(opts) {
     if (conflicted) return;
     dirty = true;
     clearTimeout(timer);
-    timer = setTimeout(save, 2000);
+    timer = setTimeout(save, opts.delay || 2000);
   }
 
   // 页面卸载时的兜底冲刷：keepalive 让请求在页面关闭后仍能完成。
@@ -121,7 +126,7 @@ function createAutosave(opts) {
       credentials: 'same-origin',
       keepalive: true,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...opts.payload(), base_updated_at: baseUpdatedAt }),
+      body: JSON.stringify({ ...opts.payload(), base_updated_at: lockFree ? '' : baseUpdatedAt }),
     }).catch(() => {});
   }
 
@@ -132,12 +137,17 @@ function createAutosave(opts) {
       composing = v;
       if (!v) schedule(); // 组字结束后再进入保存倒计时
     },
+    setLockFree: (v) => { lockFree = v; },
     flushOnUnload,
   };
 }
 
 async function mountEditor(root) {
   const readonly = root.dataset.readonly === '1';
+  // 协作模式（服务端配置了 y-sweet 时置 data-collab）：编辑器先按阶段一
+  // 正常挂载（defaultValue 直出，跨境弱网不等 ws），协作在后台异步接通；
+  // 8 秒接不通自动降级，页面始终可编辑
+  const collabMode = !readonly && root.dataset.collab === '1';
   const initialEl = document.getElementById('note-initial');
   const initial = initialEl ? initialEl.value : '';
   const titleEl = document.getElementById('note-title');
@@ -162,6 +172,7 @@ async function mountEditor(root) {
     autosave = createAutosave({
       saveUrl: root.dataset.saveUrl,
       baseUpdatedAt: root.dataset.updatedAt,
+      delay: collabMode ? 3000 : 2000, // 协作规格：编辑静默 3 秒后快照回写
       payload: () => {
         const payload = {
           title: titleEl ? titleEl.value : '',
@@ -224,7 +235,9 @@ async function mountEditor(root) {
     .use(inlineHtml)
     .use(taskListItemView)
     .use(codeCopyView)
-    .use(history)
+    // 协作模式用 y-prosemirror 的共享撤销栈（plugin-collab 自带 Mod-z 键位，
+    // 只撤销自己的操作），与本地 history 插件互斥不能同时装
+    .use(collabMode ? collab : history)
     .use(listener)
     .use(clipboard)
     .use(upload)
@@ -232,6 +245,35 @@ async function mountEditor(root) {
 
   const srcEl = document.getElementById('note-source');
   const modeBtn = document.getElementById('ne-mode-toggle');
+
+  // ── 实时协作（阶段二）────────────────────────────────────────
+  // 「源码/预览」分屏与协作互斥：分屏的 replaceAll 会整体重写共享文档，
+  // 等于把别人正在敲的内容一锅端。协作模式下隐藏分屏按钮、不恢复分屏偏好；
+  // 降级单人后按钮放回来。
+  if (collabMode) {
+    const statusEl = document.getElementById('ne-collab-status');
+    if (modeBtn) modeBtn.hidden = true;
+    startCollab({
+      editor,
+      noteId: root.dataset.noteId,
+      username: root.dataset.username || '匿名',
+      initialMarkdown: initial,
+      titleEl,
+      onReady: () => {
+        // Yjs 接管并发，快照回写跳过乐观锁（多客户端存同一内容，409 是误伤）
+        autosave.setLockFree(true);
+      },
+      onDegrade: () => {
+        // 从未连上：维持阶段一单人模式（乐观锁本来就没关过），恢复分屏入口
+        if (modeBtn) modeBtn.hidden = false;
+      },
+      onStatus: (text, level) => {
+        if (!statusEl) return;
+        statusEl.textContent = text;
+        statusEl.className = 'ne-collab-status' + (level ? ' ne-collab-' + level : '');
+      },
+    });
+  }
 
   if (!readonly) {
     // IME 组字保护：编辑区、标题框、源码 textarea 都挂 composition 监听
@@ -321,8 +363,8 @@ async function mountEditor(root) {
     });
 
     modeBtn.addEventListener('click', () => setMode(!sourceMode));
-    // 记住上次的模式选择
-    if (localStorage.getItem('ne-mode') === 'split') setMode(true);
+    // 记住上次的模式选择（协作模式下分屏不可用，见上方互斥说明）
+    if (!collabMode && localStorage.getItem('ne-mode') === 'split') setMode(true);
   }
 
   // 调试/测试钩子：读取当前序列化后的 Markdown（阶段二快照回写也会用到）。

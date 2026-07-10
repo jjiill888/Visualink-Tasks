@@ -54,6 +54,21 @@ Markdown 兼容 CommonMark + GFM（表格对齐、任务列表、删除线、自
 
 编辑页左侧侧栏（Typora 式）：鼠标移到窗口左缘临时探出，顶栏「侧栏」按钮点开常驻（再点关闭，刷新保持）；底部在「文件」（工作区文档列表，公共/私人分组、当前文档高亮）与「大纲」（当前文档目录，点击跳转、实时跟随内容更新）两视图间切换。顶栏另有配色按钮：自动（跟随系统）→ 浅色 → 深色循环切换。
 
+### 实时协作（阶段二）
+
+多人同时编辑同一篇笔记，互相实时看到对方的输入和光标（带用户名名牌）。基于 [y-sweet](https://github.com/jamsocket/y-sweet)（Yjs CRDT 服务器）：
+
+- **部署**：`docker-compose.yml` 已含 `ysweet` 服务（数据存 `./data/ysweet/`，只在 compose 内网、不映射宿主端口）。首次部署前生成密钥对并写入 compose 同目录的 `.env`：
+  ```bash
+  docker run --rm ghcr.io/jamsocket/y-sweet:latest gen-auth --json
+  # 输出 private_key → .env 的 YSWEET_PRIVATE_KEY（给 y-sweet 的 --auth）
+  # 输出 server_token → .env 的 YSWEET_SERVER_TOKEN（给 app 调管理 API）
+  ```
+- **鉴权链路**：浏览器不直连 y-sweet——先 `GET /notes/{id}/collab-token`（Go 校验笔记权限后代签房间 token），再连 `/collab/*` 反代 websocket（登录中间件 + y-sweet 校验 token 双层拦截）
+- **持久化**：编辑静默 3 秒后前端把 Markdown 快照回写现有 `PUT /notes/{id}`（协作模式跳过乐观锁），FTS 搜索/历史版本机制不变；y-sweet 自身也落盘房间状态
+- **降级**：不配 `Y_SWEET_URL` 环境变量 = 协作关闭，纯阶段一单人模式；配了但 y-sweet 挂掉时，编辑页 8 秒超时自动降级单人保存并提示「单人模式」
+- **注意**：协作模式下「源码/预览」分屏不可用（分屏整体重写文档会覆盖他人输入）；标题修改也实时同步
+
 ### 权限规则
 
 - 登录用户可查看/编辑所有**非私有**笔记（内网协作场景）

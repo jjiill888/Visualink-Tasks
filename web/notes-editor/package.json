@@ -9,10 +9,13 @@
   },
   "dependencies": {
     "@milkdown/kit": "^7.15.0",
+    "@milkdown/plugin-collab": "^7.21.2",
+    "@y-sweet/client": "^0.9.1",
     "highlight.js": "^11.11.1",
     "katex": "^0.17.0",
     "remark-frontmatter": "^5.0.0",
-    "remark-math": "^6.0.0"
+    "remark-math": "^6.0.0",
+    "yjs": "^13.6.31"
   },
   "devDependencies": {
     "esbuild": "^0.24.2"

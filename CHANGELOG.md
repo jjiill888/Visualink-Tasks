@@ -2,6 +2,21 @@
 
 本文件作为功能跟踪文档，按阶段记录重要改动（新→旧）。
 
+## 2026-07-09 云笔记 · 阶段二实时协作（y-sweet + Yjs，多人同时编辑互见）
+
+两个浏览器（不同账号）打开同一篇笔记即可实时互见输入与光标。架构：y-sweet（Yjs CRDT 服务器）只在 compose 内网，浏览器全程经 Go——先 `GET /notes/{id}/collab-token`（校验笔记权限后代签房间 token），再连 `/collab/*` 反代 websocket（登录中间件 + y-sweet 校验 token 双层拦截，实测无 session 30x / 伪 token 401）。
+
+- **服务端**（internal/handler/collab.go）：`Y_SWEET_URL` / `Y_SWEET_AUTH` 环境变量启用（不配 = 协作关闭，纯阶段一）；token 端点把 y-sweet 内网 ws 地址按请求 Host/协议动态改写为 `/collab` 反代路径（生产 VPN 直连 IP、开发 localhost 都免配置）；反代用 httputil.ReverseProxy（Go ≥1.12 原生透传 websocket Upgrade）。注意 y-sweet 的 private_key（--auth）与 server_token（API Bearer）是两把钥匙，串用 401
+- **前端**（web/notes-editor/src/collab.js）：yjs + @milkdown/plugin-collab（与 kit 同版 7.21.2）+ @y-sweet/client；编辑器先按阶段一挂载（defaultValue 直出，跨境弱网不等 ws），协作后台接通——首次 synced 后 bindDoc → setAwareness → applyTemplate（空房间才用 DB 快照填充，Milkdown 官方推荐做法；两客户端同毫秒首连全新房间的双填充竞态已注释说明）→ connect。协作模式用 y-prosemirror 共享撤销栈（只撤自己的），与本地 history 插件互斥
+- **协作者光标**：awareness 携带用户名（session 注入模板 data-username）+ 按名哈希取色，y-prosemirror 渲染竖线光标 + 名牌；顶栏「N 人在线」状态（绿点）
+- **标题同步**：标题在 Yjs 正文之外，单独走 doc.getText('title')——不同步的话一端改名会被另一端快照静默还原。**不预填**（空 = 沿用 DB 标题，只有真改名才写入），避免双端「空则填充」的拼接竞态（e2e 实测踩到后改此方案）
+- **快照回写**：编辑静默 3 秒（单人仍 2 秒）序列化 Markdown 走现有 `PUT /notes/{id}`，协作模式 base_updated_at 发空串跳过乐观锁（Yjs 才是并发事实来源，多客户端存同一内容 409 是误伤）；锁基线持续跟踪，降级时无缝恢复乐观锁。FTS/历史版本机制不变（修订本就有「内容变化 + 5 分钟」节流，多客户端快照不刷屏）
+- **断线语义**：从未连上（挂了/token 失败）→ 8 秒超时降级单人模式并提示，乐观锁照常、「源码/预览」按钮恢复；连上后中途断 → 不降级，Yjs 本地暂存 + 自动重连，提示「协作离线，改动暂存本地」
+- **分屏互斥**：协作模式下隐藏「源码/预览」（分屏 replaceAll 整体重写共享文档会覆盖他人输入），降级后恢复
+- **部署**（docker-compose.yml）：新增 ysweet 服务（ghcr.io/jamsocket/y-sweet，数据 ./data/ysweet/，不映射宿主端口）；密钥对 `gen-auth --json` 生成写 .env（YSWEET_PRIVATE_KEY / YSWEET_SERVER_TOKEN），README 有步骤。**需部署机验证**：compose 构建、ysweet 镜像 entrypoint 与 command 形态、两浏览器过 8080 实测
+- bundle 486→613KB（gzip ≈195KB）：yjs + y-prosemirror 的代价，无法按需拆分（必须与主 bundle 共享 prosemirror 实例）
+- 验收（本机 npx y-sweet + 双 puppeteer 上下文，16 项全过）：双端互见输入/名牌光标/在线人数；标题实时同步；全关重开内容与标题不丢（y-sweet 持久化 + DB 快照双保险）；杀掉 y-sweet 后打开笔记显示 DB 快照、8 秒降级「单人模式」、编辑保存正常
+
 ## 2026-07-09 云笔记 · 侧栏悬停弹出修智能（鼠标路过不再赖着不走）
 
 用户反馈：鼠标从浏览器左缘扫过去点别的程序，侧栏弹出后一直留在那。根因：弹出定时器（左缘停留 180ms）的取消依赖**后续 mousemove**，鼠标一旦出窗就再也没有事件，定时器在鼠标已经不在的情况下把面板弹出，且从未触发过 mouseenter/mouseleave，永远收不回。修复（note_edit.html 面板脚本）：

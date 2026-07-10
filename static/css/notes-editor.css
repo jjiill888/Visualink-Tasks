@@ -95,6 +95,56 @@ body.note-standalone {
   color: #dc2626;
 }
 
+/* 协作状态：与保存状态同语言的 12px 小字；ok=在线绿点前缀，warn=琥珀色 */
+.ne-collab-status {
+  font-size: 12px;
+  color: var(--ne-muted, #9ca3af);
+}
+
+.ne-collab-status:empty {
+  display: none;
+}
+
+.ne-collab-ok::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  margin-right: 5px;
+  vertical-align: 1px;
+}
+
+.ne-collab-warn {
+  color: #d97706;
+}
+
+/* 协作者远端光标（y-prosemirror 注入 .ProseMirror-yjs-cursor，
+   竖线颜色与名牌背景来自 awareness 的 user.color 内联样式） */
+.ProseMirror .ProseMirror-yjs-cursor {
+  position: relative;
+  border-left: 2px solid;
+  margin-left: -1px;
+  margin-right: -1px;
+  pointer-events: none;
+  word-break: normal;
+}
+
+.ProseMirror .ProseMirror-yjs-cursor > div {
+  position: absolute;
+  top: -1.3em;
+  left: -2px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 11px;
+  line-height: 1.4;
+  font-weight: 500;
+  color: #fff;
+  white-space: nowrap;
+  user-select: none;
+}
+
 /* 正文区：单栏居中 760px，只有内容 */
 .ne-page {
   max-width: 760px;

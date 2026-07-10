@@ -147,7 +147,7 @@ func renderNoteEdit(w http.ResponseWriter, r *http.Request, database *db.DB, n *
 		panel = nil
 	}
 	pd := pageData(r, "notes")
-	pd.Data = map[string]any{"Note": n, "Panel": panel}
+	pd.Data = map[string]any{"Note": n, "Panel": panel, "Collab": CollabEnabled()}
 	renderStandalone(w, "note_edit.html", pd)
 }
 
