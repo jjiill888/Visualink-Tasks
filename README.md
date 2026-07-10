@@ -58,11 +58,12 @@ Markdown 兼容 CommonMark + GFM（表格对齐、任务列表、删除线、自
 
 多人同时编辑同一篇笔记，互相实时看到对方的输入和光标（带用户名名牌）。基于 [y-sweet](https://github.com/jamsocket/y-sweet)（Yjs CRDT 服务器）：
 
-- **部署**：`docker-compose.yml` 已含 `ysweet` 服务（数据存 `./data/ysweet/`，只在 compose 内网、不映射宿主端口）。首次部署前生成密钥对并写入 compose 同目录的 `.env`：
+- **部署**：`docker-compose.yml` 已含 `ysweet` 服务（数据存 `./data/ysweet/`）。**`deploy.sh` 首次部署会自动生成 `.env`**（密钥对 + 自动探测的空闲直连端口），无需手动操作；手动生成时：
   ```bash
   docker run --rm ghcr.io/jamsocket/y-sweet:latest y-sweet gen-auth --json
-  # 输出 private_key → .env 的 YSWEET_PRIVATE_KEY（给 y-sweet 的 --auth）
-  # 输出 server_token → .env 的 YSWEET_SERVER_TOKEN（给 app 调管理 API）
+  # private_key  → .env 的 YSWEET_PRIVATE_KEY（给 y-sweet 的 --auth）
+  # server_token → .env 的 YSWEET_SERVER_TOKEN（给 app 调管理 API）
+  # 另加 YSWEET_PUBLIC_PORT=<空闲端口>（直连模式的宿主端口，默认 8081）
   ```
 - **鉴权链路**：房间 token 由 Go 校验笔记权限后代签、随编辑页直出（前端零额外 round-trip；过期回退 `GET /notes/{id}/collab-token`）。websocket 有两种模式：
   - **直连模式**（默认，`Y_SWEET_PUBLIC_PORT=8081`）：浏览器用访问本服务的同一主机名直连 y-sweet 暴露端口，Go 不在数据路径上——可信内网（ZeroTier）性能优先；裸连仍需有效房间 token（y-sweet 校验）
