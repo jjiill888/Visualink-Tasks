@@ -81,12 +81,13 @@
         历史版本
       </button>
       <button type="button" class="ne-link" id="ne-theme-toggle" title="切换配色：自动 → 浅色 → 深色">自动</button>
-      {{/* 权限入口（仅创建者）：按钮显示当前档位（公开/受限/私有），与顶栏
-           其他按钮同灰；高频操作——悬停即开弹层管理可见性与成员名单 */}}
+      {{/* 权限开关（仅创建者）：单击按「公开 → 私有 → 受限」循环切换，
+           与旁边的主题按钮同一交互语言；标签用各档状态色。
+           切到受限时才弹出成员面板（搜索添加 + 名单，自动聚焦） */}}
       {{if eq .CurrentUser.ID $n.OwnerID}}
       <span class="ne-perm-wrap">
-        <button type="button" class="ne-link" id="ne-perm-toggle"
-          title="谁可以阅读、谁可以编辑这篇笔记">{{$n.VisibilityLabel}}</button>
+        <button type="button" class="ne-link" id="ne-perm-toggle" data-vis="{{$n.Visibility}}"
+          title="点击切换权限：公开 → 私有 → 受限">{{$n.VisibilityLabel}}</button>
         <div id="ne-perm-pop" hidden></div>
       </span>
       {{end}}
@@ -384,47 +385,23 @@
 
   {{if eq .CurrentUser.ID $n.OwnerID}}
   <script>
-  /* 权限弹层：高频操作，悬停即开（120ms 防扫过误触），指针离开按钮+弹层
-     300ms 后收起（正在弹层内输入时不收）；点击/Escape/点外部照常可关，
-     触屏没有 hover 仍走点击。弹层内所有操作（切档/加人/改角色/移除）都
-     返回整个面板 outerHTML 原地替换，afterSwap 时把按钮标签同步成最新档位 */
+  /* 权限开关：单击循环 公开 → 私有 → 受限（同主题按钮的交互语言，
+     一次点击即达目标状态）。切到受限时弹出成员面板并聚焦搜索框
+     （加人/改角色/移除都返回面板 outerHTML 原地替换，保持弹出与焦点）；
+     切到公开/私有弹层收起。点外部 / Escape 关闭面板（状态不变） */
   (function () {
     var btn = document.getElementById('ne-perm-toggle');
     var pop = document.getElementById('ne-perm-pop');
     if (!btn || !pop) return;
     var wrap = btn.parentElement;
-    var loaded = false;
-    var openTimer = null, closeTimer = null;
-    function openPop() {
-      pop.hidden = false;
-      if (!loaded && window.htmx) {
-        loaded = true;
-        htmx.ajax('GET', '/notes/{{$n.ID}}/permissions', { target: '#ne-perm-pop', swap: 'innerHTML' });
-        return; // 首次加载由 afterSwap 聚焦
-      }
-      /* 重新打开已加载的弹层：受限档搜索框立即可打字 */
-      var s = pop.querySelector('.ne-perm-search');
-      if (s) s.focus();
-    }
-    wrap.addEventListener('mouseenter', function () {
-      clearTimeout(closeTimer); closeTimer = null;
-      if (pop.hidden && !openTimer) openTimer = setTimeout(function () { openTimer = null; openPop(); }, 120);
-    });
-    wrap.addEventListener('mouseleave', function () {
-      clearTimeout(openTimer); openTimer = null;
-      if (pop.hidden || closeTimer) return;
-      closeTimer = setTimeout(function () {
-        closeTimer = null;
-        /* 搜索框里已敲了字才算「正在用」不收；空焦点（自动聚焦带来的）
-           不该把悬停划过的弹层钉住，收起并交还焦点 */
-        var ae = document.activeElement;
-        if (pop.contains(ae) && ae.value) return;
-        if (pop.contains(ae)) ae.blur();
-        pop.hidden = true;
-      }, 300);
-    });
+    var order = ['public', 'private', 'restricted'];
     btn.addEventListener('click', function () {
-      if (pop.hidden) openPop(); else pop.hidden = true;
+      if (!window.htmx) return;
+      var next = order[(order.indexOf(btn.dataset.vis) + 1) % order.length];
+      htmx.ajax('PUT', '/notes/{{$n.ID}}/visibility', {
+        target: '#ne-perm-pop', swap: 'innerHTML',
+        values: { visibility: next }
+      });
     });
     document.addEventListener('click', function (e) {
       if (!pop.hidden && !wrap.contains(e.target)) pop.hidden = true;
@@ -432,14 +409,19 @@
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && !pop.hidden) pop.hidden = true;
     });
+    /* 面板每次刷新（切档/加人/改角色/移除）后：同步按钮标签与状态色，
+       受限档展示面板并聚焦搜索框，其余档位收起 */
     document.body.addEventListener('htmx:afterSwap', function () {
       var panel = document.getElementById('ne-perm-panel');
       if (!panel || !pop.contains(panel)) return;
+      btn.dataset.vis = panel.dataset.vis;
       btn.textContent = panel.dataset.visLabel || '';
-      /* 受限档弹出即可打字：搜索框自动聚焦（首次加载/切档/加人后都生效，
-         连续添加多人不用来回点） */
-      var s = pop.querySelector('.ne-perm-search');
-      if (s && !pop.hidden) s.focus();
+      var restricted = panel.dataset.vis === 'restricted';
+      pop.hidden = !restricted;
+      if (restricted) {
+        var s = pop.querySelector('.ne-perm-search');
+        if (s) s.focus();
+      }
     });
   })();
   </script>

@@ -1,30 +1,11 @@
 {{define "note_perms_partial.html"}}
-{{/* 权限弹层（编辑页顶栏「权限」按钮，仅创建者可见）。
-     与顶栏同一套语言：文字即按钮，无表单控件——三档一行（当前档强调蓝），
-     名单行的角色词就是开关（当前角色蓝、备选灰点击即切），「移除」悬停浮现。
-     所有写操作返回本片段并 outerHTML 原地替换；顶栏按钮标签由
-     note_edit.html 里的 htmx:afterSwap 钩子按 data-vis 同步。 */}}
+{{/* 权限面板（仅创建者）。档位切换不在这里——顶栏按钮单击循环
+     公开→私有→受限（同主题按钮的语言），本片段只承载「受限」档的
+     成员管理：搜索添加 + 名单（角色词即开关，移除悬停浮现）。
+     公开/私有档返回空面板（弹层由 afterSwap 钩子隐藏），根节点的
+     data-vis / data-vis-label 供钩子同步按钮标签与状态色。 */}}
 {{$n := .Note}}
 <div class="ne-perm" id="ne-perm-panel" data-vis="{{$n.Visibility}}" data-vis-label="{{$n.VisibilityLabel}}">
-  <div class="ne-perm-tiers">
-    <button type="button" class="ne-perm-tier{{if eq $n.Visibility "public"}} ne-on{{end}}" data-tier="public"
-      hx-put="/notes/{{$n.ID}}/visibility" hx-vals='{"visibility":"public"}'
-      hx-target="#ne-perm-panel" hx-swap="outerHTML">公开</button>
-    <button type="button" class="ne-perm-tier{{if eq $n.Visibility "restricted"}} ne-on{{end}}" data-tier="restricted"
-      hx-put="/notes/{{$n.ID}}/visibility" hx-vals='{"visibility":"restricted"}'
-      hx-target="#ne-perm-panel" hx-swap="outerHTML">受限</button>
-    <button type="button" class="ne-perm-tier{{if eq $n.Visibility "private"}} ne-on{{end}}" data-tier="private"
-      hx-put="/notes/{{$n.ID}}/visibility" hx-vals='{"visibility":"private"}'
-      hx-target="#ne-perm-panel" hx-swap="outerHTML">私有</button>
-  </div>
-  <div class="ne-perm-desc">
-    {{- if eq $n.Visibility "public"}}所有人可读写
-    {{- else if eq $n.Visibility "restricted"}}仅你与名单内成员可见
-    {{- else}}仅自己可见{{end -}}
-  </div>
-
-  {{/* 搜索与名单只在「受限」下出现（公开/私有一句说明即止），
-       层级已足够清晰，无需分隔线；搜索框由 afterSwap 钩子自动聚焦 */}}
   {{if eq $n.Visibility "restricted"}}
   <input type="search" class="ne-perm-search" name="q" placeholder="搜索用户，添加成员…"
     autocomplete="off"
@@ -64,7 +45,7 @@
 {{end}}
 
 {{define "note_share_results"}}
-{{/* 搜索候选：点角色词即以该权限加入名单并刷新整个弹层 */}}
+{{/* 搜索候选：点角色词即以该权限加入名单并刷新整个面板 */}}
 {{if .Users}}
 {{$n := .Note}}
 <div class="ne-perm-head">添加为</div>

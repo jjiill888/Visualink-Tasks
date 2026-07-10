@@ -28,10 +28,6 @@ body.note-standalone {
   --ne-ok: #1a7f37;
   --ne-warn: #9a6700;
   --ne-err: #dc2626;
-  /* 笔记可见性三档状态色（用户指定深色版，浅色取同色相加深保证白底可读） */
-  --ne-vis-public: #16a34a;
-  --ne-vis-private: #2563eb;
-  --ne-vis-restricted: #b45309;
   background: var(--ne-bg);
   color: var(--ne-fg);
   font-family: -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
@@ -1163,10 +1159,6 @@ body.note-standalone *::-webkit-scrollbar-thumb:hover {
   --ne-ok: #63c174;
   --ne-warn: #d6a84b;
   --ne-err: #e06c75;
-  /* 可见性三档状态色（用户指定）：公开绿 / 私有蓝 / 受限琥珀 */
-  --ne-vis-public: #4ade80;
-  --ne-vis-private: #60a5fa;
-  --ne-vis-restricted: #f59e0b;
 }
 
 .ne-dark body.note-standalone ::selection {
@@ -1418,50 +1410,12 @@ html.ne-dark::-webkit-scrollbar-thumb:hover,
   display: none;
 }
 
-.ne-perm-tiers {
-  display: flex;
-  gap: 16px;
-}
-
-.ne-perm-tier {
-  font: inherit;
-  font-size: 13px;
-  color: var(--ne-muted);
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-}
-
-.ne-perm-tier:hover {
-  color: var(--ne-fg);
-}
-
-/* 当前档不用强调蓝，用各档自己的状态色：公开绿 / 受限琥珀 / 私有蓝 */
-.ne-perm-tier.ne-on[data-tier="public"] {
-  color: var(--ne-vis-public);
-}
-
-.ne-perm-tier.ne-on[data-tier="restricted"] {
-  color: var(--ne-vis-restricted);
-}
-
-.ne-perm-tier.ne-on[data-tier="private"] {
-  color: var(--ne-vis-private);
-}
-
-.ne-perm-desc {
-  margin-top: 6px;
-  font-size: 12px;
-  color: var(--ne-faint);
-  line-height: 1.5;
-}
-
-/* 搜索与名单只在「受限」档出现，层级本身已清晰，不加分隔线 */
+/* 顶栏权限开关（单击循环切档）与其他顶栏按钮同灰——标签文字本身
+   （公开/私有/受限）已足够说明状态，不再着色（用户：彩色会分心）。
+   面板只承载「受限」档的成员管理：搜索在最上，无分隔线 */
 .ne-perm-search {
   display: block;
   width: 100%;
-  margin-top: 10px;
   border: none;
   border-bottom: 1px solid transparent;
   outline: none;
