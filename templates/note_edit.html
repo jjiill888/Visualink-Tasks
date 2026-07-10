@@ -388,13 +388,16 @@
   /* 权限开关：单击循环 公开 → 私有 → 受限（同主题按钮的交互语言，
      一次点击即达目标状态）。切到受限时弹出成员面板并聚焦搜索框
      （加人/改角色/移除都返回面板 outerHTML 原地替换，保持弹出与焦点）；
-     切到公开/私有弹层收起。点外部 / Escape 关闭面板（状态不变） */
+     切到公开/私有弹层收起。已是受限时悬停按钮即重新弹出面板（不必
+     绕圈重切），指针离开 300ms 收起——搜索框敲了字才算「正在用」不收。
+     点外部 / Escape 关闭面板（状态不变） */
   (function () {
     var btn = document.getElementById('ne-perm-toggle');
     var pop = document.getElementById('ne-perm-pop');
     if (!btn || !pop) return;
     var wrap = btn.parentElement;
     var order = ['public', 'private', 'restricted'];
+    var openTimer = null, closeTimer = null;
     btn.addEventListener('click', function () {
       if (!window.htmx) return;
       var next = order[(order.indexOf(btn.dataset.vis) + 1) % order.length];
@@ -402,6 +405,34 @@
         target: '#ne-perm-pop', swap: 'innerHTML',
         values: { visibility: next }
       });
+    });
+    /* 受限态悬停即弹面板；刷新后首次悬停面板尚未加载，先拉一次
+       （afterSwap 负责显示+聚焦） */
+    wrap.addEventListener('mouseenter', function () {
+      clearTimeout(closeTimer); closeTimer = null;
+      if (btn.dataset.vis !== 'restricted' || !pop.hidden || openTimer) return;
+      openTimer = setTimeout(function () {
+        openTimer = null;
+        if (!document.getElementById('ne-perm-panel') && window.htmx) {
+          htmx.ajax('GET', '/notes/{{$n.ID}}/permissions', { target: '#ne-perm-pop', swap: 'innerHTML' });
+          return;
+        }
+        pop.hidden = false;
+        var s = pop.querySelector('.ne-perm-search');
+        if (s) s.focus();
+      }, 120);
+    });
+    wrap.addEventListener('mouseleave', function () {
+      clearTimeout(openTimer); openTimer = null;
+      if (pop.hidden || closeTimer) return;
+      closeTimer = setTimeout(function () {
+        closeTimer = null;
+        /* 搜索框有内容=正在用，不收；空焦点（自动聚焦）blur 后照常收 */
+        var ae = document.activeElement;
+        if (pop.contains(ae) && ae.value) return;
+        if (pop.contains(ae)) ae.blur();
+        pop.hidden = true;
+      }, 300);
     });
     document.addEventListener('click', function (e) {
       if (!pop.hidden && !wrap.contains(e.target)) pop.hidden = true;

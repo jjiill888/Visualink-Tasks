@@ -56,7 +56,7 @@ body.note-standalone {
 .ne-right {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 8px; /* 原 16px；中文标签方正紧凑，无需大间距（用户反馈松弛） */
 }
 
 /* 顶栏可见度：0.65 保证「侧栏/历史版本/公开」一眼可辨认为可点击项，
