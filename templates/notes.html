@@ -36,20 +36,24 @@
   <header class="ne-topbar">
     <a class="ne-link" href="/dashboard">← 看板</a>
     <div class="ne-right">
-      <a class="ne-link" href="/notes/new" target="_blank" rel="noopener" title="新建笔记，在新标签页打开">＋ 新建</a>
       <button type="button" class="ne-link" id="ne-theme-toggle" title="切换配色：自动 → 浅色 → 深色">自动</button>
     </div>
   </header>
 
   <main class="ne-page">
     <h1 class="ne-lib-head">笔记</h1>
-    <input type="search" id="note-search" name="q" class="ne-lib-search"
-      placeholder="搜索标题或内容…" value="{{.Data.Query}}"
-      autocomplete="off" spellcheck="false"
-      hx-get="/notes"
-      hx-trigger="keyup changed delay:300ms, search"
-      hx-target="#notes-list"
-      hx-swap="innerHTML">
+    {{/* 搜索与「＋ 新建」同一行：新建挨着搜索栏右端，光标不必跑回顶栏 */}}
+    <div class="ne-lib-bar">
+      <input type="search" id="note-search" name="q" class="ne-lib-search"
+        placeholder="搜索标题或内容…" value="{{.Data.Query}}"
+        autocomplete="off" spellcheck="false"
+        hx-get="/notes"
+        hx-trigger="keyup changed delay:300ms, search"
+        hx-target="#notes-list"
+        hx-swap="innerHTML">
+      <a class="ne-lib-new" href="/notes/new" target="_blank" rel="noopener"
+        title="新建笔记，在新标签页打开">＋ 新建</a>
+    </div>
     <div id="notes-list">
       {{template "notes_list_partial.html" .Data}}
     </div>
