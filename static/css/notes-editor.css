@@ -8,15 +8,26 @@
 
 /* ── 1. 独立编辑页骨架 ─────────────────────────────────────────── */
 
-/* 浅色色板：正文近黑保证清晰，层级只靠 4 档灰阶 + 1 个低饱和强调蓝 */
+/* 浅色色板：正文近黑保证清晰，层级只靠 4 档灰阶 + 1 个低饱和强调蓝。
+   原则（深浅同源）：颜色只给需要注意的信息——正文全灰阶，强调蓝仅用于
+   当前选中/链接/光标焦点/协作状态，语义色仅用于 成功/警告/错误 */
 body.note-standalone {
   --ne-bg: #ffffff;
   --ne-fg: #1f2329;      /* 正文：近黑，清晰不生硬 */
   --ne-heading: #15181d; /* 标题：比正文再深半档 */
   --ne-muted: #71767d;   /* 次级：状态/大纲/引用，可读 */
   --ne-faint: #a9afb8;   /* 装饰：分组标签/占位符 */
-  --ne-line: #ebedef;
-  --ne-accent: #3873b3;  /* 白底上更沉稳的链接蓝 */
+  --ne-line: #ebedef;         /* 常规分隔线 */
+  --ne-line-strong: #d7dade;  /* 强分隔：表头底边/引用竖线 */
+  --ne-bg-surface: #fafafa;   /* 侧栏等面板 */
+  --ne-bg-hover: #f2f3f5;     /* 悬停 */
+  --ne-bg-active: #e9ecef;    /* 激活/按压 */
+  --ne-accent: #3873b3;       /* 白底上更沉稳的链接蓝 */
+  --ne-accent-hover: #2f65a0;
+  --ne-accent-muted: rgba(56, 115, 179, 0.10); /* 选中项淡底 */
+  --ne-ok: #1a7f37;
+  --ne-warn: #9a6700;
+  --ne-err: #dc2626;
   background: var(--ne-bg);
   color: var(--ne-fg);
   font-family: -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
@@ -48,8 +59,10 @@ body.note-standalone {
   gap: 16px;
 }
 
+/* 顶栏可见度：0.65 保证「侧栏/历史版本/公开」一眼可辨认为可点击项，
+   悬停整栏完全显现（原 0.35 隐藏过头，用户要花时间判断哪些能点） */
 .ne-link {
-  opacity: 0.35;
+  opacity: 0.65;
   transition: opacity 0.15s ease;
 }
 
@@ -92,7 +105,7 @@ body.note-standalone {
 }
 
 .note-save-status.ne-status-err {
-  color: #dc2626;
+  color: var(--ne-err, #dc2626);
 }
 
 /* 协作状态：与保存状态同语言的 12px 小字；ok=在线绿点前缀，warn=琥珀色 */
@@ -111,13 +124,13 @@ body.note-standalone {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #10b981;
+  background: var(--ne-ok, #1a7f37);
   margin-right: 5px;
   vertical-align: 1px;
 }
 
 .ne-collab-warn {
-  color: #d97706;
+  color: var(--ne-warn, #9a6700);
 }
 
 /* 协作者远端光标（y-prosemirror 注入 .ProseMirror-yjs-cursor，
@@ -140,7 +153,7 @@ body.note-standalone {
   font-size: 11px;
   line-height: 1.4;
   font-weight: 500;
-  color: #fff;
+  color: #1e1e1e; /* 协作者色板是低饱和浅色系，名牌上深字对比更足 */
   white-space: nowrap;
   user-select: none;
 }
@@ -265,9 +278,9 @@ body.note-standalone.ne-split #note-editor-root {
   }
 }
 
-/* selection：浅蓝、低饱和 */
+/* selection：浅蓝、低饱和（深色区按新强调蓝覆盖为 0.22） */
 body.note-standalone ::selection {
-  background: rgba(90, 140, 200, 0.18);
+  background: rgba(56, 115, 179, 0.16);
 }
 
 /* ── 「文库」列表页（notes.html，body.ne-library）────────────────
@@ -366,7 +379,7 @@ body.ne-library .ne-page {
 }
 
 .ne-lib-del:hover {
-  color: #dc2626;
+  color: var(--ne-err, #dc2626);
 }
 
 /* 触屏没有 hover，删除按钮常显 */
@@ -932,7 +945,7 @@ body.ne-library .ne-page {
   padding-top: 48px; /* 顶部让开 40px 悬浮顶栏（其背景不透明、z-index 更高） */
   display: flex;
   flex-direction: column;
-  background: #fafafa;
+  background: var(--ne-bg-surface, #fafafa);
   border-right: 1px solid var(--ne-line);
   transform: translateX(-100%);
   transition: transform 0.2s ease;
@@ -982,12 +995,14 @@ body.ne-library .ne-page {
 }
 
 .ne-panel-list a:hover {
-  background: rgba(150, 150, 150, 0.1);
+  background: var(--ne-bg-hover, rgba(150, 150, 150, 0.1));
 }
 
 .ne-panel-list a.ne-active {
-  color: var(--ne-accent);
-  background: rgba(65, 131, 196, 0.08);
+  color: var(--ne-fg);
+  background: var(--ne-accent-muted, rgba(65, 131, 196, 0.08));
+  border-left: 2px solid var(--ne-accent);
+  padding-left: 14px; /* 16 - 2px 竖线，文字不因边框移位 */
 }
 
 .ne-panel-empty {
@@ -1048,7 +1063,7 @@ body.ne-library .ne-page {
 
 .ne-panel-tab:hover {
   color: var(--ne-fg);
-  background: rgba(150, 150, 150, 0.1);
+  background: var(--ne-bg-hover, rgba(150, 150, 150, 0.1));
 }
 
 .ne-panel-tab.ne-tab-on {
@@ -1101,41 +1116,40 @@ body.note-standalone *::-webkit-scrollbar-thumb:hover {
    主题按钮循环 自动/浅色/深色,「自动」时由页面 JS 按系统偏好加/去该类。
    仍只作用于 body.note-standalone,历史只读页(带应用外壳)保持浅色。 */
 
-/* 深色色板：正文/次级文字整体提亮一档，保证深底可读性 */
+/* 深色色板（中性深灰 + 冷灰蓝强调）：四档灰阶明确主次——标题 #f0f0f0、
+   正文 #d8d8d8（长时阅读比纯白舒服）、辅助 #969696、弱信息 #707070；
+   强调蓝 #6ea8fe 只出现在交互态（选中/链接/光标/协作），约 3~5% 面积 */
 .ne-dark body.note-standalone {
   --ne-bg: #1e1e1e;
-  --ne-fg: #d9dce1;      /* 正文 */
-  --ne-heading: #edeff2; /* 标题 */
-  --ne-muted: #9aa1a9;   /* 次级：原 #808080 太暗 */
-  --ne-faint: #6a7077;   /* 装饰：原 #555 太暗 */
-  --ne-line: #34373c;
-  --ne-accent: #7aa7d8;
-}
-
-.ne-dark body.note-standalone .note-save-status.ne-status-err {
-  color: #f87171;
+  --ne-fg: #d8d8d8;      /* 正文 */
+  --ne-heading: #f0f0f0; /* 标题 */
+  --ne-muted: #969696;   /* 辅助：状态/大纲/引用 */
+  --ne-faint: #707070;   /* 弱信息：时间戳/分组标签/占位符 */
+  --ne-line: #343434;
+  --ne-line-strong: #505050;
+  --ne-bg-surface: #191919; /* 侧栏比画布再暗半档，拉开空间层级 */
+  --ne-bg-hover: #292929;
+  --ne-bg-active: #303030;
+  --ne-accent: #6ea8fe;
+  --ne-accent-hover: #82b4ff;
+  --ne-accent-muted: rgba(110, 168, 254, 0.14);
+  --ne-ok: #63c174;
+  --ne-warn: #d6a84b;
+  --ne-err: #e06c75;
 }
 
 .ne-dark body.note-standalone ::selection {
-  background: rgba(90, 140, 200, 0.3);
-}
-
-.ne-dark body.note-standalone #ne-panel {
-  background: #252526;
+  background: rgba(110, 168, 254, 0.22);
 }
 
 .ne-dark body.note-standalone #ne-panel.ne-open {
   box-shadow: 6px 0 20px rgba(0, 0, 0, 0.35);
 }
 
-.ne-dark body.note-standalone .ne-panel-list a.ne-active {
-  background: rgba(108, 160, 220, 0.12);
-}
-
 
 
 .ne-dark body.note-standalone .milkdown .ProseMirror blockquote {
-  border-left-color: #3e4146;
+  border-left-color: var(--ne-line-strong);
 }
 
 .ne-dark body.note-standalone .milkdown .ProseMirror code {
@@ -1144,7 +1158,7 @@ body.note-standalone *::-webkit-scrollbar-thumb:hover {
 
 .ne-dark body.note-standalone .milkdown .ProseMirror pre {
   background: #262626;
-  border-color: #333;
+  border-color: var(--ne-line);
 }
 
 .ne-dark body.note-standalone .ne-code-copy {
@@ -1158,7 +1172,7 @@ body.note-standalone *::-webkit-scrollbar-thumb:hover {
 }
 
 .ne-dark body.note-standalone .ne-code-copy.ne-copied {
-  color: #5cb87e;
+  color: var(--ne-ok);
 }
 
 .ne-dark body.note-standalone .milkdown .ProseMirror pre code {
@@ -1166,20 +1180,20 @@ body.note-standalone *::-webkit-scrollbar-thumb:hover {
 }
 
 .ne-dark body.note-standalone .milkdown .ProseMirror hr {
-  border-top-color: #333;
+  border-top-color: var(--ne-line);
 }
 
 .ne-dark body.note-standalone .milkdown .ProseMirror a {
-  text-decoration-color: rgba(122, 167, 216, 0.4); /* 颜色本身走 var(--ne-accent) */
+  text-decoration-color: rgba(110, 168, 254, 0.4); /* 颜色本身走 var(--ne-accent) */
 }
 
 .ne-dark body.note-standalone .milkdown .ProseMirror th,
 .ne-dark body.note-standalone .milkdown .ProseMirror td {
-  border-bottom-color: #333;
+  border-bottom-color: var(--ne-line);
 }
 
 .ne-dark body.note-standalone .milkdown .ProseMirror th {
-  border-bottom-color: #444;
+  border-bottom-color: var(--ne-line-strong);
 }
 
 .ne-dark body.note-standalone .milkdown .ProseMirror-selectednode {
@@ -1187,12 +1201,12 @@ body.note-standalone *::-webkit-scrollbar-thumb:hover {
 }
 
 .ne-dark body.note-standalone .milkdown .ProseMirror .selectedCell::after {
-  background: rgba(90, 140, 200, 0.2);
+  background: var(--ne-accent-muted);
 }
 
 .ne-dark body.note-standalone .ne-table-toolbar {
-  background: #2c2c2c;
-  border-color: #3a3a3a;
+  background: #2b2b2b;
+  border-color: var(--ne-line);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
@@ -1201,12 +1215,12 @@ body.note-standalone *::-webkit-scrollbar-thumb:hover {
 }
 
 .ne-dark body.note-standalone .ne-table-toolbar button:hover {
-  background: #383838;
-  color: #d4d4d4;
+  background: var(--ne-bg-active);
+  color: var(--ne-fg);
 }
 
 .ne-dark body.note-standalone .ne-table-toolbar .ne-tt-sep {
-  background: #3a3a3a;
+  background: var(--ne-line);
 }
 
 /* 代码高亮 token 深色版（GitHub Dark 系） */

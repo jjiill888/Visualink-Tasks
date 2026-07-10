@@ -25,10 +25,11 @@ import { Doc } from 'yjs';
 import { YSweetProvider } from '@y-sweet/client';
 import { CollabService } from '@milkdown/plugin-collab';
 
-// 协作者光标颜色：按用户名哈希从固定盘取色，同名恒同色（深浅主题都够对比度）
+// 协作者光标颜色：按用户名哈希从固定盘取色，同名恒同色。
+// 低饱和五色系（与 UI 强调蓝同族），只用于 2px 光标竖线 + 小名牌，
+// 绝不大面积铺背景——识别快且不破坏 Markdown 阅读
 const CURSOR_COLORS = [
-  '#e05252', '#d97706', '#059669', '#0284c7',
-  '#7c3aed', '#db2777', '#65a30d', '#0891b2',
+  '#6ea8fe', '#c58af9', '#63c174', '#e6a65d', '#e47785',
 ];
 
 function colorFor(name) {
