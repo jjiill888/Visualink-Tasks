@@ -1457,15 +1457,11 @@ html.ne-dark::-webkit-scrollbar-thumb:hover,
   line-height: 1.5;
 }
 
-.ne-perm-sep {
-  height: 1px;
-  background: var(--ne-line);
-  margin: 12px 0 2px;
-}
-
+/* 搜索与名单只在「受限」档出现，层级本身已清晰，不加分隔线 */
 .ne-perm-search {
   display: block;
   width: 100%;
+  margin-top: 10px;
   border: none;
   border-bottom: 1px solid transparent;
   outline: none;

@@ -18,13 +18,14 @@
       hx-target="#ne-perm-panel" hx-swap="outerHTML">私有</button>
   </div>
   <div class="ne-perm-desc">
-    {{- if eq $n.Visibility "public"}}所有人可读写；添加成员后转为「受限」
+    {{- if eq $n.Visibility "public"}}所有人可读写
     {{- else if eq $n.Visibility "restricted"}}仅你与名单内成员可见
     {{- else}}仅自己可见{{end -}}
   </div>
 
-  <div class="ne-perm-sep"></div>
-
+  {{/* 搜索与名单只在「受限」下出现（公开/私有一句说明即止），
+       层级已足够清晰，无需分隔线；搜索框由 afterSwap 钩子自动聚焦 */}}
+  {{if eq $n.Visibility "restricted"}}
   <input type="search" class="ne-perm-search" name="q" placeholder="搜索用户，添加成员…"
     autocomplete="off"
     hx-get="/notes/{{$n.ID}}/share-search"
@@ -55,8 +56,9 @@
     </div>
     {{end}}
   </div>
-  {{else if eq $n.Visibility "restricted"}}
+  {{else}}
   <div class="ne-perm-empty">名单为空——暂时只有你自己可见</div>
+  {{end}}
   {{end}}
 </div>
 {{end}}

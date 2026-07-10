@@ -400,7 +400,11 @@
       if (!loaded && window.htmx) {
         loaded = true;
         htmx.ajax('GET', '/notes/{{$n.ID}}/permissions', { target: '#ne-perm-pop', swap: 'innerHTML' });
+        return; // 首次加载由 afterSwap 聚焦
       }
+      /* 重新打开已加载的弹层：受限档搜索框立即可打字 */
+      var s = pop.querySelector('.ne-perm-search');
+      if (s) s.focus();
     }
     wrap.addEventListener('mouseenter', function () {
       clearTimeout(closeTimer); closeTimer = null;
@@ -411,8 +415,12 @@
       if (pop.hidden || closeTimer) return;
       closeTimer = setTimeout(function () {
         closeTimer = null;
-        /* 正在搜索框里输入（焦点还在弹层内）就不收，等点外部/Escape */
-        if (!pop.contains(document.activeElement)) pop.hidden = true;
+        /* 搜索框里已敲了字才算「正在用」不收；空焦点（自动聚焦带来的）
+           不该把悬停划过的弹层钉住，收起并交还焦点 */
+        var ae = document.activeElement;
+        if (pop.contains(ae) && ae.value) return;
+        if (pop.contains(ae)) ae.blur();
+        pop.hidden = true;
       }, 300);
     });
     btn.addEventListener('click', function () {
@@ -428,6 +436,10 @@
       var panel = document.getElementById('ne-perm-panel');
       if (!panel || !pop.contains(panel)) return;
       btn.textContent = panel.dataset.visLabel || '';
+      /* 受限档弹出即可打字：搜索框自动聚焦（首次加载/切档/加人后都生效，
+         连续添加多人不用来回点） */
+      var s = pop.querySelector('.ne-perm-search');
+      if (s && !pop.hidden) s.focus();
     });
   })();
   </script>
