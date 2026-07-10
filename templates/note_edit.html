@@ -345,6 +345,26 @@
     }
 
     docsEl.addEventListener('click', function (e) {
+      /* 文档行「－」删除（仅 owner 行有此按钮，服务端另有属主校验）；
+         删除的是当前打开的文档时回文库页 */
+      var docDel = e.target.closest('.ne-doc-del');
+      if (docDel) {
+        var link = docDel.parentElement.querySelector('a');
+        var id = link.dataset.noteId;
+        if (confirm('确定删除「' + link.textContent.trim() + '」？删除后列表中不再显示。')) {
+          if (id === noteId) {
+            fetch('/notes/' + id, { method: 'DELETE', credentials: 'same-origin' })
+              .then(function (r) {
+                if (!r.ok) throw new Error('删除失败');
+                location.href = '/notes';
+              })
+              .catch(panelErr);
+          } else {
+            panelReq('DELETE', '/notes/' + id).catch(panelErr);
+          }
+        }
+        return;
+      }
       var dirName = e.target.closest('.ne-dir-name');
       if (dirName) {
         var d = dirName.closest('.ne-dir');

@@ -426,7 +426,12 @@ func DeleteNote(database *db.DB) http.HandlerFunc {
 			http.Error(w, "删除失败", http.StatusInternalServerError)
 			return
 		}
-		notesList(w, r, database, false)
+		// 文库页 HTMX 请求返回列表片段；侧栏文件树 fetch 返回面板片段
+		if r.Header.Get("HX-Request") == "true" {
+			notesList(w, r, database, false)
+			return
+		}
+		writeNotesPanel(w, database, u.ID)
 	}
 }
 

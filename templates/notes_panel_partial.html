@@ -24,7 +24,7 @@
       <ul class="ne-panel-list ne-dir-list">
         {{range .Notes}}
         <li><a href="/notes/{{.ID}}" data-note-id="{{.ID}}"{{if eq .MyAccess "owner"}} data-own="1" draggable="true"{{end}}
-          title="{{if .UpdaterName}}{{.UpdaterName}} {{end}}更新于 {{.UpdatedAtLabel}}">{{if .Title}}{{.Title}}{{else}}无标题笔记{{end}}</a></li>
+          title="{{if .UpdaterName}}{{.UpdaterName}} {{end}}更新于 {{.UpdatedAtLabel}}">{{if .Title}}{{.Title}}{{else}}无标题笔记{{end}}</a>{{if eq .MyAccess "owner"}}<button type="button" class="ne-doc-del" title="删除文档">－</button>{{end}}</li>
         {{end}}
       </ul>
       {{else}}<div class="ne-panel-empty ne-dir-empty">空组</div>{{end}}
@@ -34,7 +34,7 @@
     <ul class="ne-panel-list">
       {{range .Loose}}
       <li><a href="/notes/{{.ID}}" data-note-id="{{.ID}}"{{if eq .MyAccess "owner"}} data-own="1" draggable="true"{{end}}
-        title="{{if .UpdaterName}}{{.UpdaterName}} {{end}}更新于 {{.UpdatedAtLabel}}">{{if .Title}}{{.Title}}{{else}}无标题笔记{{end}}</a></li>
+        title="{{if .UpdaterName}}{{.UpdaterName}} {{end}}更新于 {{.UpdatedAtLabel}}">{{if .Title}}{{.Title}}{{else}}无标题笔记{{end}}</a>{{if eq .MyAccess "owner"}}<button type="button" class="ne-doc-del" title="删除文档">－</button>{{end}}</li>
       {{end}}
     </ul>
     {{else if not .Groups}}<div class="ne-panel-empty">暂无</div>{{end}}
