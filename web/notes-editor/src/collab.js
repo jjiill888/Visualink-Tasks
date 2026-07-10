@@ -65,16 +65,23 @@ export function startCollab({ editor, noteId, username, initialMarkdown, titleEl
     return provider.awareness.getStates().size;
   }
 
+  // 状态栏只在有信息量时出现（极简原则，用户明确要求一个人时不显示任何字）：
+  //   - 两人以上 → 「N 人在线」绿点
+  //   - 一个人（协作正常/连接中/已降级）→ 空，什么都不显示
+  //   - 连上后中途断线 → 「协作离线，改动暂存本地」——此时别人可能还在改，
+  //     这是唯一保留的警示
   function refreshStatus() {
-    if (degraded) return;
+    if (degraded) {
+      onStatus('', '');
+      return;
+    }
     if (provider.status === 'connected') {
       const n = onlineCount();
-      onStatus(n > 1 ? n + ' 人在线' : '仅自己在线', 'ok');
+      onStatus(n > 1 ? n + ' 人在线' : '', 'ok');
     } else if (bound) {
-      // 连上过又断了：Yjs 本地暂存 + 自动重连，不降级
       onStatus('协作离线，改动暂存本地', 'warn');
     } else {
-      onStatus('协作连接中…', '');
+      onStatus('', '');
     }
   }
 
@@ -84,7 +91,7 @@ export function startCollab({ editor, noteId, username, initialMarkdown, titleEl
     if (bound || degraded) return;
     degraded = true;
     provider.disconnect();
-    onStatus('单人模式', 'warn');
+    refreshStatus(); // 降级 = 清空状态栏（单人编辑不打扰）；并发保护回落到乐观锁 409
     onDegrade('connect-timeout');
   }, 8000);
 
