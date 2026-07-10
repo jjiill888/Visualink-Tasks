@@ -77,6 +77,20 @@
     media.addEventListener('change', apply);
     apply();
   })();
+
+  /* 回到本页时自动刷新列表：新建/改名都在别的标签页发生（条目 target=_blank），
+     切回来才能看到最新状态。visibilitychange 覆盖切标签页，pageshow 覆盖
+     bfcache 后退；htmx 复用搜索框的当前关键词，与手动搜索走同一条路径 */
+  (function () {
+    function refreshList() {
+      if (document.hidden || !window.htmx) return;
+      var q = document.getElementById('note-search').value;
+      htmx.ajax('GET', '/notes' + (q ? '?q=' + encodeURIComponent(q) : ''),
+        { target: '#notes-list', swap: 'innerHTML' });
+    }
+    document.addEventListener('visibilitychange', refreshList);
+    window.addEventListener('pageshow', function (e) { if (e.persisted) refreshList(); });
+  })();
   </script>
 </body>
 </html>
