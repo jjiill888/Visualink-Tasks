@@ -80,6 +80,12 @@ body.note-standalone {
   border: none;
   padding: 0;
   cursor: pointer;
+  /* 统一盒高：文字按钮与图标按钮（侧栏/主题）同一 24px 盒 + flex 居中，
+     水平中轴完全对齐——文字的行内盒与图标的定高盒混排时中轴会错开 */
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  line-height: 1;
 }
 
 .ne-link:hover {
@@ -93,18 +99,13 @@ body.note-standalone {
 }
 
 /* 图标按钮（侧栏开关/主题切换）：内联 SVG，stroke 取 currentColor，
-   跟随 ne-link 的悬停变色与 ne-on 常亮蓝 */
-#ne-panel-toggle,
-#ne-theme-toggle {
-  display: inline-flex;
-  align-items: center;
-  height: 20px;
-}
-
+   跟随 ne-link 的悬停变色与 ne-on 常亮蓝；盒高/居中由 .ne-link 统一。
+   16px 与 14px 中文字的视觉高度相当（17px 略压过文字，用户反馈图标偏大偏高） */
 #ne-panel-toggle svg,
 #ne-theme-toggle svg {
-  width: 17px;
-  height: 17px;
+  width: 16px;
+  height: 16px;
+  display: block; /* 消掉 inline 基线兜底的下方空隙 */
 }
 
 /* 主题按钮三枚图标常驻 DOM，按 data-theme 只显一枚，切换不重建节点 */
