@@ -33,6 +33,12 @@ var bundleVer string
 // 同样在 main() 中先于模板解析赋值，用作缓存穿透版本号。
 var notesEditorVer, notesEditorCSSVer string
 
+// notesEditorChunks：esbuild ESM 分割产物（static/ne-collab-*.js）。
+// 模板对全部 chunk 发 modulepreload——否则浏览器解析完主入口才发现静态导入的
+// 共享 chunk，高 RTT 链路（ZeroTier 跨境）平白多一个串行来回；协作懒加载
+// chunk 一并预取，import() 触发时已在缓存里（文件名带内容 hash，immutable）。
+var notesEditorChunks []string
+
 var mentionHighlightRe = regexp.MustCompile(`@([\p{L}\p{N}_]+)`)
 
 var funcMap = template.FuncMap{
@@ -40,6 +46,7 @@ var funcMap = template.FuncMap{
 	"bundleVersion":         func() string { return bundleVer },
 	"notesEditorVersion":    func() string { return notesEditorVer },
 	"notesEditorCSSVersion": func() string { return notesEditorCSSVer },
+	"notesEditorChunks":     func() []string { return notesEditorChunks },
 	"firstChar": func(s string) string {
 		for _, r := range s {
 			return string(r)
@@ -208,6 +215,14 @@ func main() {
 	nRaw, nGz, nBr := notesBundle.Stats()
 	log.Printf("notes editor bundle: raw=%dB gzip=%dB brotli=%dB version=%s",
 		nRaw, nGz, nBr, notesEditorVer)
+	// ESM 分割 chunk 清单（供模板 modulepreload；文件名带内容 hash，走
+	// /static/* 的 immutable 缓存）
+	if chunks, err := filepath.Glob("static/ne-collab-*.js"); err == nil {
+		for _, c := range chunks {
+			notesEditorChunks = append(notesEditorChunks, filepath.Base(c))
+		}
+	}
+	log.Printf("notes editor chunks: %v", notesEditorChunks)
 
 	handler.SetTemplates(buildTmplMap(), buildPartialTmpl(), buildIMTmpl())
 

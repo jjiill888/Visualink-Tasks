@@ -12,6 +12,11 @@ services:
       # 不想启用协作时删掉这两行即可，编辑页自动回到单人模式
       - Y_SWEET_URL=http://ysweet:8080
       - Y_SWEET_AUTH=${YSWEET_SERVER_TOKEN}
+      # 可信内网（ZeroTier）直连模式：浏览器用「访问本服务的同一主机名」+
+      # 该端口直连 y-sweet，Go 退出协作数据路径（性能优先）。裸连仍需有效
+      # 房间 token（y-sweet 校验）。删掉此行则回落到 /collab 反代（多一跳，
+      # 但多一层登录 session 拦截）
+      - Y_SWEET_PUBLIC_PORT=8081
     depends_on:
       - ysweet
     restart: unless-stopped
@@ -35,6 +40,9 @@ services:
   ysweet:
     image: ghcr.io/jamsocket/y-sweet:latest
     command: ["y-sweet", "serve", "/data", "--host", "0.0.0.0", "--auth", "${YSWEET_PRIVATE_KEY}", "--prod"]
+    ports:
+      - "8081:8080"             # 直连模式端口（配合 app 的 Y_SWEET_PUBLIC_PORT；
+                                # 关掉直连时把这两处一起删）
     volumes:
       - ./data/ysweet:/data     # 房间状态落盘，随 ./data 一起备份
     restart: unless-stopped

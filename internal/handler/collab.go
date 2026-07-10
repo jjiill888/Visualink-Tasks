@@ -19,11 +19,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"featuretrack/internal/db"
@@ -37,14 +39,28 @@ var CollabUpstream = strings.TrimRight(os.Getenv("Y_SWEET_URL"), "/")
 // 不是 private_key——private key 给 y-sweet 的 --auth，两者不通用，实测串用 401）。
 var collabServerToken = os.Getenv("Y_SWEET_AUTH")
 
+// CollabPublicPort 可信内网直连模式（性能优先，用户明确授权安全让步）：
+// 设置后签发的 ws 地址直指 y-sweet 对宿主机暴露的端口（compose ports 映射），
+// 浏览器绕过 Go 反代直连，数据路径少一跳。裸连仍需有效房间 token（y-sweet
+// 自己校验，伪 token 401），只是少了登录 session 这一层。不设 = 走 /collab 反代。
+var CollabPublicPort = os.Getenv("Y_SWEET_PUBLIC_PORT")
+
 // CollabEnabled 供模板决定是否给编辑器岛置 data-collab 标志。
 func CollabEnabled() bool { return CollabUpstream != "" }
 
-// collabHTTP 调 y-sweet API 的短超时客户端（内网调用，不该慢）。
+// collabHTTP 调 y-sweet API 的客户端（token 端点用，可容忍慢）。
 var collabHTTP = &http.Client{Timeout: 5 * time.Second}
 
+// collabPageHTTP 页面渲染路径内联 token 用的短超时客户端：
+// y-sweet 挂掉时绝不能拖慢编辑页首屏，超时后由前端走降级流程。
+var collabPageHTTP = &http.Client{Timeout: 1200 * time.Millisecond}
+
+// collabDocKnown 已确认在 y-sweet 建过房的笔记（/doc/new 幂等但仍是一次内网
+// 往返，首次之后跳过——签 token 稳态只剩一次 API 调用）。
+var collabDocKnown sync.Map
+
 // ysweetPost 带 server token 调 y-sweet 管理 API。
-func ysweetPost(path string, body any) (*http.Response, error) {
+func ysweetPost(client *http.Client, path string, body any) (*http.Response, error) {
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
@@ -57,7 +73,7 @@ func ysweetPost(path string, body any) (*http.Response, error) {
 	if collabServerToken != "" {
 		req.Header.Set("Authorization", "Bearer "+collabServerToken)
 	}
-	return collabHTTP.Do(req)
+	return client.Do(req)
 }
 
 type collabClientToken struct {
@@ -68,7 +84,11 @@ type collabClientToken struct {
 	Authorization string `json:"authorization,omitempty"`
 }
 
-// rewriteCollabURL 把 y-sweet 返回的内网地址改写成浏览器可达的 /collab 反代地址。
+// rewriteCollabURL 把 y-sweet 返回的内网地址改写成浏览器可达的地址：
+//   - 直连模式（Y_SWEET_PUBLIC_PORT）：同一主机名 + 公开端口，路径原样——
+//     浏览器怎么访问到本服务，就用同一个主机名连 y-sweet，ZeroTier IP /
+//     localhost 都无需配置
+//   - 反代模式：本服务的 /collab 前缀路径
 // wsScheme=true 输出 ws(s)，否则 http(s)；是否 TLS 看请求本身（生产纯 HTTP 直出）。
 func rewriteCollabURL(r *http.Request, upstream string, wsScheme bool) string {
 	u, err := url.Parse(upstream)
@@ -83,7 +103,67 @@ func rewriteCollabURL(r *http.Request, upstream string, wsScheme bool) string {
 	if secure {
 		scheme += "s"
 	}
+	if CollabPublicPort != "" {
+		host := r.Host
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		return fmt.Sprintf("%s://%s%s", scheme, net.JoinHostPort(host, CollabPublicPort), u.Path)
+	}
 	return fmt.Sprintf("%s://%s/collab%s", scheme, r.Host, u.Path)
+}
+
+// fetchCollabToken 建房（带缓存）并签发房间 token，地址改写为浏览器可达形态。
+// client 决定超时档位：页面渲染路径用短超时，token 端点用标准超时。
+func fetchCollabToken(r *http.Request, noteID int64, client *http.Client) (*collabClientToken, error) {
+	docID := fmt.Sprintf("note-%d", noteID)
+	if _, ok := collabDocKnown.Load(noteID); !ok {
+		resp, err := ysweetPost(client, "/doc/new", map[string]string{"docId": docID})
+		if err != nil {
+			return nil, err
+		}
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("doc/new status %d", resp.StatusCode)
+		}
+		collabDocKnown.Store(noteID, true)
+	}
+	// validForSeconds 12 小时：重连直接复用 initialClientToken，不再回源取号
+	resp, err := ysweetPost(client, "/doc/"+docID+"/auth",
+		map[string]any{"authorization": "full", "validForSeconds": 43200})
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("auth status %d", resp.StatusCode)
+	}
+	var tok collabClientToken
+	if err := json.NewDecoder(resp.Body).Decode(&tok); err != nil {
+		return nil, err
+	}
+	tok.URL = rewriteCollabURL(r, tok.URL, true)
+	tok.BaseURL = rewriteCollabURL(r, tok.BaseURL, false)
+	return &tok, nil
+}
+
+// InlineCollabToken 编辑页渲染时预签 token 直出到模板——省掉前端一次
+// token round-trip，ws 在 JS 解析完立即可连（跨境 ZeroTier 一个 RTT 不便宜）。
+// 失败返回空串：页面不因 y-sweet 故障变慢，前端回退到 token 端点→降级链路。
+func InlineCollabToken(r *http.Request, noteID int64) string {
+	if !CollabEnabled() {
+		return ""
+	}
+	tok, err := fetchCollabToken(r, noteID, collabPageHTTP)
+	if err != nil {
+		return ""
+	}
+	buf, err := json.Marshal(tok)
+	if err != nil {
+		return ""
+	}
+	return string(buf)
 }
 
 // CollabToken GET /notes/{id}/collab-token — 校验笔记权限后签发 y-sweet 房间 token。
@@ -99,38 +179,11 @@ func CollabToken(database *db.DB) http.HandlerFunc {
 		if n == nil {
 			return
 		}
-		docID := fmt.Sprintf("note-%d", n.ID)
-
-		// /doc/new 幂等：文档已存在时同样 200，无需先查再建
-		resp, err := ysweetPost("/doc/new", map[string]string{"docId": docID})
+		tok, err := fetchCollabToken(r, n.ID, collabHTTP)
 		if err != nil {
 			http.Error(w, "协作服务不可用", http.StatusBadGateway)
 			return
 		}
-		io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			http.Error(w, "协作服务拒绝创建房间", http.StatusBadGateway)
-			return
-		}
-
-		resp, err = ysweetPost("/doc/"+docID+"/auth", map[string]string{"authorization": "full"})
-		if err != nil {
-			http.Error(w, "协作服务不可用", http.StatusBadGateway)
-			return
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			http.Error(w, "协作服务签发 token 失败", http.StatusBadGateway)
-			return
-		}
-		var tok collabClientToken
-		if err := json.NewDecoder(resp.Body).Decode(&tok); err != nil {
-			http.Error(w, "协作服务响应异常", http.StatusBadGateway)
-			return
-		}
-		tok.URL = rewriteCollabURL(r, tok.URL, true)
-		tok.BaseURL = rewriteCollabURL(r, tok.BaseURL, false)
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store") // token 短效凭据，禁止任何缓存
 		json.NewEncoder(w).Encode(tok)

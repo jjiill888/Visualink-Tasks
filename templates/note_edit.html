@@ -24,6 +24,11 @@
        KaTeX 不在此加载——文档出现公式时编辑器岛按需注入（见 __notesKatex） */}}
   <link rel="stylesheet" href="/static/css/notes-editor.css?v={{notesEditorCSSVersion}}">
   <link rel="stylesheet" href="/static/css/style.min.css?v=18" media="print" onload="this.media='all'">
+  {{/* ESM 分割 chunk 全部预取：不预取的话浏览器要先解析完主入口才发现
+       共享 chunk（高 RTT 多一个串行来回）；协作懒 chunk 一并预热，
+       import() 触发即命中缓存（文件名带内容 hash，immutable 缓存安全） */}}
+  {{range notesEditorChunks}}<link rel="modulepreload" href="/static/{{.}}">
+  {{end}}
   <script>
   window.__notesKatex = {
     js: '/static/vendor/katex/katex.min.js?v={{notesEditorVersion}}',
@@ -93,6 +98,7 @@
       data-save-url="/notes/{{$n.ID}}"
       data-upload-url="/notes/{{$n.ID}}/attachments"
       {{if .Data.Collab}}data-collab="1"{{end}}
+      {{if .Data.CollabToken}}data-collab-token="{{.Data.CollabToken}}"{{end}}
       data-username="{{.CurrentUser.Username}}"><div class="ne-placeholder" id="note-placeholder"></div></div>
   </main>
 
@@ -142,7 +148,9 @@
   <div id="htmx-error-toast" onclick="this.textContent=''"></div>
 
   <script defer src="/static/js/bundle.js?v={{bundleVersion}}"></script>
-  <script defer src="/static/notes-editor.js?v={{notesEditorVersion}}"></script>
+  {{/* type=module：esbuild ESM 分割产物，协作代码在独立 chunk（ne-collab-*.js）
+       按需加载，主 bundle 回到协作前体积；module 自带 defer 语义 */}}
+  <script type="module" src="/static/notes-editor.js?v={{notesEditorVersion}}"></script>
   <script>
   document.addEventListener('htmx:afterRequest', function(e) {
     if (e.detail.successful) return;

@@ -64,7 +64,9 @@ Markdown 兼容 CommonMark + GFM（表格对齐、任务列表、删除线、自
   # 输出 private_key → .env 的 YSWEET_PRIVATE_KEY（给 y-sweet 的 --auth）
   # 输出 server_token → .env 的 YSWEET_SERVER_TOKEN（给 app 调管理 API）
   ```
-- **鉴权链路**：浏览器不直连 y-sweet——先 `GET /notes/{id}/collab-token`（Go 校验笔记权限后代签房间 token），再连 `/collab/*` 反代 websocket（登录中间件 + y-sweet 校验 token 双层拦截）
+- **鉴权链路**：房间 token 由 Go 校验笔记权限后代签、随编辑页直出（前端零额外 round-trip；过期回退 `GET /notes/{id}/collab-token`）。websocket 有两种模式：
+  - **直连模式**（默认，`Y_SWEET_PUBLIC_PORT=8081`）：浏览器用访问本服务的同一主机名直连 y-sweet 暴露端口，Go 不在数据路径上——可信内网（ZeroTier）性能优先；裸连仍需有效房间 token（y-sweet 校验）
+  - **反代模式**（删掉该 env 即回落）：ws 走 `/collab/*` 反代，多一层登录 session 拦截
 - **持久化**：编辑静默 3 秒后前端把 Markdown 快照回写现有 `PUT /notes/{id}`（协作模式跳过乐观锁），FTS 搜索/历史版本机制不变；y-sweet 自身也落盘房间状态
 - **降级**：不配 `Y_SWEET_URL` 环境变量 = 协作关闭，纯阶段一单人模式；配了但 y-sweet 挂掉时，编辑页 8 秒超时自动降级单人保存并提示「单人模式」
 - **注意**：协作模式下「源码/预览」分屏不可用（分屏整体重写文档会覆盖他人输入）；标题修改也实时同步

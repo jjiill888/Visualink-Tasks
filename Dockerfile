@@ -38,7 +38,11 @@ COPY --from=builder /app/featuretrack .
 COPY templates/ templates/
 COPY static/    static/
 # 用容器内新鲜构建的编辑器产物覆盖仓库里提交的版本，保证与源码一致
-COPY --from=assets /app/static/notes-editor.js static/
+# （notes-editor.js 是 ESM 入口，ne-collab-*.js 是分割 chunk，缺一不可）。
+# 先清掉仓库里提交的旧 chunk：hash 命名不会同名覆盖，残留会被
+# modulepreload 清单误收（服务启动时按 glob 收集）
+RUN rm -f static/ne-collab-*.js
+COPY --from=assets /app/static/notes-editor.js /app/static/ne-collab-*.js static/
 COPY --from=assets /app/static/vendor/katex static/vendor/katex
 COPY --from=assets /app/static/vendor/hljs static/vendor/hljs
 

@@ -18,7 +18,6 @@ import { upload, uploadConfig } from '@milkdown/kit/plugin/upload';
 import { getMarkdown, replaceAll } from '@milkdown/kit/utils';
 
 import { markdownExtra } from './markdown-extra.js';
-import { collab, startCollab } from './collab.js';
 import { inlineHtml } from './inline-html.js';
 import { taskListItemView } from './task-list.js';
 import { codeCopyView } from './code-copy.js';
@@ -235,9 +234,10 @@ async function mountEditor(root) {
     .use(inlineHtml)
     .use(taskListItemView)
     .use(codeCopyView)
-    // 协作模式用 y-prosemirror 的共享撤销栈（plugin-collab 自带 Mod-z 键位，
-    // 只撤销自己的操作），与本地 history 插件互斥不能同时装
-    .use(collabMode ? collab : history)
+    // 协作模式不装本地 history：y-prosemirror 的共享撤销栈（Mod-z 键位由
+    // CollabService 注入，只撤自己的操作）与 prosemirror-history 互斥。
+    // 协作代码在独立 chunk 里懒加载（见下方 import()），这里传空数组占位
+    .use(collabMode ? [] : [history])
     .use(listener)
     .use(clipboard)
     .use(upload)
@@ -247,32 +247,43 @@ async function mountEditor(root) {
   const modeBtn = document.getElementById('ne-mode-toggle');
 
   // ── 实时协作（阶段二）────────────────────────────────────────
+  // 协作代码（yjs + y-prosemirror + y-sweet client，约 130KB）在独立 chunk
+  // 懒加载：编辑器先挂载可用，协作后台接通——主 bundle 回到协作前体积。
   // 「源码/预览」分屏与协作互斥：分屏的 replaceAll 会整体重写共享文档，
   // 等于把别人正在敲的内容一锅端。协作模式下隐藏分屏按钮、不恢复分屏偏好；
   // 降级单人后按钮放回来。
   if (collabMode) {
     const statusEl = document.getElementById('ne-collab-status');
     if (modeBtn) modeBtn.hidden = true;
-    startCollab({
-      editor,
-      noteId: root.dataset.noteId,
-      username: root.dataset.username || '匿名',
-      initialMarkdown: initial,
-      titleEl,
-      onReady: () => {
-        // Yjs 接管并发，快照回写跳过乐观锁（多客户端存同一内容，409 是误伤）
-        autosave.setLockFree(true);
-      },
-      onDegrade: () => {
-        // 从未连上：维持阶段一单人模式（乐观锁本来就没关过），恢复分屏入口
+    // 服务端预签的房间 token 随页直出（省一次 round-trip）；缺失时前端回退拉取
+    let initialToken = null;
+    try { initialToken = JSON.parse(root.dataset.collabToken || 'null'); } catch { /* 回退拉取 */ }
+    import('./collab.js')
+      .then(({ startCollab }) => startCollab({
+        editor,
+        noteId: root.dataset.noteId,
+        username: root.dataset.username || '匿名',
+        initialToken,
+        currentMarkdown: () => currentMarkdown,
+        titleEl,
+        onReady: () => {
+          // Yjs 接管并发，快照回写跳过乐观锁（多客户端存同一内容，409 是误伤）
+          autosave.setLockFree(true);
+        },
+        onDegrade: () => {
+          // 从未连上：单人保存模式（乐观锁本来就没关过），恢复分屏入口
+          if (modeBtn) modeBtn.hidden = false;
+        },
+        onStatus: (text, level) => {
+          if (!statusEl) return;
+          statusEl.textContent = text;
+          statusEl.className = 'ne-collab-status' + (level ? ' ne-collab-' + level : '');
+        },
+      }))
+      .catch(() => {
+        // chunk 加载失败（弱网/缓存异常）：等同降级，单人模式继续可用
         if (modeBtn) modeBtn.hidden = false;
-      },
-      onStatus: (text, level) => {
-        if (!statusEl) return;
-        statusEl.textContent = text;
-        statusEl.className = 'ne-collab-status' + (level ? ' ne-collab-' + level : '');
-      },
-    });
+      });
   }
 
   if (!readonly) {

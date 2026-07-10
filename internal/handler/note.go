@@ -147,7 +147,14 @@ func renderNoteEdit(w http.ResponseWriter, r *http.Request, database *db.DB, n *
 		panel = nil
 	}
 	pd := pageData(r, "notes")
-	pd.Data = map[string]any{"Note": n, "Panel": panel, "Collab": CollabEnabled()}
+	pd.Data = map[string]any{
+		"Note":   n,
+		"Panel":  panel,
+		"Collab": CollabEnabled(),
+		// 预签房间 token 随页直出（省一次前端 round-trip）；失败为空串，
+		// 前端回退到 /notes/{id}/collab-token
+		"CollabToken": InlineCollabToken(r, n.ID),
+	}
 	renderStandalone(w, "note_edit.html", pd)
 }
 

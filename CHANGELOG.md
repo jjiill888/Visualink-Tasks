@@ -2,6 +2,17 @@
 
 本文件作为功能跟踪文档，按阶段记录重要改动（新→旧）。
 
+## 2026-07-09 云笔记 · 协作性能三连（可信内网性能优先：省 RTT + 直连 + 包分割）
+
+用户明确授权：部署在可信 ZeroTier 内网，安全可为性能让步。三项优化：
+
+- **token 随页直出**（省一次前端 round-trip）：编辑页渲染时 Go 预签房间 token 注入 data-collab-token，ws 在 JS 解析完立即连；页面路径用 1.2s 短超时客户端（y-sweet 挂掉不拖慢首屏，前端回退 token 端点→降级链路）。配套：/doc/new 建房结果进程内缓存（稳态签 token 只剩一次内网调用）；token 有效期 12h（validForSeconds，重连复用 initialClientToken 不回源）
+- **直连模式**（`Y_SWEET_PUBLIC_PORT`，compose 已默认开 8081）：签发的 ws 地址 = 「浏览器访问本服务的同一主机名」+ 公开端口，Go 彻底退出协作数据路径；裸连仍需有效房间 token（y-sweet 校验，伪 token 401），让掉的只是登录 session 那层。删掉该 env 即回落 /collab 反代（两种模式 e2e 均验证：CDP 观察 ws 直连 18098 / 反代 18099/collab）
+- **ESM 包分割**（esbuild --splitting）：yjs+y-prosemirror+y-sweet client（126KB raw/41KB gz）拆成懒加载 chunk（ne-collab-[hash].js），主入口回到协作前体积（首屏 488KB ≈ 拆分前 486KB，brotli 入口仅 49KB）；协作绑定改用手动构建的 CollabService（不经 .use(collab) 插件，这是能懒加载的关键）。模板对全部 chunk 发 modulepreload（不然高 RTT 链路上共享 chunk 要等主入口解析完才被发现，平白多一个串行来回；chunk 名带内容 hash，走 /static/* 的 immutable 缓存）。script 标签改 type=module（note_edit + note_revision）
+- 顺带修复：降级单人后绑本地 Yjs 文档——协作模式不装 prosemirror-history，之前降级后会彻底没有撤销；房间填充改用**当前编辑器内容**而非页面初始快照（连接窗口期敲的字不再丢）；chunk 加载失败等同降级
+- Dockerfile：assets 阶段前先 rm 仓库里提交的旧 chunk（hash 命名不同名覆盖，残留会被 modulepreload 清单误收）
+- 验证：内联 token 生效（无 collab-token 请求）、直连/反代双模式互同步、Ctrl+Z 协作撤销、懒 chunk 命中 preload 缓存
+
 ## 2026-07-09 云笔记 · 协作状态栏静默化（用户反馈：一个人时别显示「单人模式」）
 
 状态栏只在有信息量时出现：两人以上显示「N 人在线」（绿点）；一个人时——无论协作正常、连接中还是已降级——什么都不显示。唯一保留的警示是「协作离线，改动暂存本地」（连上后中途断线，此时别人可能还在改）。降级后的并发保护本就回落到乐观锁 409 提示，不靠状态栏。e2e：单窗口空/双窗口 2 人在线/关一个回到空/同账号双窗口互同步/降级静默+分屏按钮恢复，全过。
