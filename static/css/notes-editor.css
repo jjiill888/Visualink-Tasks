@@ -73,7 +73,7 @@ body.note-standalone {
 
 .ne-link {
   font: inherit;
-  font-size: 13px;
+  font-size: 14px; /* 4K 27寸下 13px 偏小，整栏升一号 */
   color: var(--ne-muted);
   text-decoration: none;
   background: none;
@@ -94,7 +94,7 @@ body.note-standalone {
 
 /* 保存状态：一个词，12px 浅灰；成功 2 秒后由 Alpine 置回 idle 触发淡出 */
 .note-save-status {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--ne-muted);
   opacity: 0;
   transition: opacity 0.5s ease;
@@ -110,7 +110,7 @@ body.note-standalone {
 
 /* 协作状态：与保存状态同语言的 12px 小字；ok=在线绿点前缀，warn=琥珀色 */
 .ne-collab-status {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--ne-muted, #9ca3af);
 }
 
@@ -1379,7 +1379,7 @@ html.ne-dark::-webkit-scrollbar-thumb:hover,
    「移除」仅行悬停浮现（同文库列表的删除）。颜色全走 --ne-* 变量 */
 
 .ne-readonly-tag {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--ne-muted);
   user-select: none;
 }
@@ -1393,14 +1393,14 @@ html.ne-dark::-webkit-scrollbar-thumb:hover,
   position: absolute;
   top: 30px;
   right: -8px;
-  width: 264px;
+  width: 280px; /* 随字号升一号加宽 */
   background: var(--ne-bg);
   border: 1px solid var(--ne-line);
   border-radius: 6px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
   padding: 14px 16px 12px;
   z-index: 60;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--ne-fg);
   text-align: left;
 }
@@ -1421,7 +1421,7 @@ html.ne-dark::-webkit-scrollbar-thumb:hover,
   outline: none;
   background: transparent;
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--ne-fg);
   padding: 6px 0;
 }
@@ -1437,7 +1437,7 @@ html.ne-dark::-webkit-scrollbar-thumb:hover,
 /* 分组小标（同侧栏 ne-panel-head 的语言）：候选区「添加为」/名单区「成员」 */
 .ne-perm-head {
   margin: 10px 0 1px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--ne-faint);
   user-select: none;
 }
@@ -1459,7 +1459,7 @@ html.ne-dark::-webkit-scrollbar-thumb:hover,
 /* 角色词：按钮（可点切换/加入）与 span（当前角色，仅指示）共用外观 */
 .ne-perm-role {
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--ne-faint);
   background: none;
   border: none;
@@ -1480,7 +1480,7 @@ button.ne-perm-role:hover {
 
 .ne-perm-del {
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--ne-muted);
   background: none;
   border: none;
@@ -1510,7 +1510,7 @@ button.ne-perm-role:hover {
 
 .ne-perm-empty {
   margin-top: 10px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--ne-faint);
   line-height: 1.5;
 }
