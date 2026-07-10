@@ -7,13 +7,13 @@
 {{$n := .Note}}
 <div class="ne-perm" id="ne-perm-panel" data-vis="{{$n.Visibility}}" data-vis-label="{{$n.VisibilityLabel}}">
   <div class="ne-perm-tiers">
-    <button type="button" class="ne-perm-tier{{if eq $n.Visibility "public"}} ne-on{{end}}"
+    <button type="button" class="ne-perm-tier{{if eq $n.Visibility "public"}} ne-on{{end}}" data-tier="public"
       hx-put="/notes/{{$n.ID}}/visibility" hx-vals='{"visibility":"public"}'
       hx-target="#ne-perm-panel" hx-swap="outerHTML">公开</button>
-    <button type="button" class="ne-perm-tier{{if eq $n.Visibility "restricted"}} ne-on{{end}}"
+    <button type="button" class="ne-perm-tier{{if eq $n.Visibility "restricted"}} ne-on{{end}}" data-tier="restricted"
       hx-put="/notes/{{$n.ID}}/visibility" hx-vals='{"visibility":"restricted"}'
       hx-target="#ne-perm-panel" hx-swap="outerHTML">受限</button>
-    <button type="button" class="ne-perm-tier{{if eq $n.Visibility "private"}} ne-on{{end}}"
+    <button type="button" class="ne-perm-tier{{if eq $n.Visibility "private"}} ne-on{{end}}" data-tier="private"
       hx-put="/notes/{{$n.ID}}/visibility" hx-vals='{"visibility":"private"}'
       hx-target="#ne-perm-panel" hx-swap="outerHTML">私有</button>
   </div>

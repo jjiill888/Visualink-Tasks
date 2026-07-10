@@ -81,11 +81,12 @@
         历史版本
       </button>
       <button type="button" class="ne-link" id="ne-theme-toggle" title="切换配色：自动 → 浅色 → 深色">自动</button>
-      {{/* 权限入口（仅创建者）：按钮显示当前档位，点开弹层管理可见性与成员名单 */}}
+      {{/* 权限入口（仅创建者）：按钮显示当前档位（公开/受限/私有），与顶栏
+           其他按钮同灰；高频操作——悬停即开弹层管理可见性与成员名单 */}}
       {{if eq .CurrentUser.ID $n.OwnerID}}
       <span class="ne-perm-wrap">
-        <button type="button" class="ne-link{{if ne $n.Visibility "public"}} ne-on{{end}}" id="ne-perm-toggle"
-          title="设置谁可以阅读、谁可以编辑这篇笔记">权限：{{$n.VisibilityLabel}}</button>
+        <button type="button" class="ne-link" id="ne-perm-toggle"
+          title="谁可以阅读、谁可以编辑这篇笔记">{{$n.VisibilityLabel}}</button>
         <div id="ne-perm-pop" hidden></div>
       </span>
       {{end}}
@@ -383,24 +384,42 @@
 
   {{if eq .CurrentUser.ID $n.OwnerID}}
   <script>
-  /* 权限弹层：点「权限」按钮加载/显隐，点弹层外或 Escape 关闭；
-     弹层内的所有操作（切档/加人/改角色/移除）都返回整个面板 outerHTML
-     原地替换，这里在 afterSwap 时把按钮标签同步成最新档位 */
+  /* 权限弹层：高频操作，悬停即开（120ms 防扫过误触），指针离开按钮+弹层
+     300ms 后收起（正在弹层内输入时不收）；点击/Escape/点外部照常可关，
+     触屏没有 hover 仍走点击。弹层内所有操作（切档/加人/改角色/移除）都
+     返回整个面板 outerHTML 原地替换，afterSwap 时把按钮标签同步成最新档位 */
   (function () {
     var btn = document.getElementById('ne-perm-toggle');
     var pop = document.getElementById('ne-perm-pop');
     if (!btn || !pop) return;
+    var wrap = btn.parentElement;
     var loaded = false;
-    btn.addEventListener('click', function () {
-      if (!pop.hidden) { pop.hidden = true; return; }
+    var openTimer = null, closeTimer = null;
+    function openPop() {
       pop.hidden = false;
       if (!loaded && window.htmx) {
         loaded = true;
         htmx.ajax('GET', '/notes/{{$n.ID}}/permissions', { target: '#ne-perm-pop', swap: 'innerHTML' });
       }
+    }
+    wrap.addEventListener('mouseenter', function () {
+      clearTimeout(closeTimer); closeTimer = null;
+      if (pop.hidden && !openTimer) openTimer = setTimeout(function () { openTimer = null; openPop(); }, 120);
+    });
+    wrap.addEventListener('mouseleave', function () {
+      clearTimeout(openTimer); openTimer = null;
+      if (pop.hidden || closeTimer) return;
+      closeTimer = setTimeout(function () {
+        closeTimer = null;
+        /* 正在搜索框里输入（焦点还在弹层内）就不收，等点外部/Escape */
+        if (!pop.contains(document.activeElement)) pop.hidden = true;
+      }, 300);
+    });
+    btn.addEventListener('click', function () {
+      if (pop.hidden) openPop(); else pop.hidden = true;
     });
     document.addEventListener('click', function (e) {
-      if (!pop.hidden && !pop.contains(e.target) && !btn.contains(e.target)) pop.hidden = true;
+      if (!pop.hidden && !wrap.contains(e.target)) pop.hidden = true;
     });
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && !pop.hidden) pop.hidden = true;
@@ -408,8 +427,7 @@
     document.body.addEventListener('htmx:afterSwap', function () {
       var panel = document.getElementById('ne-perm-panel');
       if (!panel || !pop.contains(panel)) return;
-      btn.textContent = '权限：' + (panel.dataset.visLabel || '');
-      btn.classList.toggle('ne-on', panel.dataset.vis !== 'public');
+      btn.textContent = panel.dataset.visLabel || '';
     });
   })();
   </script>
