@@ -1,39 +1,45 @@
 {{define "notes_panel_partial.html"}}
-{{/* 编辑页侧栏的文档列表片段（GET /notes/panel）。
-     VSCode 资源管理器式目录：分组头可点击折叠（箭头/文件图标都由 CSS
-     mask 绘制，行内零额外 DOM），折叠状态存 localStorage（ne-panel-fold，
-     编辑页 JS 维护）。当前文档高亮由前端按 data-note-id 标记（ne-active）。 */}}
-<div class="ne-panel-group" data-group="public">
-  <button type="button" class="ne-panel-head">公共文档</button>
-  {{if .Public}}
-  <ul class="ne-panel-list">
-    {{range .Public}}
-    <li><a href="/notes/{{.ID}}" data-note-id="{{.ID}}"
-      title="{{if .UpdaterName}}{{.UpdaterName}}{{else}}{{.OwnerName}}{{end}} 更新于 {{.UpdatedAtLabel}}">{{if .Title}}{{.Title}}{{else}}无标题笔记{{end}}</a></li>
+{{/* 编辑页侧栏的文档列表片段（GET /notes/panel；组增删/移动端点同样返回它）。
+     VSCode 资源管理器式目录：三个可见性分区（公共/共享/私人）→ 分区内
+     文档组（文件夹，可折叠）→ 组内文档；未分组文档平铺在组后面。
+     箭头/文件夹/文件图标都由 CSS mask 绘制（行内零额外 DOM）。
+     折叠状态存 localStorage（ne-panel-fold：分区键 public/shared/private，
+     组键 g<id>，编辑页 JS 维护）。当前文档高亮由前端标 ne-active。
+     自己的文档带 data-own+draggable，可拖进自己的组 / 拖到分区头移出组。 */}}
+{{range .Sections}}
+{{if or (ne .Key "shared") .Groups .Loose}}
+<div class="ne-panel-group" data-group="{{.Key}}">
+  <button type="button" class="ne-panel-head">{{.Title}}</button>
+  <div class="ne-panel-children">
+    {{range .Groups}}
+    <div class="ne-dir" data-dir="{{.ID}}" data-name="{{.Name}}"{{if .Own}} data-own="1"{{end}}>
+      <div class="ne-dir-head">
+        <button type="button" class="ne-dir-name"><span class="ne-dir-label">{{.Name}}</span></button>
+        {{if .Own}}
+        <a class="ne-dir-act" href="/notes/new?group={{.ID}}" title="在「{{.Name}}」内新建文档">＋</a>
+        <button type="button" class="ne-dir-act ne-dir-del" title="删除文档组（组内文档回到未分组，不删除文档）">删</button>
+        {{end}}
+      </div>
+      {{if .Notes}}
+      <ul class="ne-panel-list ne-dir-list">
+        {{range .Notes}}
+        <li><a href="/notes/{{.ID}}" data-note-id="{{.ID}}"{{if eq .MyAccess "owner"}} data-own="1" draggable="true"{{end}}
+          title="{{if .UpdaterName}}{{.UpdaterName}} {{end}}更新于 {{.UpdatedAtLabel}}">{{if .Title}}{{.Title}}{{else}}无标题笔记{{end}}</a></li>
+        {{end}}
+      </ul>
+      {{else}}<div class="ne-panel-empty ne-dir-empty">空组</div>{{end}}
+    </div>
     {{end}}
-  </ul>
-  {{else}}<div class="ne-panel-empty">暂无</div>{{end}}
-</div>
-{{if .Shared}}
-<div class="ne-panel-group" data-group="shared">
-  <button type="button" class="ne-panel-head">共享协作</button>
-  <ul class="ne-panel-list">
-    {{range .Shared}}
-    <li><a href="/notes/{{.ID}}" data-note-id="{{.ID}}"
-      title="{{if .UpdaterName}}{{.UpdaterName}}{{else}}{{.OwnerName}}{{end}} 更新于 {{.UpdatedAtLabel}}">{{if .Title}}{{.Title}}{{else}}无标题笔记{{end}}</a></li>
-    {{end}}
-  </ul>
+    {{if .Loose}}
+    <ul class="ne-panel-list">
+      {{range .Loose}}
+      <li><a href="/notes/{{.ID}}" data-note-id="{{.ID}}"{{if eq .MyAccess "owner"}} data-own="1" draggable="true"{{end}}
+        title="{{if .UpdaterName}}{{.UpdaterName}} {{end}}更新于 {{.UpdatedAtLabel}}">{{if .Title}}{{.Title}}{{else}}无标题笔记{{end}}</a></li>
+      {{end}}
+    </ul>
+    {{else if not .Groups}}<div class="ne-panel-empty">暂无</div>{{end}}
+  </div>
 </div>
 {{end}}
-<div class="ne-panel-group" data-group="private">
-  <button type="button" class="ne-panel-head">私人文档</button>
-  {{if .Private}}
-  <ul class="ne-panel-list">
-    {{range .Private}}
-    <li><a href="/notes/{{.ID}}" data-note-id="{{.ID}}"
-      title="更新于 {{.UpdatedAtLabel}}">{{if .Title}}{{.Title}}{{else}}无标题笔记{{end}}</a></li>
-    {{end}}
-  </ul>
-  {{else}}<div class="ne-panel-empty">暂无</div>{{end}}
-</div>
+{{end}}
 {{end}}

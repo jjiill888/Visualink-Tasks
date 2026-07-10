@@ -143,7 +143,16 @@
       <button type="button" id="ne-tab-files" class="ne-panel-tab">文件</button>
       <button type="button" id="ne-tab-outline" class="ne-panel-tab">大纲</button>
       <span class="ne-panel-spacer"></span>
-      <a class="ne-panel-tab" href="/notes/new" title="新建笔记并跳转">＋</a>
+      {{/* ＋菜单：悬停/点击弹「新建文档 / 新建文档组」；选文档组就地变
+           输入框，回车创建（POST /notes/groups 返回面板片段原地刷新） */}}
+      <span class="ne-new-wrap">
+        <button type="button" id="ne-new-toggle" class="ne-panel-tab" title="新建文档 / 文档组">＋</button>
+        <div id="ne-new-menu" hidden>
+          <a class="ne-new-item" id="ne-new-doc" href="/notes/new">新建文档</a>
+          <button type="button" class="ne-new-item" id="ne-new-group-btn">新建文档组</button>
+          <input type="text" id="ne-new-group-name" placeholder="组名，回车创建" maxlength="50" autocomplete="off" hidden>
+        </div>
+      </span>
     </footer>
   </aside>
 
@@ -303,44 +312,173 @@
       if (e.key === 'Escape' && isOpen() && !pinned) setOpen(false);
     });
 
-    /* VSCode 式分组折叠：点分组头折叠/展开，状态存 localStorage
-       （键=分组的 data-group），列表 innerHTML 刷新后由 markActive 重放 */
+    /* VSCode 式折叠：分区头（键=public/shared/private）与文档组头（键=g<组ID>）
+       都可点击折叠，状态存 localStorage，列表 innerHTML 刷新后由 markActive 重放 */
     var folds = {};
     try { folds = JSON.parse(localStorage.getItem('ne-panel-fold') || '{}'); } catch (e) {}
     function saveFolds() { localStorage.setItem('ne-panel-fold', JSON.stringify(folds)); }
-    docsEl.addEventListener('click', function (e) {
-      var head = e.target.closest('.ne-panel-head');
-      if (!head) return;
-      var g = head.parentElement;
-      var fold = !g.classList.contains('ne-fold');
-      g.classList.toggle('ne-fold', fold);
-      folds[g.dataset.group] = fold;
+    function toggleFold(node, key) {
+      var fold = !node.classList.contains('ne-fold');
+      node.classList.toggle('ne-fold', fold);
+      folds[key] = fold;
       saveFolds();
+    }
+
+    /* 面板变更的统一出口：组增删/文档移动端点都返回整块面板 HTML；
+       失败复用全局错误 Toast */
+    function swapPanel(html) { docsEl.innerHTML = html; markActive(); }
+    function panelReq(method, url, params) {
+      return fetch(url, {
+        method: method, credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params ? new URLSearchParams(params).toString() : ''
+      }).then(function (r) {
+        if (!r.ok) return r.text().then(function (t) { throw new Error(t.trim() || '操作失败'); });
+        return r.text();
+      }).then(swapPanel);
+    }
+    function panelErr(err) {
+      var toast = document.getElementById('htmx-error-toast');
+      toast.textContent = (err && err.message) || '操作失败，请重试';
+      clearTimeout(toast._timer);
+      toast._timer = setTimeout(function () { toast.textContent = ''; }, 4000);
+    }
+
+    docsEl.addEventListener('click', function (e) {
+      var dirName = e.target.closest('.ne-dir-name');
+      if (dirName) {
+        var d = dirName.closest('.ne-dir');
+        toggleFold(d, 'g' + d.dataset.dir);
+        return;
+      }
+      if (e.target.closest('.ne-dir-del')) {
+        var del = e.target.closest('.ne-dir');
+        if (confirm('删除文档组「' + del.dataset.name + '」？组内文档不会被删除，只回到未分组。')) {
+          panelReq('DELETE', '/notes/groups/' + del.dataset.dir).catch(panelErr);
+        }
+        return;
+      }
+      var head = e.target.closest('.ne-panel-head');
+      if (head) toggleFold(head.parentElement, head.parentElement.dataset.group);
     });
 
-    /* 当前文档高亮（直出与刷新后各标一次），顺带重放折叠状态；
-       首次载入若当前文档在折叠分组里则展开该组（仿 VSCode reveal），
+    /* 当前文档高亮（直出与刷新后各标一次），顺带重放分区/组折叠状态；
+       首次载入若当前文档藏在折叠的分区或组里则逐层展开（仿 VSCode reveal），
        之后的刷新尊重用户手动折叠 */
     var revealed = false;
     function markActive() {
       docsEl.querySelectorAll('.ne-panel-group').forEach(function (g) {
         g.classList.toggle('ne-fold', !!folds[g.dataset.group]);
       });
+      docsEl.querySelectorAll('.ne-dir').forEach(function (d) {
+        d.classList.toggle('ne-fold', !!folds['g' + d.dataset.dir]);
+      });
       var cur = docsEl.querySelector('a[data-note-id="' + noteId + '"]');
       if (cur) {
         cur.classList.add('ne-active');
         if (!revealed) {
-          var g = cur.closest('.ne-panel-group');
-          if (g && g.classList.contains('ne-fold')) {
-            g.classList.remove('ne-fold');
-            delete folds[g.dataset.group];
-            saveFolds();
-          }
+          [cur.closest('.ne-dir'), cur.closest('.ne-panel-group')].forEach(function (node) {
+            if (node && node.classList.contains('ne-fold')) {
+              node.classList.remove('ne-fold');
+              delete folds[node.dataset.dir ? 'g' + node.dataset.dir : node.dataset.group];
+              saveFolds();
+            }
+          });
         }
       }
       revealed = true;
     }
     markActive();
+
+    /* 拖拽归组（仿 VSCode）：自己的文档（data-own）可拖——拖到自己的组
+       任意位置入组、拖到分区标题移出组；服务端另有笔记/组双重属主校验 */
+    var dragId = null;
+    function dropTargetOf(el) {
+      if (!el.closest) return null;
+      var d = el.closest('.ne-dir');
+      if (d && d.dataset.own) return { el: d.querySelector('.ne-dir-head'), group: d.dataset.dir };
+      var head = el.closest('.ne-panel-head');
+      if (head) return { el: head, group: '' };
+      return null;
+    }
+    function clearDrop() {
+      docsEl.querySelectorAll('.ne-drop').forEach(function (n) { n.classList.remove('ne-drop'); });
+    }
+    docsEl.addEventListener('dragstart', function (e) {
+      var a = e.target.closest && e.target.closest('a[data-own]');
+      if (!a) { e.preventDefault(); return; }
+      dragId = a.dataset.noteId;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', dragId);
+    });
+    docsEl.addEventListener('dragover', function (e) {
+      if (!dragId) return;
+      var t = dropTargetOf(e.target);
+      clearDrop();
+      if (t) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        t.el.classList.add('ne-drop');
+      }
+    });
+    docsEl.addEventListener('drop', function (e) {
+      var t = dropTargetOf(e.target);
+      clearDrop();
+      if (!dragId || !t) return;
+      e.preventDefault();
+      panelReq('PUT', '/notes/' + dragId + '/group', { group_id: t.group }).catch(panelErr);
+      dragId = null;
+    });
+    docsEl.addEventListener('dragend', function () { dragId = null; clearDrop(); });
+
+    /* 底栏「＋」菜单：悬停 120ms/点击弹出「新建文档 / 新建文档组」，指针
+       离开 300ms 收起（输入框敲了字不收——同权限面板的交互语言）；
+       选「新建文档组」两项就地换成输入框，回车创建、Escape 收起 */
+    var newWrap = document.querySelector('.ne-new-wrap');
+    var newMenu = document.getElementById('ne-new-menu');
+    var newDocA = document.getElementById('ne-new-doc');
+    var ngBtn = document.getElementById('ne-new-group-btn');
+    var ngInput = document.getElementById('ne-new-group-name');
+    var nmOpenT = null, nmCloseT = null;
+    function newMenuShow(v) {
+      newMenu.hidden = !v;
+      if (!v) { ngInput.hidden = true; ngInput.value = ''; newDocA.hidden = false; ngBtn.hidden = false; }
+    }
+    newWrap.addEventListener('mouseenter', function () {
+      clearTimeout(nmCloseT); nmCloseT = null;
+      if (!newMenu.hidden || nmOpenT) return;
+      nmOpenT = setTimeout(function () { nmOpenT = null; newMenuShow(true); }, 120);
+    });
+    newWrap.addEventListener('mouseleave', function () {
+      clearTimeout(nmOpenT); nmOpenT = null;
+      if (newMenu.hidden || nmCloseT) return;
+      nmCloseT = setTimeout(function () {
+        nmCloseT = null;
+        if (document.activeElement === ngInput && ngInput.value) return;
+        newMenuShow(false);
+      }, 300);
+    });
+    document.getElementById('ne-new-toggle').addEventListener('click', function () {
+      newMenuShow(newMenu.hidden);
+    });
+    ngBtn.addEventListener('click', function () {
+      newDocA.hidden = true;
+      ngBtn.hidden = true;
+      ngInput.hidden = false;
+      ngInput.focus();
+    });
+    ngInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { newMenuShow(false); return; }
+      if (e.key !== 'Enter') return;
+      var name = ngInput.value.trim();
+      if (!name) return;
+      panelReq('POST', '/notes/groups', { name: name })
+        .then(function () { newMenuShow(false); })
+        .catch(panelErr);
+    });
+    document.addEventListener('click', function (e) {
+      if (!newMenu.hidden && !newWrap.contains(e.target)) newMenuShow(false);
+    });
 
     /* 文档列表已随页直出；打开侧栏时后台刷新，30 秒内不重复请求。
        fetch 带 10 秒超时——跨境慢链路上请求可能排在大资产后面长时间挂起 */

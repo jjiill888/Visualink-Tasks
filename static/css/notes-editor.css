@@ -1080,9 +1080,131 @@ body.ne-library .ne-page {
   transform: none;
 }
 
-.ne-panel-group.ne-fold .ne-panel-list,
-.ne-panel-group.ne-fold .ne-panel-empty {
+.ne-panel-group.ne-fold .ne-panel-children {
   display: none;
+}
+
+/* ── 文档组（分区内的文件夹节点，可折叠；纯组织结构不承载权限） ── */
+
+.ne-dir-head {
+  display: flex;
+  align-items: center;
+  padding-right: 6px;
+}
+
+.ne-dir-head:hover {
+  background: var(--ne-bg-hover, rgba(150, 150, 150, 0.1));
+}
+
+.ne-dir-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 2px 0 2px 8px; /* 比分区头缩进一级 */
+  font: inherit;
+  font-size: 13px;
+  color: var(--ne-fg);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  user-select: none;
+}
+
+/* 组头折叠箭头（同分区头，颜色用辅助灰） */
+.ne-dir-name::before {
+  content: '';
+  flex: none;
+  width: 16px;
+  height: 16px;
+  background: var(--ne-muted);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M6 4l4 4-4 4' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 16px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M6 4l4 4-4 4' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 16px no-repeat;
+  transform: rotate(90deg);
+  transition: transform 0.12s ease;
+}
+
+.ne-dir.ne-fold .ne-dir-name::before {
+  transform: none;
+}
+
+.ne-dir.ne-fold .ne-dir-list,
+.ne-dir.ne-fold .ne-dir-empty {
+  display: none;
+}
+
+.ne-dir-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 文件夹图标 */
+.ne-dir-label::before {
+  content: '';
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 5px;
+  vertical-align: -2px;
+  background: var(--ne-muted);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M1.5 4.5a1 1 0 0 1 1-1h3.4l1.5 1.7h6.1a1 1 0 0 1 1 1v5.8a1 1 0 0 1-1 1H2.5a1 1 0 0 1-1-1z' fill='none' stroke='%23000' stroke-width='1.2' stroke-linejoin='round'/%3E%3C/svg%3E") center / 14px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M1.5 4.5a1 1 0 0 1 1-1h3.4l1.5 1.7h6.1a1 1 0 0 1 1 1v5.8a1 1 0 0 1-1 1H2.5a1 1 0 0 1-1-1z' fill='none' stroke='%23000' stroke-width='1.2' stroke-linejoin='round'/%3E%3C/svg%3E") center / 14px no-repeat;
+}
+
+/* 组行操作（＋组内新建 / 删组）：悬停浮现，触屏常显 */
+.ne-dir-act {
+  flex: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ne-muted);
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  cursor: pointer;
+  text-decoration: none;
+  opacity: 0;
+}
+
+.ne-dir-head:hover .ne-dir-act {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .ne-dir-act {
+    opacity: 1;
+  }
+}
+
+.ne-dir-act:hover {
+  color: var(--ne-fg);
+}
+
+.ne-dir-del:hover {
+  color: var(--ne-err, #dc2626);
+}
+
+/* 组内文档再缩进一级（缩进线对齐组头箭头中心） */
+.ne-dir-list a {
+  padding-left: 40px;
+}
+
+.ne-dir-list a.ne-active {
+  padding-left: 38px;
+}
+
+.ne-dir-list::before {
+  left: 16px;
+}
+
+.ne-dir-empty {
+  padding-left: 40px;
+}
+
+/* 拖拽归组的悬停目标（组头=入组 / 分区头=移出组） */
+.ne-drop {
+  background: var(--ne-accent-muted, rgba(65, 131, 196, 0.12));
 }
 
 .ne-panel-list {
@@ -1212,6 +1334,66 @@ body.ne-library .ne-page {
   flex: 1;
 }
 
+/* 底栏「＋」弹出菜单：新建文档 / 新建文档组（选组就地变输入框） */
+.ne-new-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+#ne-new-menu {
+  position: absolute;
+  right: 0;
+  bottom: 30px;
+  min-width: 138px;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  background: var(--ne-bg, #fff);
+  border: 1px solid var(--ne-line);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  z-index: 45;
+}
+
+#ne-new-menu[hidden] {
+  display: none;
+}
+
+.ne-new-item {
+  font: inherit;
+  font-size: 13px;
+  color: var(--ne-fg);
+  background: none;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 10px;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.ne-new-item:hover {
+  background: var(--ne-bg-hover, rgba(150, 150, 150, 0.1));
+}
+
+/* 组名输入：项目铁律——无边框输入，仅 focus 细下划线 */
+#ne-new-group-name {
+  font: inherit;
+  font-size: 13px;
+  color: var(--ne-fg);
+  width: 148px;
+  background: none;
+  border: none;
+  outline: none;
+  padding: 5px 10px 4px;
+  border-bottom: 1px solid var(--ne-line-strong, #ccc);
+}
+
+#ne-new-group-name::placeholder {
+  color: var(--ne-faint);
+}
+
 /* 目录跳转时给悬浮顶栏留出空隙 */
 .milkdown .ProseMirror h1,
 .milkdown .ProseMirror h2,
@@ -1281,6 +1463,10 @@ body.note-standalone *::-webkit-scrollbar-thumb:hover {
 
 .ne-dark body.note-standalone #ne-panel.ne-open {
   box-shadow: 6px 0 20px rgba(0, 0, 0, 0.35);
+}
+
+.ne-dark body.note-standalone #ne-new-menu {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
 

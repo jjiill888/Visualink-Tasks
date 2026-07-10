@@ -335,6 +335,10 @@ func main() {
 		r.Get("/notes", handler.NotesPage(database))
 		r.Get("/notes/new", handler.NewNote(database))
 		r.Get("/notes/panel", handler.NotesPanel(database)) // 编辑页右侧面板（chi 静态段优先于 {id}）
+		// 文档组（侧栏文件树的文件夹，纯组织结构；三端点都返回刷新后的面板片段）
+		r.Post("/notes/groups", handler.CreateNoteGroup(database))
+		r.Delete("/notes/groups/{gid}", handler.DeleteNoteGroup(database))
+		r.Put("/notes/{id}/group", handler.SetNoteGroup(database))
 		r.Get("/notes/{id}", handler.NoteEditPage(database))
 		r.Put("/notes/{id}", handler.SaveNote(database))
 		r.Delete("/notes/{id}", handler.DeleteNote(database))

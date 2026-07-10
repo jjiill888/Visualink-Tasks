@@ -471,11 +471,13 @@ type Note struct {
 	ContentMD  string
 	OwnerID    int64
 	Visibility string // public | restricted | private
+	GroupID    int64  // 所属文档组，0 = 未分组
 	CreatedAt  time.Time
 	UpdatedAt  string // 原始文本，用于乐观锁比较与排序
 	// Joined
 	OwnerName   string
 	UpdaterName string // 最后更新人显示名
+	GroupName   string // 所属文档组名（未分组为空）
 	MyAccess    string // 按查询者算出的权限档位：owner | edit | read | none
 }
 
@@ -493,6 +495,14 @@ func (n *Note) VisibilityLabel() string {
 		return "私有"
 	}
 	return "公开"
+}
+
+// NoteGroup 文档组：侧栏文件树的文件夹节点，纯组织结构，**不承载权限**——
+// 笔记落在哪个可见性分区仍由自身 visibility 决定，组只是分区内的一层嵌套。
+type NoteGroup struct {
+	ID      int64
+	OwnerID int64
+	Name    string
 }
 
 // NoteShare 受限笔记的名单成员（reader 只读 / editor 读写）。

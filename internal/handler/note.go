@@ -124,26 +124,105 @@ func NotesPage(database *db.DB) http.HandlerFunc {
 	}
 }
 
-// notesPanelData 编辑页侧栏「文件」视图的数据，按可见性分三组：
+// notesPanelSection 侧栏「文件」视图的一个可见性分区（公共/共享/私人），
+// 分区内：文档组（文件夹）在前、未分组文档平铺在后——VSCode 目录习惯。
+type notesPanelSection struct {
+	Key    string // 折叠状态的 localStorage 键（public/shared/private）
+	Title  string
+	Groups []*notesPanelGroup
+	Loose  []*model.Note
+}
+
+// notesPanelGroup 分区内的文档组节点。Own = 当前用户建的组（有＋/删操作）。
+type notesPanelGroup struct {
+	ID    int64
+	Name  string
+	Own   bool
+	Notes []*model.Note
+}
+
+// notesPanelData 编辑页侧栏「文件」视图的数据，按可见性分三区：
 // 公共文档 = 所有人的公开笔记；共享协作 = 自己可见的受限笔记（自己建的
 // + 别人加自己进名单的）；私人文档 = 自己的私有笔记。
+// 文档组是纯组织结构：笔记落在哪个区仍由 visibility 决定，同组笔记可见性
+// 不同时文件夹会在多个区分别出现（各显示各区的笔记）。自己建的空组
+// （或组内笔记当前都不可见）挂在公共区——新文档默认公开，会落回这里。
 func notesPanelData(database *db.DB, userID int64) (map[string]any, error) {
 	notes, err := database.ListNotes(userID, "")
 	if err != nil {
 		return nil, err
 	}
-	var public, shared, private []*model.Note
-	for _, n := range notes {
+	sections := []*notesPanelSection{
+		{Key: "public", Title: "公共文档"},
+		{Key: "shared", Title: "共享协作"},
+		{Key: "private", Title: "私人文档"},
+	}
+	secOf := func(n *model.Note) *notesPanelSection {
 		switch n.Visibility {
 		case model.NoteVisPrivate:
-			private = append(private, n)
+			return sections[2]
 		case model.NoteVisRestricted:
-			shared = append(shared, n)
+			return sections[1]
 		default:
-			public = append(public, n)
+			return sections[0]
 		}
 	}
-	return map[string]any{"Public": public, "Shared": shared, "Private": private}, nil
+	// 每区一张 groupID → 节点 的索引；ListNotes 按更新时间倒序，组的出现
+	// 顺序即「组内最新文档」的顺序，组内文档亦保持该序
+	dirIdx := map[*notesPanelSection]map[int64]*notesPanelGroup{}
+	seen := map[int64]bool{} // 已在任一区出现过的组
+	for _, n := range notes {
+		sec := secOf(n)
+		if n.GroupID == 0 {
+			sec.Loose = append(sec.Loose, n)
+			continue
+		}
+		idx := dirIdx[sec]
+		if idx == nil {
+			idx = map[int64]*notesPanelGroup{}
+			dirIdx[sec] = idx
+		}
+		dir := idx[n.GroupID]
+		if dir == nil {
+			dir = &notesPanelGroup{ID: n.GroupID, Name: n.GroupName, Own: false}
+			idx[n.GroupID] = dir
+			sec.Groups = append(sec.Groups, dir)
+			seen[n.GroupID] = true
+		}
+		dir.Notes = append(dir.Notes, n)
+	}
+	// 自己建的组补 Own 标记；没有可见笔记的组挂公共区（空组也要能看到/删掉）
+	owned, err := database.ListNoteGroups(userID)
+	if err != nil {
+		return nil, err
+	}
+	for _, gr := range owned {
+		found := false
+		for _, sec := range sections {
+			if dir := dirIdx[sec][gr.ID]; dir != nil {
+				dir.Own = true
+				found = true
+			}
+		}
+		if !found {
+			sections[0].Groups = append(sections[0].Groups,
+				&notesPanelGroup{ID: gr.ID, Name: gr.Name, Own: true})
+		}
+	}
+	return map[string]any{"Sections": sections}, nil
+}
+
+// writeNotesPanel 渲染侧栏文档列表片段（面板刷新与组增删/移动的共同出口）。
+func writeNotesPanel(w http.ResponseWriter, database *db.DB, userID int64) {
+	data, err := notesPanelData(database, userID)
+	if err != nil {
+		http.Error(w, "查询失败", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := PartialTmpl.ExecuteTemplate(w, "notes_panel_partial.html", data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 // NotesPanel GET /notes/panel — 侧栏文档列表片段。
@@ -151,15 +230,72 @@ func notesPanelData(database *db.DB, userID int64) (map[string]any, error) {
 // 本端点只用于打开侧栏时的后台刷新。
 func NotesPanel(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		data, err := notesPanelData(database, UserFromContext(r).ID)
-		if err != nil {
-			http.Error(w, "查询失败", http.StatusInternalServerError)
+		writeNotesPanel(w, database, UserFromContext(r).ID)
+	}
+}
+
+// CreateNoteGroup POST /notes/groups — 新建文档组，返回刷新后的面板片段。
+func CreateNoteGroup(database *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := UserFromContext(r)
+		name := strings.TrimSpace(r.FormValue("name"))
+		if name == "" {
+			http.Error(w, "请输入组名", http.StatusBadRequest)
 			return
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := PartialTmpl.ExecuteTemplate(w, "notes_panel_partial.html", data); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		if len([]rune(name)) > 50 {
+			http.Error(w, "组名最多 50 个字符", http.StatusBadRequest)
+			return
 		}
+		if _, err := database.CreateNoteGroup(u.ID, name); err != nil {
+			http.Error(w, "创建失败", http.StatusInternalServerError)
+			return
+		}
+		writeNotesPanel(w, database, u.ID)
+	}
+}
+
+// DeleteNoteGroup DELETE /notes/groups/{gid} — 删组（仅建组者），
+// 组内文档回到未分组，不删除文档。返回刷新后的面板片段。
+func DeleteNoteGroup(database *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := UserFromContext(r)
+		gid, err := strconv.ParseInt(chi.URLParam(r, "gid"), 10, 64)
+		if err != nil {
+			http.Error(w, "无效的组 ID", http.StatusBadRequest)
+			return
+		}
+		if err := database.DeleteNoteGroup(gid, u.ID); err != nil {
+			http.Error(w, "只有建组者可以删除这个组", http.StatusForbidden)
+			return
+		}
+		writeNotesPanel(w, database, u.ID)
+	}
+}
+
+// SetNoteGroup PUT /notes/{id}/group — 移动笔记归属组（group_id 空/0 = 移出）。
+// 只有笔记创建者能移，且只能挂进自己建的组（SQL 双重属主校验）。
+// 返回刷新后的面板片段。
+func SetNoteGroup(database *db.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := UserFromContext(r)
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			http.Error(w, "无效的笔记 ID", http.StatusBadRequest)
+			return
+		}
+		var gid int64
+		if v := strings.TrimSpace(r.FormValue("group_id")); v != "" {
+			if gid, err = strconv.ParseInt(v, 10, 64); err != nil || gid < 0 {
+				http.Error(w, "无效的组 ID", http.StatusBadRequest)
+				return
+			}
+		}
+		if err := database.SetNoteGroup(id, u.ID, gid); err != nil {
+			http.Error(w, "只能把自己的文档移进自己建的组", http.StatusForbidden)
+			return
+		}
+		writeNotesPanel(w, database, u.ID)
 	}
 }
 
@@ -197,7 +333,14 @@ func renderNoteEdit(w http.ResponseWriter, r *http.Request, database *db.DB, n *
 func NewNote(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := UserFromContext(r)
-		id, err := database.CreateNote(u.ID, "无标题笔记")
+		// ?group=N：在文档组内新建（侧栏组行的「＋」）；不是自己的组则忽略入组
+		var groupID int64
+		if v := r.URL.Query().Get("group"); v != "" {
+			if gid, err := strconv.ParseInt(v, 10, 64); err == nil && database.OwnsNoteGroup(gid, u.ID) {
+				groupID = gid
+			}
+		}
+		id, err := database.CreateNote(u.ID, "无标题笔记", groupID)
 		if err != nil {
 			http.Error(w, "创建失败", http.StatusInternalServerError)
 			return

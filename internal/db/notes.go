@@ -71,6 +71,13 @@ func (d *DB) migrateNotes() error {
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_note_attachments_note ON note_attachments(note_id);
+
+	CREATE TABLE IF NOT EXISTS note_groups (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		owner_id   INTEGER NOT NULL REFERENCES users(id),
+		name       TEXT NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
 	`)
 	if err != nil {
 		return err
@@ -80,6 +87,8 @@ func (d *DB) migrateNotes() error {
 	// 一次性并入 visibility：迁移后 is_private 归零，重启不会把 owner 后来
 	// 改回公开的笔记再翻回私有。
 	_, _ = d.Exec(`ALTER TABLE notes ADD COLUMN visibility TEXT NOT NULL DEFAULT 'public'`)
+	// 文档组归属列（0/NULL = 未分组；组是纯组织结构，权限仍看 visibility）
+	_, _ = d.Exec(`ALTER TABLE notes ADD COLUMN group_id INTEGER`)
 	if _, err := d.Exec(`UPDATE notes SET visibility='private', is_private=0 WHERE is_private=1`); err != nil {
 		return err
 	}
@@ -113,9 +122,10 @@ func (d *DB) migrateNotes() error {
 // noteShareJoin（按查询者 LEFT JOIN note_shares）。MyAccess 在 SQL 里算好：
 // owner 全权；私有仅 owner；公开人人可写；受限按名单 role 给读/写。
 const noteCols = `
-	n.id, n.title, n.content_md, n.owner_id, n.visibility, n.created_at, n.updated_at,
+	n.id, n.title, n.content_md, n.owner_id, n.visibility, COALESCE(n.group_id, 0), n.created_at, n.updated_at,
 	COALESCE(NULLIF(o.display_name,''), o.username),
 	COALESCE((SELECT COALESCE(NULLIF(u2.display_name,''), u2.username) FROM users u2 WHERE u2.id = n.updated_by), ''),
+	COALESCE(g.name, ''),
 	CASE
 		WHEN n.owner_id = ?1 THEN 'owner'
 		WHEN n.visibility = 'private' THEN 'none'
@@ -126,13 +136,15 @@ const noteCols = `
 	END
 `
 
-const noteShareJoin = ` LEFT JOIN note_shares s ON s.note_id = n.id AND s.user_id = ?1`
+// noteShareJoin 挂名单（算 MyAccess）与文档组名，与 noteCols 配套使用。
+const noteShareJoin = ` LEFT JOIN note_shares s ON s.note_id = n.id AND s.user_id = ?1
+	LEFT JOIN note_groups g ON g.id = n.group_id`
 
 func scanNote(row interface{ Scan(...any) error }) (*model.Note, error) {
 	n := &model.Note{}
 	err := row.Scan(
-		&n.ID, &n.Title, &n.ContentMD, &n.OwnerID, &n.Visibility, &n.CreatedAt, &n.UpdatedAt,
-		&n.OwnerName, &n.UpdaterName, &n.MyAccess,
+		&n.ID, &n.Title, &n.ContentMD, &n.OwnerID, &n.Visibility, &n.GroupID, &n.CreatedAt, &n.UpdatedAt,
+		&n.OwnerName, &n.UpdaterName, &n.GroupName, &n.MyAccess,
 	)
 	return n, err
 }
@@ -197,10 +209,11 @@ func (d *DB) GetNote(id, userID int64) (*model.Note, error) {
 	return n, err
 }
 
-func (d *DB) CreateNote(ownerID int64, title string) (int64, error) {
+// CreateNote 建空笔记；groupID > 0 时直接落进该文档组（组归属校验在 handler）。
+func (d *DB) CreateNote(ownerID int64, title string, groupID int64) (int64, error) {
 	res, err := d.Exec(
-		`INSERT INTO notes (title, owner_id, updated_by) VALUES (?,?,?)`,
-		title, ownerID, ownerID,
+		`INSERT INTO notes (title, owner_id, updated_by, group_id) VALUES (?,?,?,NULLIF(?,0))`,
+		title, ownerID, ownerID, groupID,
 	)
 	if err != nil {
 		return 0, err
@@ -302,6 +315,81 @@ func (d *DB) SoftDeleteNote(id, ownerID int64) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// ── Note groups（文档组：侧栏文件夹，纯组织结构不承载权限） ─────────────────
+
+// CreateNoteGroup 建文档组（name 由 handler 校验非空/限长）。
+func (d *DB) CreateNoteGroup(ownerID int64, name string) (int64, error) {
+	res, err := d.Exec(`INSERT INTO note_groups (owner_id, name) VALUES (?,?)`, ownerID, name)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+// DeleteNoteGroup 删组（仅 owner）：事务内先把组内笔记回到未分组，再删组行。
+// 不删除任何笔记。
+func (d *DB) DeleteNoteGroup(id, ownerID int64) error {
+	tx, err := d.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`DELETE FROM note_groups WHERE id=? AND owner_id=?`, id, ownerID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("group not found or permission denied")
+	}
+	if _, err := tx.Exec(`UPDATE notes SET group_id=NULL WHERE group_id=?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// SetNoteGroup 移动笔记归属组（groupID=0 移出）。双重属主校验在 SQL 里：
+// 笔记必须是 userID 自己的；目标组（非 0 时）也必须是自己建的。
+func (d *DB) SetNoteGroup(noteID, userID, groupID int64) error {
+	res, err := d.Exec(
+		`UPDATE notes SET group_id=NULLIF(?,0)
+		 WHERE id=? AND owner_id=? AND deleted_at IS NULL
+		   AND (? = 0 OR EXISTS(SELECT 1 FROM note_groups WHERE id=? AND owner_id=?))`,
+		groupID, noteID, userID, groupID, groupID, userID,
+	)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("note/group not found or permission denied")
+	}
+	return nil
+}
+
+// ListNoteGroups 返回用户自己建的全部文档组（含空组），按建立先后。
+func (d *DB) ListNoteGroups(ownerID int64) ([]*model.NoteGroup, error) {
+	rows, err := d.Query(`SELECT id, owner_id, name FROM note_groups WHERE owner_id=? ORDER BY id`, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []*model.NoteGroup
+	for rows.Next() {
+		gr := &model.NoteGroup{}
+		if err := rows.Scan(&gr.ID, &gr.OwnerID, &gr.Name); err != nil {
+			return nil, err
+		}
+		list = append(list, gr)
+	}
+	return list, rows.Err()
+}
+
+// OwnsNoteGroup 组是否属于该用户（/notes/new?group=N 的入组校验）。
+func (d *DB) OwnsNoteGroup(id, ownerID int64) bool {
+	var one int
+	err := d.QueryRow(`SELECT 1 FROM note_groups WHERE id=? AND owner_id=?`, id, ownerID).Scan(&one)
+	return err == nil
 }
 
 // ── Permissions（可见性 + 名单） ────────────────────────────────────────────
