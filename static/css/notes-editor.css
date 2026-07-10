@@ -260,6 +260,29 @@ body.note-standalone.ne-split #note-editor-root {
   padding: 8px 28px 0;
 }
 
+/* 协作多人时的源码只读提示：与源码栏同格叠放，浮在左栏顶部居中。
+   不设 display，让 hidden 属性照常生效 */
+body.note-standalone.ne-split #ne-src-lock {
+  grid-row: 2;
+  grid-column: 1;
+  align-self: start;
+  justify-self: center;
+  margin-top: 10px;
+  padding: 3px 12px;
+  font-size: 12px;
+  color: var(--ne-muted);
+  background: var(--ne-bg-surface);
+  border: 1px solid var(--ne-line);
+  border-radius: 999px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* 只读镜像状态的源码栏：文字压暗一档，视觉上先于提示条传达「不可编辑」 */
+body.note-standalone.ne-split #note-source[readonly] {
+  color: var(--ne-muted);
+}
+
 /* 窄屏退化为上下两栏：源码在上、预览在下 */
 @media (max-width: 800px) {
   body.note-standalone.ne-split .ne-page {

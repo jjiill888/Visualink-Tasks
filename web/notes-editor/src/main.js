@@ -166,6 +166,17 @@ async function mountEditor(root) {
   // Milkdown 只作只读渲染预览（uiEditable=false）
   let sourceMode = false;
   let uiEditable = true;
+  // 协作状态（由 collab.js 回调驱动）。协作接通后分屏语义反转：共享 Yjs
+  // 文档才是事实来源，源码栏变成它的实时镜像——独自在线（peers=1）时可
+  // 编辑（replaceAll 写回共享文档，没有踩踏对象），两人及以上转只读
+  // （否则防抖整文覆盖会吞掉别人正在敲的内容）；peers=0 表示连上后掉线、
+  // 人数未知，按「不止自己」处理
+  let collabActive = false;
+  let collabPeers = 1;
+  const srcIsTruth = () => !collabActive || collabPeers === 1;
+  let mirrorSource = null;      // 镜像刷新（分屏初始化段赋值）
+  let applySrcEditable = null;  // 只读/可编辑切换（同上）
+  let onCollabBound = null;     // 协作接通时对齐源码栏（同上）
 
   if (!readonly) {
     autosave = createAutosave({
@@ -213,9 +224,14 @@ async function mountEditor(root) {
         ctx.update(editorViewOptionsCtx, (prev) => ({ ...prev, editable: () => uiEditable }));
         ctx.get(listenerCtx).markdownUpdated((_ctx, markdown, prevMarkdown) => {
           if (markdown === prevMarkdown) return;
-          // 分屏模式下预览由 textarea 灌入（replaceAll），序列化结果不能
-          // 反向覆盖 currentMarkdown——保存的必须是用户敲的源码原文
-          if (sourceMode) return;
+          if (sourceMode) {
+            // 源码是事实来源（单人 / 协作独处）：预览由 textarea 灌入
+            // （replaceAll），序列化结果不能反向覆盖 currentMarkdown——
+            // 保存的必须是用户敲的源码原文
+            if (srcIsTruth()) return;
+            // 协作多人：源码栏是共享文档的只读镜像，远端改动实时刷进来
+            if (mirrorSource) mirrorSource(markdown);
+          }
           currentMarkdown = markdown;
           autosave.markDirty();
         });
@@ -249,12 +265,10 @@ async function mountEditor(root) {
   // ── 实时协作（阶段二）────────────────────────────────────────
   // 协作代码（yjs + y-prosemirror + y-sweet client，约 130KB）在独立 chunk
   // 懒加载：编辑器先挂载可用，协作后台接通——主 bundle 回到协作前体积。
-  // 「源码/预览」分屏与协作互斥：分屏的 replaceAll 会整体重写共享文档，
-  // 等于把别人正在敲的内容一锅端。协作模式下隐藏分屏按钮、不恢复分屏偏好；
-  // 降级单人后按钮放回来。
+  // 「源码/预览」在协作下照常可用：源码栏是共享文档的实时镜像，独自在线
+  // 可编辑、多人在线只读（详见挂载函数顶部 collabActive 一节的说明）。
   if (collabMode) {
     const statusEl = document.getElementById('ne-collab-status');
-    if (modeBtn) modeBtn.hidden = true;
     // 服务端预签的房间 token 随页直出（省一次 round-trip）；缺失时前端回退拉取
     let initialToken = null;
     try { initialToken = JSON.parse(root.dataset.collabToken || 'null'); } catch { /* 回退拉取 */ }
@@ -269,10 +283,28 @@ async function mountEditor(root) {
         onReady: () => {
           // Yjs 接管并发，快照回写跳过乐观锁（多客户端存同一内容，409 是误伤）
           autosave.setLockFree(true);
+          collabActive = true;
+          // 绑定可能把编辑器内容换成房间内容（房间非空时），分屏下源码栏
+          // 必须跟着对齐，否则下一次源码输入会拿旧文覆盖房间新文
+          if (onCollabBound) onCollabBound();
         },
         onDegrade: () => {
-          // 从未连上：单人保存模式（乐观锁本来就没关过），恢复分屏入口
-          if (modeBtn) modeBtn.hidden = false;
+          // 从未连上：单人保存模式（乐观锁本来就没关过），源码栏恢复单人语义
+          collabActive = false;
+          collabPeers = 1;
+          if (applySrcEditable) applySrcEditable();
+        },
+        onPeers: (n) => {
+          collabPeers = n;
+          if (applySrcEditable) applySrcEditable();
+        },
+        onDocUpdate: () => {
+          // 只读镜像时把改动（主要是远端的）刷进源码栏。listener 插件对
+          // 远端事务不触发（addToHistory:false 被跳过），信号从 Yjs 层取
+          if (!sourceMode || srcIsTruth() || !mirrorSource) return;
+          const md = editor.action(getMarkdown());
+          mirrorSource(md);
+          currentMarkdown = md;
         },
         onStatus: (text, level) => {
           if (!statusEl) return;
@@ -282,7 +314,7 @@ async function mountEditor(root) {
       }))
       .catch(() => {
         // chunk 加载失败（弱网/缓存异常）：等同降级，单人模式继续可用
-        if (modeBtn) modeBtn.hidden = false;
+        collabActive = false;
       });
   }
 
@@ -311,6 +343,7 @@ async function mountEditor(root) {
     let previewTimer = null;
     let previewPending = false; // 源码已改、预览还没灌入（防抖期内）
     let caretTimer = null;
+    const srcLockEl = document.getElementById('ne-src-lock');
 
     // 滚动/光标同步（块锚点 + 分段线性插值，见 scroll-sync.js）
     const scrollSync = createScrollSync({
@@ -318,6 +351,46 @@ async function mountEditor(root) {
       previewEl: root, // #note-editor-root 在分屏下是预览侧滚动容器
       getPmRoot: () => root.querySelector('.ProseMirror'),
     });
+
+    // 协作多人时远端改动实时刷进源码栏。正在选取源码（复制中）就跳过
+    // 这一拍，别把选区冲掉——下一次远端改动会带来完整最新内容
+    mirrorSource = (markdown) => {
+      if (document.activeElement === srcEl && srcEl.selectionStart !== srcEl.selectionEnd) return;
+      srcEl.value = markdown;
+    };
+
+    // 独处可编辑 ↔ 多人只读镜像 的切换。转只读前先把防抖期内的源码改动
+    // 冲进共享文档（刚加入的人必须拿到你敲的最后几个字），再以序列化结果
+    // 重置镜像基线
+    applySrcEditable = () => {
+      if (!sourceMode) return;
+      const canEdit = srcIsTruth();
+      if (srcEl.readOnly === !canEdit) return;
+      if (!canEdit) {
+        clearTimeout(previewTimer);
+        if (previewPending) {
+          editor.action(replaceAll(srcEl.value));
+          previewPending = false;
+        }
+      }
+      // 两个方向都以序列化结果重置源码基线：转只读是镜像起点；恢复可编辑
+      // 则消掉镜像防抖 200ms 的竞态——对方最后一击可能还没刷进 textarea
+      srcEl.value = editor.action(getMarkdown());
+      currentMarkdown = srcEl.value;
+      srcEl.readOnly = !canEdit;
+      if (srcLockEl) srcLockEl.hidden = canEdit;
+    };
+
+    // 协作接通：绑定可能已把编辑器内容换成房间内容（房间非空时采远端），
+    // 分屏下把源码栏对齐到绑定后的真实内容，再按人数定只读
+    onCollabBound = () => {
+      if (!sourceMode) return;
+      clearTimeout(previewTimer);
+      previewPending = false;
+      currentMarkdown = editor.action(getMarkdown());
+      srcEl.value = currentMarkdown;
+      applySrcEditable();
+    };
 
     function setMode(split) {
       if (split === sourceMode) return;
@@ -329,11 +402,13 @@ async function mountEditor(root) {
         // 回到所见即所得：源码灌回编辑器（sourceMode 先置回，
         // 让 markdownUpdated 恢复接管 currentMarkdown）
         clearTimeout(previewTimer);
-        currentMarkdown = srcEl.value;
+        if (!srcEl.readOnly) currentMarkdown = srcEl.value;
       }
       sourceMode = split;
       uiEditable = !split;
-      if (!split) editor.action(replaceAll(srcEl.value));
+      // 只读镜像退出时不回灌：共享文档本来就是事实来源，replaceAll 反而
+      // 会用镜像瞬间的旧文吞掉别人刚敲的内容
+      if (!split && !srcEl.readOnly) editor.action(replaceAll(srcEl.value));
       // 空 setProps 触发 ProseMirror 重估 editable()，切换 contenteditable
       editor.action((ctx) => ctx.get(editorViewCtx).setProps({}));
       srcEl.hidden = !split;
@@ -341,9 +416,11 @@ async function mountEditor(root) {
       modeBtn.classList.toggle('ne-on', split);
       localStorage.setItem('ne-mode', split ? 'split' : 'wysiwyg');
       if (split) {
-        srcEl.focus();
+        applySrcEditable();
+        if (!srcEl.readOnly) srcEl.focus();
         scrollSync.enable(); // 布局类已切换，此时测量的分栏宽度才是真实值
       } else {
+        if (srcLockEl) srcLockEl.hidden = true;
         scrollSync.disable();
       }
     }
@@ -374,8 +451,9 @@ async function mountEditor(root) {
     });
 
     modeBtn.addEventListener('click', () => setMode(!sourceMode));
-    // 记住上次的模式选择（协作模式下分屏不可用，见上方互斥说明）
-    if (!collabMode && localStorage.getItem('ne-mode') === 'split') setMode(true);
+    // 记住上次的模式选择。协作接通前先按单人语义进入，接通后 onCollabBound
+    // 对齐源码栏内容并按人数定只读
+    if (localStorage.getItem('ne-mode') === 'split') setMode(true);
   }
 
   // 调试/测试钩子：读取当前序列化后的 Markdown（阶段二快照回写也会用到）。

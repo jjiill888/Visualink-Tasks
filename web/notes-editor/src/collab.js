@@ -42,7 +42,14 @@ function colorFor(name) {
 //   onReady()             首次同步完成、编辑器已绑定（此后快照保存跳过乐观锁）
 //   onDegrade(reason)     从未连上，已放弃并降级单人模式
 //   onStatus(text, level) 顶栏状态文案（level: '' | 'ok' | 'warn'；空文案 = 隐藏）
-export function startCollab({ editor, noteId, username, initialToken, currentMarkdown, titleEl, onReady, onDegrade, onStatus }) {
+//   onPeers(n)            房间在线人数变化（含自己）；0 = 连上后掉线、人数未知，
+//                         调用方须按「不止自己」处理（源码分屏据此切换只读镜像）
+//   onDocUpdate()         共享文档有更新（防抖 200ms 后回调，此时 y-prosemirror
+//                         已把更新应用进编辑器视图）。Milkdown 的 listener 插件
+//                         对远端事务不触发——y-prosemirror 给远端更新打了
+//                         addToHistory:false（不进本地撤销栈），listener 一律跳过，
+//                         所以源码镜像的刷新信号只能从 Yjs 这层取
+export function startCollab({ editor, noteId, username, initialToken, currentMarkdown, titleEl, onReady, onDegrade, onStatus, onPeers, onDocUpdate }) {
   const doc = new Doc();
   const docId = 'note-' + noteId;
   let bound = false;     // 是否已把编辑器绑进协作服务（= 首次 synced 过）
@@ -74,15 +81,19 @@ export function startCollab({ editor, noteId, username, initialToken, currentMar
   function refreshStatus() {
     if (degraded) {
       onStatus('', '');
+      if (onPeers) onPeers(1);
       return;
     }
     if (provider.status === 'connected') {
       const n = provider.awareness.getStates().size;
       onStatus(n > 1 ? n + ' 人在线' : '', 'ok');
+      if (onPeers) onPeers(n);
     } else if (bound) {
       onStatus('协作离线，改动暂存本地', 'warn');
+      if (onPeers) onPeers(0); // 掉线期间别人可能还在改，按人数未知处理
     } else {
       onStatus('', '');
+      if (onPeers) onPeers(1);
     }
   }
 
@@ -135,6 +146,15 @@ export function startCollab({ editor, noteId, username, initialToken, currentMar
       .applyTemplate(currentMarkdown())
       .connect();
     bindTitle();
+    // 文档更新信号（远端/本地不区分，y-sweet client 应用远端更新不带 origin，
+    // 区分不了；调用方按自身模式过滤，只在只读镜像时才重新序列化，开销可忽略）
+    if (onDocUpdate) {
+      let t = null;
+      doc.on('update', () => {
+        clearTimeout(t);
+        t = setTimeout(onDocUpdate, 200);
+      });
+    }
     refreshStatus();
     onReady();
   });

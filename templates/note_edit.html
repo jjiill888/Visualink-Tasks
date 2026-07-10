@@ -92,6 +92,9 @@
          由编辑器岛在进入分屏时填入当前源码并显示（body.ne-split 控制布局） */}}
     <textarea id="note-source" hidden autocomplete="off" spellcheck="false"
       placeholder="在此编辑 Markdown 源码"></textarea>
+    {{/* 协作多人时源码栏转只读镜像的提示（编辑器岛控制显隐），
+         与源码栏同一格叠放，浮在左栏顶部 */}}
+    <div id="ne-src-lock" hidden>多人在线 · 源码为只读镜像，独自在线时可编辑</div>
     <div id="note-editor-root"
       data-note-id="{{$n.ID}}"
       data-updated-at="{{$n.UpdatedAt}}"
