@@ -138,6 +138,9 @@ function createAutosave(opts) {
     },
     setLockFree: (v) => { lockFree = v; },
     flushOnUnload,
+    // 永久停机（文档被删除后）：复用 conflicted 闸门——schedule/save/
+    // flushOnUnload 全部静默失效，不再向已删除的文档发任何保存请求
+    stop: () => { conflicted = true; clearTimeout(timer); },
   };
 }
 
@@ -435,6 +438,23 @@ async function mountEditor(root) {
     // 对齐源码栏内容并按人数定只读
     if (localStorage.getItem('ne-mode') === 'split') setMode(true);
   }
+
+  // 当前文档被侧栏「－」删除：进入空白冻结态——停自动保存（含 beforeunload
+  // 兜底冲刷，防止向已删文档发 404 请求）、退出分屏、清空并锁定编辑器。
+  // 标题/顶栏等页面级 DOM 的收敛由 note_edit.html 的事件派发方处理
+  window.addEventListener('notes-doc-deleted', () => {
+    if (autosave) autosave.stop();
+    sourceMode = false;
+    uiEditable = false;
+    document.body.classList.remove('ne-split');
+    if (srcEl) { srcEl.hidden = true; srcEl.value = ''; }
+    if (modeBtn) modeBtn.classList.remove('ne-on');
+    try {
+      editor.action(replaceAll(''));
+      // 空 setProps 触发 ProseMirror 重估 editable()，contenteditable 关闭
+      editor.action((ctx) => ctx.get(editorViewCtx).setProps({}));
+    } catch { /* 编辑器异常时空白态尽力而为，保存已停不会写坏数据 */ }
+  });
 
   // 调试/测试钩子：读取当前序列化后的 Markdown（阶段二快照回写也会用到）。
   // 分屏模式下以源码 textarea 为准——预览灌入有 400ms 防抖，可能滞后

@@ -87,7 +87,7 @@
       <button type="button" class="ne-link" id="ne-mode-toggle"
         title="左侧编辑 Markdown 源码，右侧实时预览；再点回到所见即所得">源码/预览</button>
       {{end}}
-      <button type="button" class="ne-link"
+      <button type="button" class="ne-link" id="ne-history-btn"
         onclick="window.dispatchEvent(new CustomEvent('open-modal')); htmx.ajax('GET', '/notes/{{$n.ID}}/history', {target:'#modal-content', swap:'innerHTML'})">
         历史版本
       </button>
@@ -142,18 +142,15 @@
     <footer class="ne-panel-footer">
       <button type="button" id="ne-tab-files" class="ne-panel-tab">文件</button>
       <button type="button" id="ne-tab-outline" class="ne-panel-tab">大纲</button>
-      <span class="ne-panel-spacer"></span>
-      {{/* ＋菜单：悬停/点击弹「新建文档 / 新建文档组」；选文档组就地变
-           输入框，回车创建（POST /notes/groups 返回面板片段原地刷新） */}}
-      <span class="ne-new-wrap">
-        <button type="button" id="ne-new-toggle" class="ne-panel-tab" title="新建文档 / 文档组">＋</button>
-        <div id="ne-new-menu" hidden>
-          <a class="ne-new-item" id="ne-new-doc" href="/notes/new">新建文档</a>
-          <button type="button" class="ne-new-item" id="ne-new-group-btn">新建文档组</button>
-          <input type="text" id="ne-new-group-name" placeholder="组名，回车创建" maxlength="50" autocomplete="off" hidden>
-        </div>
-      </span>
     </footer>
+    {{/* ＋菜单：分区头右端「＋」点击弹出「新建文档 / 新建文档组」（fixed
+         定位贴着按钮）；选文档组就地变输入框，回车创建。挂在 #ne-panel
+         下而非文档列表里——列表 innerHTML 刷新不会把菜单一起冲掉 */}}
+    <div id="ne-new-menu" hidden>
+      <a class="ne-new-item" id="ne-new-doc" href="/notes/new">新建文档</a>
+      <button type="button" class="ne-new-item" id="ne-new-group-btn">新建文档组</button>
+      <input type="text" id="ne-new-group-name" placeholder="组名，回车创建" maxlength="50" autocomplete="off" hidden>
+    </div>
   </aside>
 
   <script>
@@ -346,7 +343,7 @@
 
     docsEl.addEventListener('click', function (e) {
       /* 文档行「－」删除（仅 owner 行有此按钮，服务端另有属主校验）；
-         删除的是当前打开的文档时回文库页 */
+         删除的是当前打开的文档时不跳页——编辑区收敛为空白冻结态 */
       var docDel = e.target.closest('.ne-doc-del');
       if (docDel) {
         var link = docDel.parentElement.querySelector('a');
@@ -356,7 +353,11 @@
             fetch('/notes/' + id, { method: 'DELETE', credentials: 'same-origin' })
               .then(function (r) {
                 if (!r.ok) throw new Error('删除失败');
-                location.href = '/notes';
+                return r.text();
+              })
+              .then(function (html) {
+                swapPanel(html);
+                enterDeletedState();
               })
               .catch(panelErr);
           } else {
@@ -379,7 +380,10 @@
         return;
       }
       var head = e.target.closest('.ne-panel-head');
-      if (head) toggleFold(head.parentElement, head.parentElement.dataset.group);
+      if (head) {
+        var sec = head.closest('.ne-panel-group');
+        toggleFold(sec, sec.dataset.group);
+      }
     });
 
     /* 当前文档高亮（直出与刷新后各标一次），顺带重放分区/组折叠状态；
@@ -410,14 +414,34 @@
     }
     markActive();
 
+    /* 删除的是当前打开的文档：不跳页，整个编辑区收敛为空白冻结态。
+       编辑器引擎侧（停自动保存含卸载兜底、清空并锁定内容）由 main.js
+       监听同名事件处理；这里收敛页面级 DOM。URL 归一到 /notes/new——
+       原地址刷新只会 404，归一后刷新直接得到全新空白文档 */
+    function enterDeletedState() {
+      window.dispatchEvent(new CustomEvent('notes-doc-deleted'));
+      var title = document.getElementById('note-title');
+      title.value = '';
+      title.readOnly = true;
+      title.placeholder = '文档已删除 — 从侧栏选择或新建文档';
+      ['ne-mode-toggle', 'ne-history-btn', 'ne-perm-toggle'].forEach(function (bid) {
+        var b = document.getElementById(bid);
+        if (b) b.hidden = true;
+      });
+      var cs = document.getElementById('ne-collab-status');
+      if (cs) cs.textContent = '';
+      document.title = '文档已删除 — 笔记';
+      history.replaceState(null, '', '/notes/new');
+    }
+
     /* 拖拽归组（仿 VSCode）：自己的文档（data-own）可拖——拖到自己的组
-       任意位置入组、拖到分区标题移出组；服务端另有笔记/组双重属主校验 */
+       任意位置入组、拖到分区标题行移出组；服务端另有笔记/组双重属主校验 */
     var dragId = null;
     function dropTargetOf(el) {
       if (!el.closest) return null;
       var d = el.closest('.ne-dir');
       if (d && d.dataset.own) return { el: d.querySelector('.ne-dir-head'), group: d.dataset.dir };
-      var head = el.closest('.ne-panel-head');
+      var head = el.closest('.ne-sec-head');
       if (head) return { el: head, group: '' };
       return null;
     }
@@ -451,35 +475,32 @@
     });
     docsEl.addEventListener('dragend', function () { dragId = null; clearDrop(); });
 
-    /* 底栏「＋」菜单：悬停 120ms/点击弹出「新建文档 / 新建文档组」，指针
-       离开 300ms 收起（输入框敲了字不收——同权限面板的交互语言）；
-       选「新建文档组」两项就地换成输入框，回车创建、Escape 收起 */
-    var newWrap = document.querySelector('.ne-new-wrap');
+    /* 「＋」菜单：每个分区头右端的「＋」（悬停浮现，点击弹出）——
+       「新建文档 / 新建文档组」。菜单挂在 #ne-panel 下 fixed 定位贴着
+       被点的按钮（列表 innerHTML 刷新不会冲掉它）；从私人/共享分区新建
+       的文档带 ?vis= 直接落在对应分区。选「新建文档组」两项就地换成
+       输入框，回车创建、Escape 收起；点外部/列表滚动也收起 */
     var newMenu = document.getElementById('ne-new-menu');
     var newDocA = document.getElementById('ne-new-doc');
     var ngBtn = document.getElementById('ne-new-group-btn');
     var ngInput = document.getElementById('ne-new-group-name');
-    var nmOpenT = null, nmCloseT = null;
     function newMenuShow(v) {
       newMenu.hidden = !v;
       if (!v) { ngInput.hidden = true; ngInput.value = ''; newDocA.hidden = false; ngBtn.hidden = false; }
     }
-    newWrap.addEventListener('mouseenter', function () {
-      clearTimeout(nmCloseT); nmCloseT = null;
-      if (!newMenu.hidden || nmOpenT) return;
-      nmOpenT = setTimeout(function () { nmOpenT = null; newMenuShow(true); }, 120);
-    });
-    newWrap.addEventListener('mouseleave', function () {
-      clearTimeout(nmOpenT); nmOpenT = null;
-      if (newMenu.hidden || nmCloseT) return;
-      nmCloseT = setTimeout(function () {
-        nmCloseT = null;
-        if (document.activeElement === ngInput && ngInput.value) return;
-        newMenuShow(false);
-      }, 300);
-    });
-    document.getElementById('ne-new-toggle').addEventListener('click', function () {
-      newMenuShow(newMenu.hidden);
+    function openNewMenu(btn) {
+      var sec = btn.closest('.ne-panel-group').dataset.group;
+      newDocA.href = '/notes/new' + (sec === 'private' ? '?vis=private' : sec === 'shared' ? '?vis=restricted' : '');
+      newMenuShow(true);
+      /* 贴着按钮右对齐展开；靠近视口底部时向上翻 */
+      var r = btn.getBoundingClientRect();
+      var mw = newMenu.offsetWidth, mh = newMenu.offsetHeight;
+      newMenu.style.left = Math.max(4, Math.min(r.right - mw, innerWidth - mw - 4)) + 'px';
+      newMenu.style.top = (r.bottom + mh + 8 > innerHeight ? r.top - mh - 4 : r.bottom + 4) + 'px';
+    }
+    docsEl.addEventListener('click', function (e) {
+      var btn = e.target.closest('.ne-panel-new');
+      if (btn) openNewMenu(btn);
     });
     ngBtn.addEventListener('click', function () {
       newDocA.hidden = true;
@@ -497,8 +518,16 @@
         .catch(panelErr);
     });
     document.addEventListener('click', function (e) {
-      if (!newMenu.hidden && !newWrap.contains(e.target)) newMenuShow(false);
+      if (!newMenu.hidden && !newMenu.contains(e.target) && !e.target.closest('.ne-panel-new')) {
+        newMenuShow(false);
+      }
     });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !newMenu.hidden) newMenuShow(false);
+    });
+    docsEl.parentElement.addEventListener('scroll', function () {
+      if (!newMenu.hidden) newMenuShow(false); /* fixed 定位不随滚动，直接收起 */
+    }, { passive: true });
 
     /* 文档列表已随页直出；打开侧栏时后台刷新，30 秒内不重复请求。
        fetch 带 10 秒超时——跨境慢链路上请求可能排在大资产后面长时间挂起 */

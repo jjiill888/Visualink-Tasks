@@ -340,7 +340,13 @@ func NewNote(database *db.DB) http.HandlerFunc {
 				groupID = gid
 			}
 		}
-		id, err := database.CreateNote(u.ID, "无标题笔记", groupID)
+		// ?vis=private/restricted：分区头「＋」新建的文档直接落在对应分区；
+		// 非法/缺省一律公开（既有默认）
+		vis := r.URL.Query().Get("vis")
+		if vis != model.NoteVisPrivate && vis != model.NoteVisRestricted {
+			vis = model.NoteVisPublic
+		}
+		id, err := database.CreateNote(u.ID, "无标题笔记", groupID, vis)
 		if err != nil {
 			http.Error(w, "创建失败", http.StatusInternalServerError)
 			return

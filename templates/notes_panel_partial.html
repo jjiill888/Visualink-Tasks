@@ -9,7 +9,10 @@
 {{range .Sections}}
 {{if or (ne .Key "shared") .Groups .Loose}}
 <div class="ne-panel-group" data-group="{{.Key}}">
-  <button type="button" class="ne-panel-head">{{.Title}}</button>
+  <div class="ne-sec-head">
+    <button type="button" class="ne-panel-head">{{.Title}}</button>
+    <button type="button" class="ne-panel-new" title="新建文档 / 文档组">＋</button>
+  </div>
   <div class="ne-panel-children">
     {{range .Groups}}
     <div class="ne-dir" data-dir="{{.ID}}" data-name="{{.Name}}"{{if .Own}} data-own="1"{{end}}>

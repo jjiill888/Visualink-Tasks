@@ -209,11 +209,13 @@ func (d *DB) GetNote(id, userID int64) (*model.Note, error) {
 	return n, err
 }
 
-// CreateNote 建空笔记；groupID > 0 时直接落进该文档组（组归属校验在 handler）。
-func (d *DB) CreateNote(ownerID int64, title string, groupID int64) (int64, error) {
+// CreateNote 建空笔记；groupID > 0 时直接落进该文档组（组归属校验在
+// handler），visibility 由 handler 校验合法档位（分区头「＋」新建的文档
+// 直接落在对应可见性分区）。
+func (d *DB) CreateNote(ownerID int64, title string, groupID int64, visibility string) (int64, error) {
 	res, err := d.Exec(
-		`INSERT INTO notes (title, owner_id, updated_by, group_id) VALUES (?,?,?,NULLIF(?,0))`,
-		title, ownerID, ownerID, groupID,
+		`INSERT INTO notes (title, owner_id, updated_by, group_id, visibility) VALUES (?,?,?,NULLIF(?,0),?)`,
+		title, ownerID, ownerID, groupID, visibility,
 	)
 	if err != nil {
 		return 0, err

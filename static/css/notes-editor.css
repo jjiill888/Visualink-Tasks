@@ -1039,16 +1039,27 @@ body.ne-library .ne-page {
   padding: 4px 0 12px;
 }
 
-/* 分组头（公共/共享/私人）：VSCode 资源管理器式可折叠节点。
-   整行可点，左端箭头展开时朝下、折叠时转回朝右（.ne-fold 由编辑页 JS
-   维护并存 localStorage）。箭头用 CSS mask 画，取 currentColor 着色 */
-.ne-panel-head {
+/* 分区头行（公共/共享/私人）：VSCode 资源管理器式可折叠节点——
+   标题按钮可点折叠，右端「＋」悬停浮现（新建文档/文档组菜单）。
+   整行也是拖拽「移出组」的落点 */
+.ne-sec-head {
   display: flex;
   align-items: center;
-  width: 100%;
+  margin-top: 6px;
+  padding-right: 6px;
+}
+
+.ne-sec-head:hover {
+  background: var(--ne-bg-hover, rgba(150, 150, 150, 0.1));
+}
+
+.ne-panel-head {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
   gap: 2px;
   padding: 3px 8px 3px 5px;
-  margin-top: 6px;
   font: inherit;
   font-size: 12px;
   font-weight: 600;
@@ -1057,11 +1068,38 @@ body.ne-library .ne-page {
   border: none;
   cursor: pointer;
   user-select: none;
+  text-align: left;
 }
 
 .ne-panel-head:hover {
   color: var(--ne-fg);
-  background: var(--ne-bg-hover, rgba(150, 150, 150, 0.1));
+}
+
+/* 分区头右端「＋」：悬停浮现（触屏常显），点击弹新建菜单 */
+.ne-panel-new {
+  flex: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ne-muted);
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.ne-sec-head:hover .ne-panel-new {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .ne-panel-new {
+    opacity: 1;
+  }
+}
+
+.ne-panel-new:hover {
+  color: var(--ne-fg);
 }
 
 .ne-panel-head::before {
@@ -1371,16 +1409,10 @@ body.ne-library .ne-page {
   flex: 1;
 }
 
-/* 底栏「＋」弹出菜单：新建文档 / 新建文档组（选组就地变输入框） */
-.ne-new-wrap {
-  position: relative;
-  display: inline-flex;
-}
-
+/* 「＋」弹出菜单：新建文档 / 新建文档组（选组就地变输入框）。
+   fixed 定位由 JS 贴着被点的分区头「＋」摆放 */
 #ne-new-menu {
-  position: absolute;
-  right: 0;
-  bottom: 30px;
+  position: fixed;
   min-width: 138px;
   display: flex;
   flex-direction: column;
