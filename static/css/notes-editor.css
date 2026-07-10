@@ -92,18 +92,24 @@ body.note-standalone {
   color: var(--ne-accent);
 }
 
-/* 主题切换：极简图标按钮（三枚内联 SVG 常驻 DOM，按 data-theme 只显一枚，
-   切换不重建节点；stroke 取 currentColor，跟随 ne-link 的悬停变色） */
+/* 图标按钮（侧栏开关/主题切换）：内联 SVG，stroke 取 currentColor，
+   跟随 ne-link 的悬停变色与 ne-on 常亮蓝 */
+#ne-panel-toggle,
 #ne-theme-toggle {
   display: inline-flex;
   align-items: center;
   height: 20px;
 }
 
+#ne-panel-toggle svg,
 #ne-theme-toggle svg {
-  display: none;
   width: 17px;
   height: 17px;
+}
+
+/* 主题按钮三枚图标常驻 DOM，按 data-theme 只显一枚，切换不重建节点 */
+#ne-theme-toggle svg {
+  display: none;
 }
 
 #ne-theme-toggle[data-theme="auto"] .ne-ico-auto,

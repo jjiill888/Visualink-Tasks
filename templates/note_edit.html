@@ -57,7 +57,10 @@
 
   <!-- 顶栏：默认近乎隐形，悬停显现。左上角只有「侧栏」开关（文件/大纲都在侧栏里） -->
   <header class="ne-topbar">
-    <button type="button" class="ne-link" id="ne-panel-toggle" title="文件与大纲（鼠标移到窗口左缘也会弹出）">侧栏</button>
+    {{/* 侧栏开关图标（VSCode 式左栏布局图）：常驻打开时走 ne-on 蓝 */}}
+    <button type="button" class="ne-link" id="ne-panel-toggle" title="侧栏：文件与大纲（鼠标移到窗口左缘也会弹出）">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M9.5 4.5v15"/></svg>
+    </button>
     <div class="ne-right">
       {{/* 协作状态：编辑器岛维护——「N 人在线」/降级提示；非协作模式保持空 */}}
       <span id="ne-collab-status" class="ne-collab-status"></span>
@@ -69,6 +72,14 @@
         :title="s === 'conflict' ? '笔记已被他人修改，点击刷新页面后再编辑' : (s === 'error' ? '保存失败，将自动重试' : '')"
         @click="if (s === 'conflict') location.reload()"
         x-text="({ saving: '保存中…', saved: '已保存', error: '保存失败', conflict: '保存失败' })[s] || ''"></span>
+      {{/* 主题切换图标按钮：半圆=自动、太阳=浅色、月亮=深色，
+           三枚内联 SVG 共约 0.6KB，CSS 按 data-theme 只显一枚。
+           排在文字按钮组最左——图标与文字混排时图标靠边视觉更稳 */}}
+      <button type="button" class="ne-link" id="ne-theme-toggle" data-theme="auto" title="切换配色：自动 → 浅色 → 深色">
+        <svg class="ne-ico-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none"/></svg>
+        <svg class="ne-ico-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.5 1.5M17.2 17.2l1.5 1.5M5.3 18.7l1.5-1.5M17.2 6.8l1.5-1.5"/></svg>
+        <svg class="ne-ico-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.6A8.2 8.2 0 1 1 10.4 3.4a6.6 6.6 0 0 0 10.2 10.2z"/></svg>
+      </button>
       {{if .Data.ReadOnly}}
       {{/* 受限笔记的 reader：常显只读标记（不随顶栏隐形） */}}
       <span class="ne-readonly-tag" title="你对这篇笔记只有阅读权限">只读</span>
@@ -79,13 +90,6 @@
       <button type="button" class="ne-link"
         onclick="window.dispatchEvent(new CustomEvent('open-modal')); htmx.ajax('GET', '/notes/{{$n.ID}}/history', {target:'#modal-content', swap:'innerHTML'})">
         历史版本
-      </button>
-      {{/* 主题切换图标按钮：半圆=自动、太阳=浅色、月亮=深色，
-           三枚内联 SVG 共约 0.6KB，CSS 按 data-theme 只显一枚 */}}
-      <button type="button" class="ne-link" id="ne-theme-toggle" data-theme="auto" title="切换配色：自动 → 浅色 → 深色">
-        <svg class="ne-ico-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none"/></svg>
-        <svg class="ne-ico-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.5 1.5M17.2 17.2l1.5 1.5M5.3 18.7l1.5-1.5M17.2 6.8l1.5-1.5"/></svg>
-        <svg class="ne-ico-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.6A8.2 8.2 0 1 1 10.4 3.4a6.6 6.6 0 0 0 10.2 10.2z"/></svg>
       </button>
       {{/* 权限开关（仅创建者）：单击按「公开 → 私有 → 受限」循环切换，
            与旁边的主题按钮同一交互语言；标签用各档状态色。
@@ -205,11 +209,14 @@
     function setOpen(v) {
       panel.classList.toggle('ne-open', v);
       panel.classList.toggle('ne-pinned', v && pinned);
+      /* 图标按钮无文字反馈：常驻打开时图标走 ne-on 常亮蓝 */
+      toggleBtn.classList.toggle('ne-on', v && pinned);
       if (v) refreshDocs();
     }
 
     /* 顶栏「侧栏」按钮：点开即常驻，再点关闭（悬停临时探出时点击则转为常驻） */
-    document.getElementById('ne-panel-toggle').addEventListener('click', function () {
+    var toggleBtn = document.getElementById('ne-panel-toggle');
+    toggleBtn.addEventListener('click', function () {
       pinned = !(pinned && isOpen());
       localStorage.setItem('ne-panel-pinned', pinned ? '1' : '0');
       setOpen(pinned);
