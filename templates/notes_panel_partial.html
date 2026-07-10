@@ -12,6 +12,17 @@
   </ul>
   {{else}}<div class="ne-panel-empty">暂无</div>{{end}}
 </div>
+{{if .Shared}}
+<div class="ne-panel-group">
+  <div class="ne-panel-head">共享协作</div>
+  <ul class="ne-panel-list">
+    {{range .Shared}}
+    <li><a href="/notes/{{.ID}}" data-note-id="{{.ID}}"
+      title="{{if .UpdaterName}}{{.UpdaterName}}{{else}}{{.OwnerName}}{{end}} 更新于 {{.UpdatedAtLabel}}">{{if .Title}}{{.Title}}{{else}}无标题笔记{{end}}</a></li>
+    {{end}}
+  </ul>
+</div>
+{{end}}
 <div class="ne-panel-group">
   <div class="ne-panel-head">私人文档</div>
   {{if .Private}}

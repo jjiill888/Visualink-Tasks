@@ -43,26 +43,48 @@ var noteImageExts = map[string]bool{
 // noteStoredNameRe 附件落盘文件名格式：16 位 hex 随机名 + 扩展名（由服务端生成）。
 var noteStoredNameRe = regexp.MustCompile(`^[a-f0-9]{16}\.[a-z0-9]{1,8}$`)
 
-// canAccessNote 权限规则：非私有笔记所有登录用户可查看/编辑；私有笔记仅 owner。
-func canAccessNote(n *model.Note, u *model.User) bool {
-	return !n.IsPrivate || n.OwnerID == u.ID
-}
-
-// loadNote 解析路径中的 {id}、加载笔记并做可见性检查。失败时已写好响应，返回 nil。
+// loadNote 解析路径中的 {id}、加载笔记并做可读性检查（MyAccess 由 SQL 按
+// 当前用户算好）。失败时已写好响应，返回 nil。
 func loadNote(w http.ResponseWriter, r *http.Request, database *db.DB) *model.Note {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
 		http.Error(w, "无效的笔记 ID", http.StatusBadRequest)
 		return nil
 	}
-	n, err := database.GetNote(id)
+	n, err := database.GetNote(id, UserFromContext(r).ID)
 	if err != nil {
 		http.Error(w, "服务器错误", http.StatusInternalServerError)
 		return nil
 	}
-	if n == nil || !canAccessNote(n, UserFromContext(r)) {
-		// 私有笔记对非 owner 表现为不存在，避免泄露存在性
+	if n == nil || !n.CanRead() {
+		// 无权限的笔记对外表现为不存在，避免泄露存在性
 		http.Error(w, "笔记不存在", http.StatusNotFound)
+		return nil
+	}
+	return n
+}
+
+// loadNoteForEdit loadNote + 编辑权检查（受限笔记的 reader 只读）。
+func loadNoteForEdit(w http.ResponseWriter, r *http.Request, database *db.DB) *model.Note {
+	n := loadNote(w, r, database)
+	if n == nil {
+		return nil
+	}
+	if !n.CanEdit() {
+		http.Error(w, "你对这篇笔记只有阅读权限", http.StatusForbidden)
+		return nil
+	}
+	return n
+}
+
+// loadNoteOwner loadNote + 仅创建者（权限管理端点用）。
+func loadNoteOwner(w http.ResponseWriter, r *http.Request, database *db.DB) *model.Note {
+	n := loadNote(w, r, database)
+	if n == nil {
+		return nil
+	}
+	if n.MyAccess != "owner" {
+		http.Error(w, "仅创建者可管理权限", http.StatusForbidden)
 		return nil
 	}
 	return n
@@ -102,23 +124,26 @@ func NotesPage(database *db.DB) http.HandlerFunc {
 	}
 }
 
-// notesPanelData 编辑页侧栏「文件」视图的数据。
-// 公共文档 = 所有人的非私有笔记；私人文档 = 自己的私有笔记（ListNotes 的
-// 可见性规则本就如此，这里只按 IsPrivate 分组）。
+// notesPanelData 编辑页侧栏「文件」视图的数据，按可见性分三组：
+// 公共文档 = 所有人的公开笔记；共享协作 = 自己可见的受限笔记（自己建的
+// + 别人加自己进名单的）；私人文档 = 自己的私有笔记。
 func notesPanelData(database *db.DB, userID int64) (map[string]any, error) {
 	notes, err := database.ListNotes(userID, "")
 	if err != nil {
 		return nil, err
 	}
-	var public, private []*model.Note
+	var public, shared, private []*model.Note
 	for _, n := range notes {
-		if n.IsPrivate {
+		switch n.Visibility {
+		case model.NoteVisPrivate:
 			private = append(private, n)
-		} else {
+		case model.NoteVisRestricted:
+			shared = append(shared, n)
+		default:
 			public = append(public, n)
 		}
 	}
-	return map[string]any{"Public": public, "Private": private}, nil
+	return map[string]any{"Public": public, "Shared": shared, "Private": private}, nil
 }
 
 // NotesPanel GET /notes/panel — 侧栏文档列表片段。
@@ -146,14 +171,21 @@ func renderNoteEdit(w http.ResponseWriter, r *http.Request, database *db.DB, n *
 	if err != nil {
 		panel = nil
 	}
-	pd := pageData(r, "notes")
-	pd.Data = map[string]any{
-		"Note":   n,
-		"Panel":  panel,
-		"Collab": CollabEnabled(),
+	// 只读用户（受限笔记的 reader）不进协作也不签房间 token
+	canEdit := n.CanEdit()
+	collabToken := ""
+	if canEdit {
 		// 预签房间 token 随页直出（省一次前端 round-trip）；失败为空串，
 		// 前端回退到 /notes/{id}/collab-token
-		"CollabToken": InlineCollabToken(r, n.ID),
+		collabToken = InlineCollabToken(r, n.ID)
+	}
+	pd := pageData(r, "notes")
+	pd.Data = map[string]any{
+		"Note":        n,
+		"Panel":       panel,
+		"Collab":      canEdit && CollabEnabled(),
+		"ReadOnly":    !canEdit,
+		"CollabToken": collabToken,
 	}
 	renderStandalone(w, "note_edit.html", pd)
 }
@@ -170,7 +202,7 @@ func NewNote(database *db.DB) http.HandlerFunc {
 			http.Error(w, "创建失败", http.StatusInternalServerError)
 			return
 		}
-		n, err := database.GetNote(id)
+		n, err := database.GetNote(id, u.ID)
 		if err != nil || n == nil {
 			// 建成了但读不回来（几乎不可能），退回跳转兜底
 			http.Redirect(w, r, fmt.Sprintf("/notes/%d", id), http.StatusFound)
@@ -196,14 +228,13 @@ type saveNoteReq struct {
 	Title         string `json:"title"`
 	ContentMD     string `json:"content_md"`
 	BaseUpdatedAt string `json:"base_updated_at"`
-	IsPrivate     *bool  `json:"is_private"` // 仅 owner 的请求生效
 }
 
-// SaveNote PUT /notes/{id} — 编辑器自动保存。请求/响应均为 JSON。
+// SaveNote PUT /notes/{id} — 编辑器自动保存（需编辑权）。请求/响应均为 JSON。
 // base_updated_at 与库中不一致时返回 409（乐观锁）。
 func SaveNote(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n := loadNote(w, r, database)
+		n := loadNoteForEdit(w, r, database)
 		if n == nil {
 			return
 		}
@@ -220,11 +251,7 @@ func SaveNote(database *db.DB) http.HandlerFunc {
 			title = "无标题笔记"
 		}
 
-		isPrivate := req.IsPrivate
-		if n.OwnerID != u.ID {
-			isPrivate = nil // 私有开关只有 owner 能改
-		}
-		newUpdatedAt, err := database.SaveNote(n.ID, u.ID, title, req.ContentMD, req.BaseUpdatedAt, isPrivate)
+		newUpdatedAt, err := database.SaveNote(n.ID, u.ID, title, req.ContentMD, req.BaseUpdatedAt)
 		if errors.Is(err, db.ErrNoteConflict) {
 			w.Header().Set("Content-Type", "application/json; charset=utf-8")
 			w.WriteHeader(http.StatusConflict)
@@ -273,7 +300,7 @@ func NoteHistory(database *db.DB) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		data := map[string]any{"Note": n, "Revisions": revs}
+		data := map[string]any{"Note": n, "Revisions": revs, "CanEdit": n.CanEdit()}
 		if err := PartialTmpl.ExecuteTemplate(w, "note_history.html", data); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
@@ -307,10 +334,10 @@ func NoteRevisionPage(database *db.DB) http.HandlerFunc {
 	}
 }
 
-// RestoreNoteRevision POST /notes/{id}/restore/{rid} — 恢复到某历史版本。
+// RestoreNoteRevision POST /notes/{id}/restore/{rid} — 恢复到某历史版本（需编辑权）。
 func RestoreNoteRevision(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n := loadNote(w, r, database)
+		n := loadNoteForEdit(w, r, database)
 		if n == nil {
 			return
 		}
@@ -335,11 +362,11 @@ func RestoreNoteRevision(database *db.DB) http.HandlerFunc {
 	}
 }
 
-// UploadNoteAttachment POST /notes/{id}/attachments — 图片/文件上传。
+// UploadNoteAttachment POST /notes/{id}/attachments — 图片/文件上传（需编辑权）。
 // 校验大小（≤20MB）与扩展名白名单，返回 JSON {url, filename, is_image}。
 func UploadNoteAttachment(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n := loadNote(w, r, database)
+		n := loadNoteForEdit(w, r, database)
 		if n == nil {
 			return
 		}

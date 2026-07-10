@@ -1371,3 +1371,180 @@ html.ne-dark::-webkit-scrollbar-thumb:hover,
   border-bottom: 1px solid #e5e7eb;
   margin-bottom: 4px;
 }
+
+/* ── 6. 权限弹层（顶栏「权限」按钮，仅创建者）与只读标记 ──────────────
+   颜色全走 --ne-* 变量，深浅色自动跟随编辑页主题 */
+
+.ne-readonly-tag {
+  font-size: 12px;
+  color: var(--ne-warn);
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 1px 6px;
+  opacity: 0.9;
+}
+
+.ne-perm-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+#ne-perm-pop {
+  position: absolute;
+  top: 28px;
+  right: 0;
+  width: 300px;
+  background: var(--ne-bg);
+  border: 1px solid var(--ne-line-strong);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: 10px;
+  z-index: 60;
+  font-size: 13px;
+  color: var(--ne-fg);
+}
+
+/* 可见性三档：整行可点的 radio 选项 */
+.ne-perm-vis {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ne-perm-visopt {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.ne-perm-visopt:hover {
+  background: var(--ne-bg-hover);
+}
+
+.ne-perm-visopt-on {
+  background: var(--ne-accent-muted);
+}
+
+.ne-perm-visopt input {
+  accent-color: var(--ne-accent);
+  margin: 0;
+  align-self: center;
+}
+
+.ne-perm-visname {
+  font-weight: 600;
+  color: var(--ne-heading);
+  white-space: nowrap;
+}
+
+.ne-perm-visdesc {
+  color: var(--ne-muted);
+  font-size: 12px;
+}
+
+.ne-perm-sep {
+  height: 1px;
+  background: var(--ne-line);
+  margin: 10px 0;
+}
+
+.ne-perm-search {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ne-fg);
+  background: var(--ne-bg-surface);
+  border: 1px solid var(--ne-line-strong);
+  border-radius: 6px;
+  padding: 5px 8px;
+  outline: none;
+}
+
+.ne-perm-search:focus {
+  border-color: var(--ne-accent);
+}
+
+/* 搜索候选区与名单共用行布局 */
+.ne-perm-cands {
+  margin-top: 6px;
+  border: 1px solid var(--ne-line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.ne-perm-list {
+  margin-top: 8px;
+}
+
+.ne-perm-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 6px;
+}
+
+.ne-perm-list .ne-perm-row:hover,
+.ne-perm-cands .ne-perm-row:hover {
+  background: var(--ne-bg-hover);
+}
+
+.ne-perm-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ne-perm-role {
+  font: inherit;
+  font-size: 12px;
+  color: var(--ne-muted);
+  background: transparent;
+  border: 1px solid var(--ne-line-strong);
+  border-radius: 5px;
+  padding: 1px 4px;
+  cursor: pointer;
+}
+
+.ne-perm-add,
+.ne-perm-del {
+  font: inherit;
+  font-size: 12px;
+  color: var(--ne-accent);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ne-perm-del {
+  color: var(--ne-muted);
+}
+
+.ne-perm-del:hover {
+  color: var(--ne-err);
+}
+
+.ne-perm-add:hover {
+  color: var(--ne-accent-hover);
+}
+
+.ne-perm-empty,
+.ne-perm-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--ne-faint);
+  line-height: 1.5;
+}
+
+/* 深色下弹层投影加重一点，浮层边界才看得清 */
+.ne-dark body.note-standalone #ne-perm-pop {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}

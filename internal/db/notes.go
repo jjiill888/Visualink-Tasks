@@ -33,12 +33,23 @@ func (d *DB) migrateNotes() error {
 		owner_id   INTEGER NOT NULL REFERENCES users(id),
 		updated_by INTEGER NOT NULL DEFAULT 0,
 		is_private INTEGER NOT NULL DEFAULT 0,
+		visibility TEXT NOT NULL DEFAULT 'public',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f','now')),
 		deleted_at DATETIME
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated_at DESC);
+
+	CREATE TABLE IF NOT EXISTS note_shares (
+		note_id    INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+		user_id    INTEGER NOT NULL REFERENCES users(id),
+		role       TEXT NOT NULL CHECK (role IN ('editor','reader')),
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (note_id, user_id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_note_shares_user ON note_shares(user_id);
 
 	CREATE TABLE IF NOT EXISTS note_revisions (
 		id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -62,6 +73,14 @@ func (d *DB) migrateNotes() error {
 	CREATE INDEX IF NOT EXISTS idx_note_attachments_note ON note_attachments(note_id);
 	`)
 	if err != nil {
+		return err
+	}
+
+	// 老库补列（列已存在时报错，按项目惯例忽略），并把旧的 is_private 开关
+	// 一次性并入 visibility：迁移后 is_private 归零，重启不会把 owner 后来
+	// 改回公开的笔记再翻回私有。
+	_, _ = d.Exec(`ALTER TABLE notes ADD COLUMN visibility TEXT NOT NULL DEFAULT 'public'`)
+	if _, err := d.Exec(`UPDATE notes SET visibility='private', is_private=0 WHERE is_private=1`); err != nil {
 		return err
 	}
 
@@ -90,20 +109,31 @@ func (d *DB) migrateNotes() error {
 	return err
 }
 
+// noteCols 依赖两个约定：?1 恒为查询者 userID；FROM 里挂上
+// noteShareJoin（按查询者 LEFT JOIN note_shares）。MyAccess 在 SQL 里算好：
+// owner 全权；私有仅 owner；公开人人可写；受限按名单 role 给读/写。
 const noteCols = `
-	n.id, n.title, n.content_md, n.owner_id, n.is_private, n.created_at, n.updated_at,
+	n.id, n.title, n.content_md, n.owner_id, n.visibility, n.created_at, n.updated_at,
 	COALESCE(NULLIF(o.display_name,''), o.username),
-	COALESCE((SELECT COALESCE(NULLIF(u2.display_name,''), u2.username) FROM users u2 WHERE u2.id = n.updated_by), '')
+	COALESCE((SELECT COALESCE(NULLIF(u2.display_name,''), u2.username) FROM users u2 WHERE u2.id = n.updated_by), ''),
+	CASE
+		WHEN n.owner_id = ?1 THEN 'owner'
+		WHEN n.visibility = 'private' THEN 'none'
+		WHEN n.visibility = 'public' THEN 'edit'
+		WHEN s.role = 'editor' THEN 'edit'
+		WHEN s.role = 'reader' THEN 'read'
+		ELSE 'none'
+	END
 `
+
+const noteShareJoin = ` LEFT JOIN note_shares s ON s.note_id = n.id AND s.user_id = ?1`
 
 func scanNote(row interface{ Scan(...any) error }) (*model.Note, error) {
 	n := &model.Note{}
-	var isPrivate int
 	err := row.Scan(
-		&n.ID, &n.Title, &n.ContentMD, &n.OwnerID, &isPrivate, &n.CreatedAt, &n.UpdatedAt,
-		&n.OwnerName, &n.UpdaterName,
+		&n.ID, &n.Title, &n.ContentMD, &n.OwnerID, &n.Visibility, &n.CreatedAt, &n.UpdatedAt,
+		&n.OwnerName, &n.UpdaterName, &n.MyAccess,
 	)
-	n.IsPrivate = isPrivate == 1
 	return n, err
 }
 
@@ -112,15 +142,16 @@ func ftsQuote(q string) string {
 	return `"` + strings.ReplaceAll(q, `"`, `""`) + `"`
 }
 
-// ListNotes 返回当前用户可见的笔记（非私有 + 自己的私有），按更新时间倒序。
-// search 非空时走 FTS；trigram 要求至少 3 个字符才能命中，
+// ListNotes 返回当前用户可见的笔记（公开 + 自己的 + 名单内的受限），
+// 按更新时间倒序。search 非空时走 FTS；trigram 要求至少 3 个字符才能命中，
 // 少于 3 个字符（常见的双字中文词）退化为 LIKE 子串匹配。
 func (d *DB) ListNotes(userID int64, search string) ([]*model.Note, error) {
 	base := `SELECT ` + noteCols + `
 		FROM notes n
-		JOIN users o ON o.id = n.owner_id
+		JOIN users o ON o.id = n.owner_id` + noteShareJoin + `
 		WHERE n.deleted_at IS NULL
-		  AND (n.is_private = 0 OR n.owner_id = ?)`
+		  AND (n.owner_id = ?1 OR n.visibility = 'public'
+		       OR (n.visibility = 'restricted' AND s.user_id IS NOT NULL))`
 	args := []any{userID}
 
 	search = strings.TrimSpace(search)
@@ -152,13 +183,14 @@ func (d *DB) ListNotes(userID int64, search string) ([]*model.Note, error) {
 	return list, rows.Err()
 }
 
-// GetNote 返回未删除的笔记；不存在或已软删除返回 nil。可见性由 handler 判断。
-func (d *DB) GetNote(id int64) (*model.Note, error) {
+// GetNote 返回未删除的笔记（MyAccess 按 userID 算好）；不存在或已软删除
+// 返回 nil。是否放行由 handler 依据 MyAccess 判断。
+func (d *DB) GetNote(id, userID int64) (*model.Note, error) {
 	q := `SELECT ` + noteCols + `
 		FROM notes n
-		JOIN users o ON o.id = n.owner_id
+		JOIN users o ON o.id = n.owner_id` + noteShareJoin + `
 		WHERE n.id = ? AND n.deleted_at IS NULL`
-	n, err := scanNote(d.QueryRow(q, id))
+	n, err := scanNote(d.QueryRow(q, userID, id))
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -183,8 +215,8 @@ func (d *DB) CreateNote(ownerID int64, title string) (int64, error) {
 //     revision）时，把新正文快照存一条 revision，并裁剪到每篇最多 100 条
 //  3. 更新 notes 行（FTS 由 trigger 自动同步），返回新的 updated_at
 //
-// isPrivate 为 nil 表示不改变私有状态（非 owner 的保存请求由 handler 传 nil）。
-func (d *DB) SaveNote(id, userID int64, title, contentMD, baseUpdatedAt string, isPrivate *bool) (string, error) {
+// 可见性/名单不在保存路径里改，见下方 Permissions 一节的专用方法。
+func (d *DB) SaveNote(id, userID int64, title, contentMD, baseUpdatedAt string) (string, error) {
 	tx, err := d.Begin()
 	if err != nil {
 		return "", err
@@ -230,21 +262,12 @@ func (d *DB) SaveNote(id, userID int64, title, contentMD, baseUpdatedAt string, 
 		}
 	}
 
-	var privArg any // nil → COALESCE 保持原值
-	if isPrivate != nil {
-		if *isPrivate {
-			privArg = 1
-		} else {
-			privArg = 0
-		}
-	}
 	var newUpdatedAt string
 	err = tx.QueryRow(
 		`UPDATE notes SET title=?, content_md=?, updated_by=?,
-		        is_private=COALESCE(?, is_private),
 		        updated_at=strftime('%Y-%m-%d %H:%M:%f','now')
 		 WHERE id=? RETURNING updated_at`,
-		title, contentMD, userID, privArg, id,
+		title, contentMD, userID, id,
 	).Scan(&newUpdatedAt)
 	if err != nil {
 		return "", err
@@ -279,6 +302,107 @@ func (d *DB) SoftDeleteNote(id, ownerID int64) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// ── Permissions（可见性 + 名单） ────────────────────────────────────────────
+
+// ListNoteShares 返回笔记的名单成员（带显示名），按加入先后排序。
+func (d *DB) ListNoteShares(noteID int64) ([]*model.NoteShare, error) {
+	rows, err := d.Query(`
+		SELECT s.note_id, s.user_id, s.role,
+		       u.username, COALESCE(NULLIF(u.display_name,''), u.username)
+		FROM note_shares s
+		JOIN users u ON u.id = s.user_id
+		WHERE s.note_id = ?
+		ORDER BY s.created_at, s.user_id
+	`, noteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []*model.NoteShare
+	for rows.Next() {
+		sh := &model.NoteShare{}
+		if err := rows.Scan(&sh.NoteID, &sh.UserID, &sh.Role, &sh.Username, &sh.DisplayName); err != nil {
+			return nil, err
+		}
+		list = append(list, sh)
+	}
+	return list, rows.Err()
+}
+
+// UpsertNoteShare 添加成员或改角色（role ∈ editor/reader，handler 已校验）。
+// 同一事务里把笔记切到 restricted——「加了第一个人就只剩创建者+名单」的语义；
+// 删人不做反向自动切换，防止删光名单时静默变回所有人可写。
+func (d *DB) UpsertNoteShare(noteID, userID int64, role string) error {
+	tx, err := d.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(
+		`INSERT INTO note_shares (note_id, user_id, role) VALUES (?,?,?)
+		 ON CONFLICT(note_id, user_id) DO UPDATE SET role=excluded.role`,
+		noteID, userID, role,
+	); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(
+		`UPDATE notes SET visibility='restricted' WHERE id=? AND visibility <> 'restricted'`,
+		noteID,
+	); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (d *DB) RemoveNoteShare(noteID, userID int64) error {
+	_, err := d.Exec(`DELETE FROM note_shares WHERE note_id=? AND user_id=?`, noteID, userID)
+	return err
+}
+
+// SetNoteVisibility 直接切换可见性档位（visibility 由 handler 校验）。
+func (d *DB) SetNoteVisibility(noteID int64, visibility string) error {
+	res, err := d.Exec(
+		`UPDATE notes SET visibility=? WHERE id=? AND deleted_at IS NULL`,
+		visibility, noteID,
+	)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("note not found")
+	}
+	return nil
+}
+
+// SearchShareCandidates 权限面板的用户搜索：用户名/显示名子串匹配，
+// 排除创建者与已在名单内的用户，最多 10 条。
+func (d *DB) SearchShareCandidates(noteID, ownerID int64, q string) ([]*model.User, error) {
+	esc := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(q)
+	like := "%" + esc + "%"
+	rows, err := d.Query(`
+		SELECT id, username, COALESCE(NULLIF(display_name,''), username)
+		FROM users
+		WHERE (username LIKE ? ESCAPE '\' OR display_name LIKE ? ESCAPE '\')
+		  AND id <> ?
+		  AND id NOT IN (SELECT user_id FROM note_shares WHERE note_id=?)
+		ORDER BY username
+		LIMIT 10
+	`, like, like, ownerID, noteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []*model.User
+	for rows.Next() {
+		u := &model.User{}
+		if err := rows.Scan(&u.ID, &u.Username, &u.DisplayName); err != nil {
+			return nil, err
+		}
+		list = append(list, u)
+	}
+	return list, rows.Err()
 }
 
 // ── Revisions ──────────────────────────────────────────────────────────────

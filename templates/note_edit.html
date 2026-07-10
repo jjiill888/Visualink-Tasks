@@ -69,17 +69,25 @@
         :title="s === 'conflict' ? '笔记已被他人修改，点击刷新页面后再编辑' : (s === 'error' ? '保存失败，将自动重试' : '')"
         @click="if (s === 'conflict') location.reload()"
         x-text="({ saving: '保存中…', saved: '已保存', error: '保存失败', conflict: '保存失败' })[s] || ''"></span>
+      {{if .Data.ReadOnly}}
+      {{/* 受限笔记的 reader：常显只读标记（不随顶栏隐形） */}}
+      <span class="ne-readonly-tag" title="你对这篇笔记只有阅读权限">只读</span>
+      {{else}}
       <button type="button" class="ne-link" id="ne-mode-toggle"
         title="左侧编辑 Markdown 源码，右侧实时预览；再点回到所见即所得">源码/预览</button>
+      {{end}}
       <button type="button" class="ne-link"
         onclick="window.dispatchEvent(new CustomEvent('open-modal')); htmx.ajax('GET', '/notes/{{$n.ID}}/history', {target:'#modal-content', swap:'innerHTML'})">
         历史版本
       </button>
       <button type="button" class="ne-link" id="ne-theme-toggle" title="切换配色：自动 → 浅色 → 深色">自动</button>
-      {{/* 可见性开关：文字按钮显示当前状态（公开/私有），点击切换，与顶栏其他按钮同语言 */}}
+      {{/* 权限入口（仅创建者）：按钮显示当前档位，点开弹层管理可见性与成员名单 */}}
       {{if eq .CurrentUser.ID $n.OwnerID}}
-      <button type="button" class="ne-link{{if $n.IsPrivate}} ne-on{{end}}" id="ne-private-toggle"
-        data-private="{{if $n.IsPrivate}}1{{else}}0{{end}}"></button>
+      <span class="ne-perm-wrap">
+        <button type="button" class="ne-link{{if ne $n.Visibility "public"}} ne-on{{end}}" id="ne-perm-toggle"
+          title="设置谁可以阅读、谁可以编辑这篇笔记">权限：{{$n.VisibilityLabel}}</button>
+        <div id="ne-perm-pop" hidden></div>
+      </span>
       {{end}}
     </div>
   </header>
@@ -87,7 +95,8 @@
   <!-- 正文：单栏居中，标题就是文档第一行 -->
   <main class="ne-page">
     <input type="text" id="note-title" class="ne-title"
-      value="{{$n.Title}}" placeholder="无标题" maxlength="200" autocomplete="off" spellcheck="false">
+      value="{{$n.Title}}" placeholder="无标题" maxlength="200" autocomplete="off" spellcheck="false"
+      {{if .Data.ReadOnly}}readonly{{end}}>
     {{/* 「源码/预览」分屏模式的左栏：纯 Markdown 源码。默认隐藏，
          由编辑器岛在进入分屏时填入当前源码并显示（body.ne-split 控制布局） */}}
     <textarea id="note-source" hidden autocomplete="off" spellcheck="false"
@@ -100,6 +109,7 @@
       data-updated-at="{{$n.UpdatedAt}}"
       data-save-url="/notes/{{$n.ID}}"
       data-upload-url="/notes/{{$n.ID}}/attachments"
+      {{if .Data.ReadOnly}}data-readonly="1"{{end}}
       {{if .Data.Collab}}data-collab="1"{{end}}
       {{if .Data.CollabToken}}data-collab-token="{{.Data.CollabToken}}"{{end}}
       data-username="{{.CurrentUser.Username}}"><div class="ne-placeholder" id="note-placeholder"></div></div>
@@ -370,5 +380,39 @@
     if (pinned) setOpen(true);
   })();
   </script>
+
+  {{if eq .CurrentUser.ID $n.OwnerID}}
+  <script>
+  /* 权限弹层：点「权限」按钮加载/显隐，点弹层外或 Escape 关闭；
+     弹层内的所有操作（切档/加人/改角色/移除）都返回整个面板 outerHTML
+     原地替换，这里在 afterSwap 时把按钮标签同步成最新档位 */
+  (function () {
+    var btn = document.getElementById('ne-perm-toggle');
+    var pop = document.getElementById('ne-perm-pop');
+    if (!btn || !pop) return;
+    var loaded = false;
+    btn.addEventListener('click', function () {
+      if (!pop.hidden) { pop.hidden = true; return; }
+      pop.hidden = false;
+      if (!loaded && window.htmx) {
+        loaded = true;
+        htmx.ajax('GET', '/notes/{{$n.ID}}/permissions', { target: '#ne-perm-pop', swap: 'innerHTML' });
+      }
+    });
+    document.addEventListener('click', function (e) {
+      if (!pop.hidden && !pop.contains(e.target) && !btn.contains(e.target)) pop.hidden = true;
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !pop.hidden) pop.hidden = true;
+    });
+    document.body.addEventListener('htmx:afterSwap', function () {
+      var panel = document.getElementById('ne-perm-panel');
+      if (!panel || !pop.contains(panel)) return;
+      btn.textContent = '权限：' + (panel.dataset.visLabel || '');
+      btn.classList.toggle('ne-on', panel.dataset.vis !== 'public');
+    });
+  })();
+  </script>
+  {{end}}
 </body>
 </html>

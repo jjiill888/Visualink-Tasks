@@ -5,7 +5,7 @@
 //                       data-save-url / data-upload-url / data-readonly
 //   #note-initial       隐藏 textarea，携带初始 Markdown（天然 HTML 转义）
 //   #note-title         标题输入框（只读页没有）
-//   #note-private       私有开关（仅 owner 可见，可选）
+// 可见性/权限名单由页面自己的「权限」弹层（HTMX）管理，编辑器岛不参与
 // 状态通过 window 事件 `notes-save-status` 通知页面上的 Alpine 组件：
 //   detail.state ∈ idle | saving | saved | error | conflict
 import { Editor, rootCtx, defaultValueCtx, editorViewOptionsCtx, editorViewCtx, remarkStringifyOptionsCtx } from '@milkdown/kit/core';
@@ -150,15 +150,6 @@ async function mountEditor(root) {
   const initialEl = document.getElementById('note-initial');
   const initial = initialEl ? initialEl.value : '';
   const titleEl = document.getElementById('note-title');
-  // 可见性开关：顶栏文字按钮（仅 owner 有），显示当前状态，点击切换并立即保存
-  const privateBtn = document.getElementById('ne-private-toggle');
-  let isPrivate = privateBtn ? privateBtn.dataset.private === '1' : false;
-  function renderPrivate() {
-    privateBtn.textContent = isPrivate ? '私有' : '公开';
-    privateBtn.title = isPrivate ? '仅自己可见，点击改为所有人可见' : '所有人可见，点击改为仅自己可见';
-    privateBtn.classList.toggle('ne-on', isPrivate);
-  }
-  if (privateBtn) renderPrivate();
 
   let currentMarkdown = initial;
   let autosave = null;
@@ -183,14 +174,10 @@ async function mountEditor(root) {
       saveUrl: root.dataset.saveUrl,
       baseUpdatedAt: root.dataset.updatedAt,
       delay: collabMode ? 3000 : 2000, // 协作规格：编辑静默 3 秒后快照回写
-      payload: () => {
-        const payload = {
-          title: titleEl ? titleEl.value : '',
-          content_md: currentMarkdown,
-        };
-        if (privateBtn) payload.is_private = isPrivate;
-        return payload;
-      },
+      payload: () => ({
+        title: titleEl ? titleEl.value : '',
+        content_md: currentMarkdown,
+      }),
     });
   }
 
@@ -325,13 +312,6 @@ async function mountEditor(root) {
       el.addEventListener('compositionend', () => autosave.setComposing(false));
     }
     if (titleEl) titleEl.addEventListener('input', () => autosave.markDirty());
-    if (privateBtn) {
-      privateBtn.addEventListener('click', () => {
-        isPrivate = !isPrivate;
-        renderPrivate();
-        autosave.saveNow();
-      });
-    }
     // 离开页面前把未保存内容冲出去
     window.addEventListener('beforeunload', () => autosave.flushOnUnload());
   }

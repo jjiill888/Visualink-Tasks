@@ -9,7 +9,8 @@
     <a class="ne-lib-title" href="/notes/{{.ID}}" target="_blank" rel="noopener">
       {{- if .Title}}{{.Title}}{{else}}无标题笔记{{end -}}
     </a>
-    {{if .IsPrivate}}<span class="ne-lib-tag" title="仅自己可见">私有</span>{{end}}
+    {{if eq .Visibility "private"}}<span class="ne-lib-tag" title="仅自己可见">私有</span>
+    {{- else if eq .Visibility "restricted"}}<span class="ne-lib-tag" title="仅创建者与名单内成员可见{{if eq .MyAccess "read"}}（你只有阅读权限）{{end}}">受限</span>{{end}}
     <span class="ne-lib-meta">{{if .UpdaterName}}{{.UpdaterName}}{{else}}{{.OwnerName}}{{end}} · {{.UpdatedAtLabel}}</span>
     {{if eq .OwnerID $uid}}
     <button type="button" class="ne-lib-del"

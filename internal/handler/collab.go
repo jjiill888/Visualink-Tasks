@@ -166,7 +166,8 @@ func InlineCollabToken(r *http.Request, noteID int64) string {
 	return string(buf)
 }
 
-// CollabToken GET /notes/{id}/collab-token — 校验笔记权限后签发 y-sweet 房间 token。
+// CollabToken GET /notes/{id}/collab-token — 校验编辑权后签发 y-sweet 房间 token
+// （受限笔记的 reader 拿不到 token，进不了协作房间）。
 // 返回给浏览器的 ClientToken 里，内网 ws 地址已改写为本服务的 /collab 反代路径
 // （按请求的 Host 和协议动态拼，生产走 VPN 直连 IP、开发走 localhost 都不用配置）。
 func CollabToken(database *db.DB) http.HandlerFunc {
@@ -175,7 +176,7 @@ func CollabToken(database *db.DB) http.HandlerFunc {
 			http.Error(w, "协作服务未启用", http.StatusServiceUnavailable)
 			return
 		}
-		n := loadNote(w, r, database)
+		n := loadNoteForEdit(w, r, database)
 		if n == nil {
 			return
 		}

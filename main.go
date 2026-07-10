@@ -150,6 +150,7 @@ func buildPartialTmpl() *template.Template {
 		"templates/notes_list_partial.html",
 		"templates/notes_panel_partial.html",
 		"templates/note_history.html",
+		"templates/note_perms_partial.html",
 	))
 }
 
@@ -338,7 +339,13 @@ func main() {
 		r.Put("/notes/{id}", handler.SaveNote(database))
 		r.Delete("/notes/{id}", handler.DeleteNote(database))
 		r.Get("/notes/{id}/collab-token", handler.CollabToken(database)) // 阶段二：y-sweet 房间 token
-		r.Handle("/collab/*", handler.CollabProxy())                    // y-sweet websocket 反代（仅登录用户可达）
+		// 权限管理（顶栏「权限」弹层，仅创建者）
+		r.Get("/notes/{id}/permissions", handler.NotePermsPanel(database))
+		r.Put("/notes/{id}/visibility", handler.SetNoteVisibility(database))
+		r.Post("/notes/{id}/shares", handler.AddNoteShare(database))
+		r.Delete("/notes/{id}/shares/{uid}", handler.RemoveNoteShare(database))
+		r.Get("/notes/{id}/share-search", handler.NoteShareSearch(database))
+		r.Handle("/collab/*", handler.CollabProxy()) // y-sweet websocket 反代（仅登录用户可达）
 		r.Get("/notes/{id}/history", handler.NoteHistory(database))
 		r.Get("/notes/{id}/revisions/{rid}", handler.NoteRevisionPage(database))
 		r.Post("/notes/{id}/restore/{rid}", handler.RestoreNoteRevision(database))

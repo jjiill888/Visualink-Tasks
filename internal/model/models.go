@@ -454,17 +454,55 @@ func (a *Attachment) FullURL() string  { return fmt.Sprintf("/uploads/%d/full", 
 
 // Note 的 UpdatedAt 是毫秒精度的文本时间戳（strftime %Y-%m-%d %H:%M:%f），
 // 同时充当乐观锁 token：保存时客户端回传打开时的值，不匹配返回 409。
+// 笔记可见性三档：
+//
+//	public     所有登录用户可读写（默认）
+//	restricted 仅创建者 + note_shares 名单内成员（按 role 分读/写）
+//	private    仅创建者
+const (
+	NoteVisPublic     = "public"
+	NoteVisRestricted = "restricted"
+	NoteVisPrivate    = "private"
+)
+
 type Note struct {
-	ID        int64
-	Title     string
-	ContentMD string
-	OwnerID   int64
-	IsPrivate bool
-	CreatedAt time.Time
-	UpdatedAt string // 原始文本，用于乐观锁比较与排序
+	ID         int64
+	Title      string
+	ContentMD  string
+	OwnerID    int64
+	Visibility string // public | restricted | private
+	CreatedAt  time.Time
+	UpdatedAt  string // 原始文本，用于乐观锁比较与排序
 	// Joined
 	OwnerName   string
 	UpdaterName string // 最后更新人显示名
+	MyAccess    string // 按查询者算出的权限档位：owner | edit | read | none
+}
+
+func (n *Note) CanRead() bool {
+	return n.MyAccess == "owner" || n.MyAccess == "edit" || n.MyAccess == "read"
+}
+func (n *Note) CanEdit() bool { return n.MyAccess == "owner" || n.MyAccess == "edit" }
+
+// VisibilityLabel 顶栏权限按钮的中文标签。
+func (n *Note) VisibilityLabel() string {
+	switch n.Visibility {
+	case NoteVisRestricted:
+		return "受限"
+	case NoteVisPrivate:
+		return "私有"
+	}
+	return "公开"
+}
+
+// NoteShare 受限笔记的名单成员（reader 只读 / editor 读写）。
+type NoteShare struct {
+	NoteID int64
+	UserID int64
+	Role   string // editor | reader
+	// Joined
+	Username    string
+	DisplayName string
 }
 
 // UpdatedAtLabel 把毫秒精度时间戳转为界面显示格式（东八区）。

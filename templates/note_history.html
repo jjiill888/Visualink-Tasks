@@ -6,14 +6,17 @@
   {{if .Revisions}}
   <div class="ne-hist-list">
     {{$noteID := .Note.ID}}
+    {{$canEdit := .CanEdit}}
     {{range .Revisions}}
     <div class="ne-hist-row">
       <span class="ne-hist-time">{{.SavedAtLabel}}</span>
       <span class="ne-hist-saver">{{.SaverName}}</span>
       <a class="ne-hist-act" href="/notes/{{$noteID}}/revisions/{{.ID}}" target="_blank" rel="noopener">查看</a>
+      {{if $canEdit}}
       <button type="button" class="ne-hist-act"
         hx-post="/notes/{{$noteID}}/restore/{{.ID}}"
         hx-confirm="恢复到 {{.SavedAtLabel}} 的版本？当前内容会先自动存为一条历史版本。">恢复</button>
+      {{end}}
     </div>
     {{end}}
   </div>
