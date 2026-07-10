@@ -35,8 +35,7 @@ body.note-standalone {
 }
 
 /* 顶栏：40px，默认近乎隐形，指针移入才完全显现。
-   左端加宽到 28px：侧栏图标贴窗口边缘太近（用户反馈应靠右一点），
-   与侧栏内容区拉开呼吸感 */
+   左端收到 12px：侧栏图标与侧栏树的箭头/缩进列对齐（用户定稿：左移） */
 .ne-topbar {
   position: fixed;
   top: 0;
@@ -46,7 +45,7 @@ body.note-standalone {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px 0 28px;
+  padding: 0 20px 0 12px;
   z-index: 50;
   background: var(--ne-bg);
 }
