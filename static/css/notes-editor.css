@@ -34,7 +34,9 @@ body.note-standalone {
     "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
 }
 
-/* 顶栏：40px，默认近乎隐形，指针移入才完全显现 */
+/* 顶栏：40px，默认近乎隐形，指针移入才完全显现。
+   左端加宽到 28px：侧栏图标贴窗口边缘太近（用户反馈应靠右一点），
+   与侧栏内容区拉开呼吸感 */
 .ne-topbar {
   position: fixed;
   top: 0;
@@ -44,7 +46,7 @@ body.note-standalone {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
+  padding: 0 20px 0 28px;
   z-index: 50;
   background: var(--ne-bg);
 }
@@ -106,6 +108,9 @@ body.note-standalone {
   width: 16px;
   height: 16px;
   display: block; /* 消掉 inline 基线兜底的下方空隙 */
+  /* 光学微调：中文字形的墨迹重心略低于几何中心，图标下沉 1px
+     与相邻文字按钮（源码/预览、历史版本）视觉同轴（用户反馈图标偏高） */
+  transform: translateY(1px);
 }
 
 /* 主题按钮三枚图标常驻 DOM，按 data-theme 只显一枚，切换不重建节点 */
