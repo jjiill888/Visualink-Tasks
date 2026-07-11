@@ -22,3 +22,6 @@ Thumbs.db
 
 # 部署密钥（y-sweet 的 YSWEET_PRIVATE_KEY / YSWEET_SERVER_TOKEN）
 .env
+
+# Claude Code 本地会话配置不入库
+.claude/settings.local.json
