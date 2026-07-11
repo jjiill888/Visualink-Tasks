@@ -33,6 +33,11 @@ var bundleVer string
 // 同样在 main() 中先于模板解析赋值，用作缓存穿透版本号。
 var notesEditorVer, notesEditorCSSVer string
 
+// neBaseCSS：全系统共享设计词元（static/css/ne-base.css，:root/html.ne-dark
+// 色板变量），启动时读入、经模板函数内联进各页 <head>——不走网络请求，
+// 跨境高 RTT 下零额外来回；文件是单一事实来源，改动随重启生效。
+var neBaseCSS template.CSS
+
 // notesEditorChunks：esbuild ESM 分割产物（static/ne-collab-*.js）。
 // 模板对全部 chunk 发 modulepreload——否则浏览器解析完主入口才发现静态导入的
 // 共享 chunk，高 RTT 链路（ZeroTier 跨境）平白多一个串行来回；协作懒加载
@@ -46,6 +51,7 @@ var funcMap = template.FuncMap{
 	"bundleVersion":         func() string { return bundleVer },
 	"notesEditorVersion":    func() string { return notesEditorVer },
 	"notesEditorCSSVersion": func() string { return notesEditorCSSVer },
+	"neBaseCSS":             func() template.CSS { return neBaseCSS },
 	"notesEditorChunks":     func() []string { return notesEditorChunks },
 	"firstChar": func(s string) string {
 		for _, r := range s {
@@ -213,6 +219,11 @@ func main() {
 	}
 	cssSum := sha256.Sum256(cssBytes)
 	notesEditorCSSVer = hex.EncodeToString(cssSum[:6])
+	baseCSSBytes, err := os.ReadFile("static/css/ne-base.css")
+	if err != nil {
+		log.Fatal("read static/css/ne-base.css:", err)
+	}
+	neBaseCSS = template.CSS(baseCSSBytes)
 	nRaw, nGz, nBr := notesBundle.Stats()
 	log.Printf("notes editor bundle: raw=%dB gzip=%dB brotli=%dB version=%s",
 		nRaw, nGz, nBr, notesEditorVer)

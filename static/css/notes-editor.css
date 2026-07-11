@@ -8,26 +8,11 @@
 
 /* ── 1. 独立编辑页骨架 ─────────────────────────────────────────── */
 
-/* 浅色色板：正文近黑保证清晰，层级只靠 4 档灰阶 + 1 个低饱和强调蓝。
+/* 色板词元已提升为全系统共享：static/css/ne-base.css（:root / html.ne-dark），
+   由模板函数 neBaseCSS 内联进各页 <head>——本文件只消费变量，不再定义。
    原则（深浅同源）：颜色只给需要注意的信息——正文全灰阶，强调蓝仅用于
    当前选中/链接/光标焦点/协作状态，语义色仅用于 成功/警告/错误 */
 body.note-standalone {
-  --ne-bg: #ffffff;
-  --ne-fg: #1f2329;      /* 正文：近黑，清晰不生硬 */
-  --ne-heading: #15181d; /* 标题：比正文再深半档 */
-  --ne-muted: #71767d;   /* 次级：状态/大纲/引用，可读 */
-  --ne-faint: #a9afb8;   /* 装饰：分组标签/占位符 */
-  --ne-line: #ebedef;         /* 常规分隔线 */
-  --ne-line-strong: #d7dade;  /* 强分隔：表头底边/引用竖线 */
-  --ne-bg-surface: #fafafa;   /* 侧栏等面板 */
-  --ne-bg-hover: #f2f3f5;     /* 悬停 */
-  --ne-bg-active: #e9ecef;    /* 激活/按压 */
-  --ne-accent: #3873b3;       /* 白底上更沉稳的链接蓝 */
-  --ne-accent-hover: #2f65a0;
-  --ne-accent-muted: rgba(56, 115, 179, 0.10); /* 选中项淡底 */
-  --ne-ok: #1a7f37;
-  --ne-warn: #9a6700;
-  --ne-err: #dc2626;
   background: var(--ne-bg);
   color: var(--ne-fg);
   font-family: -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
@@ -1507,29 +1492,8 @@ body.note-standalone *::-webkit-scrollbar-thumb:hover {
 
 /* 深色规则由 <html> 上的 .ne-dark 类驱动(不再用媒体查询):
    主题按钮循环 自动/浅色/深色,「自动」时由页面 JS 按系统偏好加/去该类。
-   仍只作用于 body.note-standalone,历史只读页(带应用外壳)保持浅色。 */
-
-/* 深色色板（中性深灰 + 冷灰蓝强调）：四档灰阶明确主次——标题 #f0f0f0、
-   正文 #d8d8d8（长时阅读比纯白舒服）、辅助 #969696、弱信息 #707070；
-   强调蓝 #6ea8fe 只出现在交互态（选中/链接/光标/协作），约 3~5% 面积 */
-.ne-dark body.note-standalone {
-  --ne-bg: #1e1e1e;
-  --ne-fg: #d8d8d8;      /* 正文 */
-  --ne-heading: #f0f0f0; /* 标题 */
-  --ne-muted: #969696;   /* 辅助：状态/大纲/引用 */
-  --ne-faint: #707070;   /* 弱信息：时间戳/分组标签/占位符 */
-  --ne-line: #343434;
-  --ne-line-strong: #505050;
-  --ne-bg-surface: #191919; /* 侧栏比画布再暗半档，拉开空间层级 */
-  --ne-bg-hover: #292929;
-  --ne-bg-active: #303030;
-  --ne-accent: #6ea8fe;
-  --ne-accent-hover: #82b4ff;
-  --ne-accent-muted: rgba(110, 168, 254, 0.14);
-  --ne-ok: #63c174;
-  --ne-warn: #d6a84b;
-  --ne-err: #e06c75;
-}
+   深色色板词元同在 ne-base.css(html.ne-dark);历史只读页(带应用外壳)
+   没有主题脚本、html 上不会出现 .ne-dark,依旧保持浅色。 */
 
 .ne-dark body.note-standalone ::selection {
   background: rgba(110, 168, 254, 0.22);

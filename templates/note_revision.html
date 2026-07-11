@@ -3,6 +3,8 @@
 {{define "title"}}历史版本 — {{if .Data.Note.Title}}{{.Data.Note.Title}}{{else}}无标题笔记{{end}}{{end}}
 
 {{define "head"}}
+{{/* 设计词元内联：排版规则消费 --ne-* 变量;本页无主题脚本,恒为浅色 */}}
+<style>{{neBaseCSS}}</style>
 <link rel="stylesheet" href="/static/css/notes-editor.css?v={{notesEditorCSSVersion}}">
 {{/* KaTeX 由编辑器岛在文档含公式时按需注入 */}}
 <script>

@@ -1,0 +1,46 @@
+/* VisualLink 设计语言 —— 全系统共享词元(单一事实来源)。
+   服务启动时由 main.go 读入,经模板函数 neBaseCSS 内联进各页 <head> 的
+   <style>,不走网络请求(跨境高 RTT 下零额外来回)。
+   规范见 .claude/skills/vl-design-language/SKILL.md;
+   原则:层级只靠灰阶,强调蓝只给交互态(3~5% 面积),语义色只表达状态;
+   新颜色一律用这些变量,禁止写死色值。
+   深色由 html.ne-dark 类驱动(不用 @media),localStorage 键 ne-theme
+   全系统共享——任一模块切换主题,处处生效。 */
+
+:root {
+  --ne-bg: #ffffff;
+  --ne-fg: #1f2329;      /* 正文：近黑，清晰不生硬 */
+  --ne-heading: #15181d; /* 标题：比正文再深半档 */
+  --ne-muted: #71767d;   /* 次级：状态/描述/时间 */
+  --ne-faint: #a9afb8;   /* 装饰：分组标签/占位符 */
+  --ne-line: #ebedef;         /* 常规分隔线 */
+  --ne-line-strong: #d7dade;  /* 强分隔：表头底边/引用竖线 */
+  --ne-bg-surface: #fafafa;   /* 侧栏等面板 */
+  --ne-bg-hover: #f2f3f5;     /* 悬停 */
+  --ne-bg-active: #e9ecef;    /* 激活/按压 */
+  --ne-accent: #3873b3;       /* 白底上更沉稳的链接蓝 */
+  --ne-accent-hover: #2f65a0;
+  --ne-accent-muted: rgba(56, 115, 179, 0.10); /* 选中项淡底 */
+  --ne-ok: #1a7f37;
+  --ne-warn: #9a6700;
+  --ne-err: #dc2626;
+}
+
+html.ne-dark {
+  --ne-bg: #1e1e1e;
+  --ne-fg: #d8d8d8;      /* 正文 */
+  --ne-heading: #f0f0f0; /* 标题 */
+  --ne-muted: #969696;   /* 辅助：状态/大纲/引用 */
+  --ne-faint: #707070;   /* 弱信息：时间戳/分组标签/占位符 */
+  --ne-line: #343434;
+  --ne-line-strong: #505050;
+  --ne-bg-surface: #191919; /* 侧栏比画布再暗半档，拉开空间层级 */
+  --ne-bg-hover: #292929;
+  --ne-bg-active: #303030;
+  --ne-accent: #6ea8fe;
+  --ne-accent-hover: #82b4ff;
+  --ne-accent-muted: rgba(110, 168, 254, 0.14);
+  --ne-ok: #63c174;
+  --ne-warn: #d6a84b;
+  --ne-err: #e06c75;
+}

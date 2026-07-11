@@ -22,6 +22,8 @@
   {{/* 跨境高 RTT 优化：只有编辑页自身样式阻塞渲染；
        style.min.css（仅弹层/按钮用）用 media 切换技巧异步加载；
        KaTeX 不在此加载——文档出现公式时编辑器岛按需注入（见 __notesKatex） */}}
+  {{/* 全系统设计词元（ne-base.css）内联直出：零额外请求，样式前就位 */}}
+  <style>{{neBaseCSS}}</style>
   <link rel="stylesheet" href="/static/css/notes-editor.css?v={{notesEditorCSSVersion}}">
   <link rel="stylesheet" href="/static/css/style.min.css?v=18" media="print" onload="this.media='all'">
   {{/* ESM 分割 chunk 全部预取：不预取的话浏览器要先解析完主入口才发现
