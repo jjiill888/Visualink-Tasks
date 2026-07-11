@@ -36,7 +36,13 @@
   <header class="ne-topbar">
     <a class="ne-link" href="/dashboard">← 看板</a>
     <div class="ne-right">
-      <button type="button" class="ne-link" id="ne-theme-toggle" title="切换配色：自动 → 浅色 → 深色">自动</button>
+      {{/* 主题切换与编辑页同款图标（半圆=自动/太阳=浅色/月亮=深色），
+           三枚 SVG 常驻 DOM，notes-editor.css 按 data-theme 只显一枚 */}}
+      <button type="button" class="ne-link" id="ne-theme-toggle" data-theme="auto" title="切换配色：自动 → 浅色 → 深色">
+        <svg class="ne-ico-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none"/></svg>
+        <svg class="ne-ico-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.5 1.5M17.2 17.2l1.5 1.5M5.3 18.7l1.5-1.5M17.2 6.8l1.5-1.5"/></svg>
+        <svg class="ne-ico-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.6A8.2 8.2 0 1 1 10.4 3.4a6.6 6.6 0 0 0 10.2 10.2z"/></svg>
+      </button>
     </div>
   </header>
 
@@ -70,7 +76,8 @@
       var dark = t === 'dark' || (t === 'auto' && media.matches);
       document.documentElement.classList.toggle('ne-dark', dark);
       document.documentElement.style.colorScheme = t === 'auto' ? '' : t;
-      btn.textContent = { auto: '自动', light: '浅色', dark: '深色' }[t];
+      btn.dataset.theme = t; /* CSS 据此显示对应图标（半圆/太阳/月亮），与编辑页同款 */
+      btn.title = '配色：' + { auto: '自动（跟随系统）', light: '浅色', dark: '深色' }[t] + '，点击切换';
     }
     btn.addEventListener('click', function () {
       var order = ['auto', 'light', 'dark'];
