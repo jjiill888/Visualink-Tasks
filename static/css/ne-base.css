@@ -44,3 +44,26 @@ html.ne-dark {
   --ne-warn: #d6a84b;
   --ne-err: #e06c75;
 }
+
+/* 打印/存 PDF:纸面恒用浅色词元(深色主题的暗背景不该进纸)。
+   必须排在 html.ne-dark 之后——同特异性靠书写顺序取胜 */
+@media print {
+  html.ne-dark {
+    --ne-bg: #ffffff;
+    --ne-fg: #1f2329;
+    --ne-heading: #15181d;
+    --ne-muted: #71767d;
+    --ne-faint: #a9afb8;
+    --ne-line: #ebedef;
+    --ne-line-strong: #d7dade;
+    --ne-bg-surface: #fafafa;
+    --ne-bg-hover: #f2f3f5;
+    --ne-bg-active: #e9ecef;
+    --ne-accent: #3873b3;
+    --ne-accent-hover: #2f65a0;
+    --ne-accent-muted: rgba(56, 115, 179, 0.10);
+    --ne-ok: #1a7f37;
+    --ne-warn: #9a6700;
+    --ne-err: #dc2626;
+  }
+}

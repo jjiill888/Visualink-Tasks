@@ -38,6 +38,7 @@ func Routes(r chi.Router, d *Deps) {
 	r.Delete("/notes/{id}/shares/{uid}", RemoveNoteShare(d))
 	r.Get("/notes/{id}/share-search", NoteShareSearch(d))
 	r.Handle("/collab/*", CollabProxy()) // y-sweet websocket 反代(仅登录用户可达)
+	r.Get("/notes/{id}/export", ExportNote(d)) // Markdown 原文下载
 	r.Get("/notes/{id}/history", NoteHistory(d))
 	r.Get("/notes/{id}/revisions/{rid}", NoteRevisionPage(d))
 	r.Get("/notes/{id}/revisions/{rid}/diff", NoteRevisionDiff(d)) // 与上一版本的行级对比

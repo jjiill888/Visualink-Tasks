@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -468,6 +469,34 @@ func DeleteNote(d *Deps) http.HandlerFunc {
 			return
 		}
 		writeNotesPanel(w, d, u.ID)
+	}
+}
+
+// ExportNote GET /notes/{id}/export — 下载 Markdown 原文（.md，有读权限即可）。
+func ExportNote(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		n := loadNote(w, r, d)
+		if n == nil {
+			return
+		}
+		name := strings.TrimSpace(n.Title)
+		if name == "" {
+			name = "无标题笔记"
+		}
+		// 标题可能含文件系统不容的字符,统一替换
+		name = strings.Map(func(c rune) rune {
+			switch c {
+			case '/', '\\', ':', '*', '?', '"', '<', '>', '|':
+				return '-'
+			}
+			return c
+		}, name)
+		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+		// filename 给不认 RFC 5987 的老客户端兜底,filename* 携带中文原名
+		w.Header().Set("Content-Disposition", fmt.Sprintf(
+			`attachment; filename="note-%d.md"; filename*=UTF-8''%s.md`,
+			n.ID, url.PathEscape(name)))
+		_, _ = w.Write([]byte(n.ContentMD))
 	}
 }
 

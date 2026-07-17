@@ -93,6 +93,10 @@
         onclick="window.dispatchEvent(new CustomEvent('open-modal')); htmx.ajax('GET', '/notes/{{$n.ID}}/history', {target:'#modal-content', swap:'innerHTML'})">
         历史版本
       </button>
+      {{/* 导出：下载 Markdown 原文（有读权限即可）；打印/PDF 直接 Ctrl+P，
+           打印样式已隐藏顶栏与侧栏 */}}
+      <a class="ne-link" id="ne-export-btn" href="/notes/{{$n.ID}}/export"
+        title="下载 Markdown 原文（.md）；打印或存 PDF 请用 Ctrl+P">导出</a>
       {{/* 权限开关（仅创建者）：单击按「公开 → 私有 → 受限」循环切换，
            与旁边的主题按钮同一交互语言；标签用各档状态色。
            切到受限时才弹出成员面板（搜索添加 + 名单，自动聚焦） */}}
@@ -465,7 +469,7 @@
       title.value = '';
       title.readOnly = true;
       title.placeholder = '文档已删除 — 从侧栏选择或新建文档';
-      ['ne-mode-toggle', 'ne-history-btn', 'ne-perm-toggle'].forEach(function (bid) {
+      ['ne-mode-toggle', 'ne-history-btn', 'ne-perm-toggle', 'ne-export-btn'].forEach(function (bid) {
         var b = document.getElementById(bid);
         if (b) b.hidden = true;
       });

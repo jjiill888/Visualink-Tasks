@@ -89,6 +89,7 @@ Markdown 兼容 CommonMark + GFM（表格对齐、任务列表、删除线、自
 | `POST /notes/{id}/recover` | 从回收站恢复（回到原分区/原分组，重新可被搜索） |
 | `DELETE /notes/{id}/purge` | 彻底删除（连历史版本与附件，不可找回） |
 | `GET /notes/{id}` | WYSIWYG 编辑页（独立标签页、Typora 式极简风格；停顿 2 秒自动保存，乐观锁冲突返回 409） |
+| `GET /notes/{id}/export` | 下载 Markdown 原文（.md，文件名用笔记标题）；打印/存 PDF 用编辑页 Ctrl+P |
 | `GET /notes/{id}/history` | 历史版本弹层（正文变化且距上次快照 >5 分钟才产生新版本，每篇最多 100 条） |
 | `GET /notes/{id}/revisions/{rid}/diff` | 该版本与上一版本的行级对比（增/删着色，长段未改动折叠） |
 | `POST /notes/{id}/restore/{rid}` | 恢复到某版本（当前内容先自动存为一条版本） |
