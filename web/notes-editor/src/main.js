@@ -23,6 +23,7 @@ import { taskListItemView } from './task-list.js';
 import { codeCopyView } from './code-copy.js';
 import { tableToolbar } from './table-toolbar.js';
 import { codeHighlight } from './code-highlight.js';
+import { tocPlugin } from './toc.js';
 import { createScrollSync } from './scroll-sync.js';
 
 // 样式不再走 esbuild：编辑页全部样式在手写的 static/css/notes-editor.css
@@ -156,6 +157,9 @@ async function mountEditor(root) {
 
   let currentMarkdown = initial;
   let autosave = null;
+  // remark-stringify 会把行首 [ 转义成 \[——整行恰为 [TOC] 时还原,
+  // 保住往返不动点(toc.js 与 Typora/Editor.md 都只认未转义原文)
+  const fixTocEscape = (md) => md.replace(/^\\(\[TOC\])[ \t]*$/gim, '$1');
   // 「源码/预览」分屏模式：true 时源码 textarea 是唯一事实来源，
   // Milkdown 只作只读渲染预览（uiEditable=false）
   let sourceMode = false;
@@ -214,6 +218,7 @@ async function mountEditor(root) {
         ctx.update(editorViewOptionsCtx, (prev) => ({ ...prev, editable: () => uiEditable }));
         ctx.get(listenerCtx).markdownUpdated((_ctx, markdown, prevMarkdown) => {
           if (markdown === prevMarkdown) return;
+          markdown = fixTocEscape(markdown);
           if (sourceMode) {
             // 源码是事实来源（单人 / 协作独处）：预览由 textarea 灌入
             // （replaceAll），序列化结果不能反向覆盖 currentMarkdown——
@@ -236,6 +241,7 @@ async function mountEditor(root) {
     .use(gfm)
     .use(tableToolbar)
     .use(codeHighlight)
+    .use(tocPlugin)
     .use(markdownExtra)
     .use(inlineHtml)
     .use(taskListItemView)
@@ -292,7 +298,7 @@ async function mountEditor(root) {
           // 只读镜像时把改动（主要是远端的）刷进源码栏。listener 插件对
           // 远端事务不触发（addToHistory:false 被跳过），信号从 Yjs 层取
           if (!sourceMode || srcIsTruth() || !mirrorSource) return;
-          const md = editor.action(getMarkdown());
+          const md = fixTocEscape(editor.action(getMarkdown()));
           mirrorSource(md);
           currentMarkdown = md;
         },
@@ -358,7 +364,7 @@ async function mountEditor(root) {
       }
       // 两个方向都以序列化结果重置源码基线：转只读是镜像起点；恢复可编辑
       // 则消掉镜像防抖 200ms 的竞态——对方最后一击可能还没刷进 textarea
-      srcEl.value = editor.action(getMarkdown());
+      srcEl.value = fixTocEscape(editor.action(getMarkdown()));
       currentMarkdown = srcEl.value;
       srcEl.readOnly = !canEdit;
       if (srcLockEl) srcLockEl.hidden = canEdit;
@@ -370,7 +376,7 @@ async function mountEditor(root) {
       if (!sourceMode) return;
       clearTimeout(previewTimer);
       previewPending = false;
-      currentMarkdown = editor.action(getMarkdown());
+      currentMarkdown = fixTocEscape(editor.action(getMarkdown()));
       srcEl.value = currentMarkdown;
       applySrcEditable();
     };
@@ -379,7 +385,7 @@ async function mountEditor(root) {
       if (split === sourceMode) return;
       if (split) {
         // 进入分屏：以编辑器当前序列化结果为源码初值
-        currentMarkdown = editor.action(getMarkdown());
+        currentMarkdown = fixTocEscape(editor.action(getMarkdown()));
         srcEl.value = currentMarkdown;
       } else {
         // 回到所见即所得：源码灌回编辑器（sourceMode 先置回，
@@ -459,7 +465,7 @@ async function mountEditor(root) {
   // 调试/测试钩子：读取当前序列化后的 Markdown（阶段二快照回写也会用到）。
   // 分屏模式下以源码 textarea 为准——预览灌入有 400ms 防抖，可能滞后
   window.__notesEditorMarkdown = () =>
-    sourceMode && srcEl ? srcEl.value : editor.action(getMarkdown());
+    sourceMode && srcEl ? srcEl.value : fixTocEscape(editor.action(getMarkdown()));
 
   return editor;
 }

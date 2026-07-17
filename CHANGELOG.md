@@ -2,6 +2,15 @@
 
 本文件作为功能跟踪文档，按阶段记录重要改动（新→旧）。
 
+## 2026-07-17 云笔记 · `[TOC]` 目录渲染
+
+Markdown 兼容那轮的已知限制补掉一个：内容恰为 `[TOC]`（不分大小写）的独占段落渲染为文档目录。
+
+- **实现**（`web/notes-editor/src/toc.js`，仿 code-highlight 的 ProseMirror 装饰模式）：不改文档内容——原段落 node 装饰隐藏、原位 widget 放目录块；标题只扫顶层块（与侧栏大纲同口径）；点击平滑滚动到标题；标题增删改随事务实时重算；只读页（历史快照）同样生效
+- **样式**：`--ne-bg-surface` 淡底块，目录项 muted 灰、按层级缩进 16px、悬停转强调蓝。⚠ widget 在 ProseMirror DOM 里，选择器须写全 `.milkdown .ProseMirror .ne-toc-block ...` 压过正文链接规则（实测截图抓到蓝色下划线）
+- **⚠ 序列化转义坑（实测）**：remark-stringify 会把行首 `[` 转义成 `\[`，破坏往返不动点且 Typora 不再识别。修法：序列化统一出口 `fixTocEscape()`（整行恰为 `\[TOC]` 时还原），覆盖 markdownUpdated 与全部 `getMarkdown()` 调用点；e2e 断言不动点
+- e2e 7 项全过（渲染/文本/缩进/隐藏/不动点/实时更新/点击滚动）；测试坑：无头 Chrome 里 Ctrl+End 移光标不稳，改用 Selection API 定位文档末尾
+
 ## 2026-07-17 云笔记 · 收藏/置顶
 
 笔记多了以后缺快速抵达常用笔记的路径。按用户各记各的收藏（`note_favorites` 表，读权限即可收藏，彻底删除随 CASCADE 清理）：

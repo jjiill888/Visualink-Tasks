@@ -509,6 +509,43 @@ body.ne-library .ne-page {
 .ne-lib-row:hover .ne-trash-title { color: var(--ne-muted); }
 .ne-trash-recover:hover { color: var(--ne-accent); }
 
+/* ── [TOC] 目录块(toc.js 装饰渲染;原 [TOC] 段落隐藏由目录块代显) ── */
+.milkdown .ProseMirror .ne-toc-p {
+  display: none;
+}
+
+.ne-toc-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 4px 0 20px;
+  padding: 10px 14px;
+  background: var(--ne-bg-surface);
+  border-radius: 6px;
+}
+
+/* 目录项在 ProseMirror DOM 内,选择器要压过正文链接规则(.milkdown ... a) */
+.milkdown .ProseMirror .ne-toc-block .ne-toc-item {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ne-muted);
+  text-decoration: none;
+  border-bottom: none;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.milkdown .ProseMirror .ne-toc-block .ne-toc-item:hover {
+  color: var(--ne-accent);
+}
+
+.ne-toc-empty {
+  font-size: 13px;
+  color: var(--ne-faint);
+}
+
 /* ── 打印/存 PDF(编辑页 Ctrl+P):只留标题与正文 ── */
 @media print {
   .ne-topbar,
