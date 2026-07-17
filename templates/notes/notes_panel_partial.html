@@ -1,17 +1,18 @@
 {{define "notes_panel_partial.html"}}
 {{/* 编辑页侧栏的文档列表片段（GET /notes/panel；组增删/移动端点同样返回它）。
-     VSCode 资源管理器式目录：三个可见性分区（公共/共享/私人）→ 分区内
-     文档组（文件夹，可折叠）→ 组内文档；未分组文档平铺在组后面。
-     箭头/文件夹/文件图标都由 CSS mask 绘制（行内零额外 DOM）。
-     折叠状态存 localStorage（ne-panel-fold：分区键 public/shared/private，
+     VSCode 资源管理器式目录：「收藏」快捷分区（空则不显）→ 三个可见性分区
+     （公共/共享/私人）→ 分区内文档组（文件夹，可折叠）→ 组内文档；
+     未分组文档平铺在组后面。箭头/文件夹/文件图标都由 CSS mask 绘制。
+     折叠状态存 localStorage（ne-panel-fold：分区键 fav/public/shared/private，
      组键 g<id>，编辑页 JS 维护）。当前文档高亮由前端标 ne-active。
-     自己的文档带 data-own+draggable，可拖进自己的组 / 拖到分区头移出组。 */}}
+     自己的文档带 data-own+draggable，可拖进自己的组 / 拖到分区头移出组；
+     自己的组头也可拖（排序）。每行「☆/★」收藏开关（读权限即可）。 */}}
 {{range .Sections}}
-{{if or (ne .Key "shared") .Groups .Loose}}
+{{if or (and (ne .Key "shared") (ne .Key "fav")) .Groups .Loose}}
 <div class="ne-panel-group" data-group="{{.Key}}">
   <div class="ne-sec-head">
     <button type="button" class="ne-panel-head">{{.Title}}</button>
-    <button type="button" class="ne-panel-new" title="新建文档 / 文档组">＋</button>
+    {{if ne .Key "fav"}}<button type="button" class="ne-panel-new" title="新建文档 / 文档组">＋</button>{{end}}
   </div>
   <div class="ne-panel-children">
     {{range .Groups}}
@@ -28,7 +29,7 @@
       <ul class="ne-panel-list ne-dir-list">
         {{range .Notes}}
         <li><a href="/notes/{{.ID}}" data-note-id="{{.ID}}"{{if eq .MyAccess "owner"}} data-own="1" draggable="true"{{end}}
-          title="{{if .UpdaterName}}{{.UpdaterName}} {{end}}更新于 {{.UpdatedAtLabel}}">{{if .Title}}{{.Title}}{{else}}无标题笔记{{end}}</a>{{if eq .MyAccess "owner"}}<button type="button" class="ne-doc-del" title="删除文档">－</button>{{end}}</li>
+          title="{{if .UpdaterName}}{{.UpdaterName}} {{end}}更新于 {{.UpdatedAtLabel}}">{{if .Title}}{{.Title}}{{else}}无标题笔记{{end}}</a><button type="button" class="ne-doc-fav{{if .IsFav}} ne-on{{end}}" title="{{if .IsFav}}取消收藏{{else}}收藏{{end}}">{{if .IsFav}}★{{else}}☆{{end}}</button>{{if eq .MyAccess "owner"}}<button type="button" class="ne-doc-del" title="删除文档">－</button>{{end}}</li>
         {{end}}
       </ul>
       {{else}}<div class="ne-panel-empty ne-dir-empty">空组</div>{{end}}
@@ -38,7 +39,7 @@
     <ul class="ne-panel-list">
       {{range .Loose}}
       <li><a href="/notes/{{.ID}}" data-note-id="{{.ID}}"{{if eq .MyAccess "owner"}} data-own="1" draggable="true"{{end}}
-        title="{{if .UpdaterName}}{{.UpdaterName}} {{end}}更新于 {{.UpdatedAtLabel}}">{{if .Title}}{{.Title}}{{else}}无标题笔记{{end}}</a>{{if eq .MyAccess "owner"}}<button type="button" class="ne-doc-del" title="删除文档">－</button>{{end}}</li>
+        title="{{if .UpdaterName}}{{.UpdaterName}} {{end}}更新于 {{.UpdatedAtLabel}}">{{if .Title}}{{.Title}}{{else}}无标题笔记{{end}}</a><button type="button" class="ne-doc-fav{{if .IsFav}} ne-on{{end}}" title="{{if .IsFav}}取消收藏{{else}}收藏{{end}}">{{if .IsFav}}★{{else}}☆{{end}}</button>{{if eq .MyAccess "owner"}}<button type="button" class="ne-doc-del" title="删除文档">－</button>{{end}}</li>
       {{end}}
     </ul>
     {{else if not .Groups}}<div class="ne-panel-empty">暂无</div>{{end}}

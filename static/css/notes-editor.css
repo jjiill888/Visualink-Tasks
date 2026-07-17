@@ -477,6 +477,33 @@ body.ne-library .ne-page {
 .ne-trash-back:hover { color: var(--ne-fg); }
 .ne-trash-hint { font-size: 12px; color: var(--ne-faint); }
 
+/* 收藏开关(文库行):行首,未收藏悬停浮现空星,已收藏常显实星(装饰灰兼作置顶标记) */
+.ne-lib-fav {
+  flex: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ne-muted);
+  background: none;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+  opacity: 0;
+  transition: color 0.15s ease;
+}
+
+.ne-lib-row:hover .ne-lib-fav {
+  opacity: 1;
+}
+
+.ne-lib-fav.ne-on {
+  opacity: 1;
+  color: var(--ne-faint);
+}
+
+.ne-lib-fav:hover {
+  color: var(--ne-fg);
+}
+
 /* 已删标题不可点开,降为普通文字色 */
 .ne-trash-title { color: var(--ne-muted); cursor: default; }
 .ne-lib-row:hover .ne-trash-title { color: var(--ne-muted); }
@@ -553,7 +580,8 @@ body.ne-diff-page .ne-page {
 
 /* 触屏没有 hover，删除按钮常显 */
 @media (hover: none) {
-  .ne-lib-del {
+  .ne-lib-del,
+  .ne-lib-fav {
     opacity: 1;
   }
 }
@@ -1411,8 +1439,35 @@ body.ne-diff-page .ne-page {
   opacity: 1;
 }
 
+/* 收藏开关(侧栏行):未收藏悬停浮现空星,已收藏常显实星(装饰灰) */
+.ne-doc-fav {
+  flex: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ne-muted);
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.ne-panel-list li:hover .ne-doc-fav {
+  opacity: 1;
+}
+
+.ne-doc-fav.ne-on {
+  opacity: 1;
+  color: var(--ne-faint);
+}
+
+.ne-doc-fav:hover {
+  color: var(--ne-fg);
+}
+
 @media (hover: none) {
-  .ne-doc-del {
+  .ne-doc-del,
+  .ne-doc-fav {
     opacity: 1;
   }
 }

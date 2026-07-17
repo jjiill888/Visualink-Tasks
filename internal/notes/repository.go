@@ -87,6 +87,13 @@ func Migrate(d *sql.DB) error {
 		sort_order INTEGER NOT NULL DEFAULT 0,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
+
+	CREATE TABLE IF NOT EXISTS note_favorites (
+		user_id    INTEGER NOT NULL REFERENCES users(id),
+		note_id    INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (user_id, note_id)
+	);
 	`)
 	if err != nil {
 		return err
@@ -144,7 +151,8 @@ const noteCols = `
 		WHEN s.role = 'editor' THEN 'edit'
 		WHEN s.role = 'reader' THEN 'read'
 		ELSE 'none'
-	END
+	END,
+	EXISTS(SELECT 1 FROM note_favorites f WHERE f.note_id = n.id AND f.user_id = ?1)
 `
 
 // noteShareJoin 挂名单（算 MyAccess）与文档组名，与 noteCols 配套使用。
@@ -155,7 +163,7 @@ func scanNote(row interface{ Scan(...any) error }) (*model.Note, error) {
 	n := &model.Note{}
 	err := row.Scan(
 		&n.ID, &n.Title, &n.ContentMD, &n.OwnerID, &n.Visibility, &n.GroupID, &n.CreatedAt, &n.UpdatedAt,
-		&n.OwnerName, &n.UpdaterName, &n.GroupName, &n.MyAccess,
+		&n.OwnerName, &n.UpdaterName, &n.GroupName, &n.MyAccess, &n.IsFav,
 	)
 	return n, err
 }
@@ -328,6 +336,20 @@ func (d *Repo) SoftDeleteNote(id, ownerID int64) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// ToggleNoteFavorite 收藏/取消收藏（按用户各记各的），返回切换后的状态。
+// 可见性校验在 handler（loadNote），这里只管开关。
+func (d *Repo) ToggleNoteFavorite(noteID, userID int64) (bool, error) {
+	res, err := d.Exec(`DELETE FROM note_favorites WHERE user_id=? AND note_id=?`, userID, noteID)
+	if err != nil {
+		return false, err
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		return false, nil
+	}
+	_, err = d.Exec(`INSERT INTO note_favorites (user_id, note_id) VALUES (?,?)`, userID, noteID)
+	return true, err
 }
 
 // ── Note groups（文档组：侧栏文件夹，纯组织结构不承载权限） ─────────────────

@@ -479,6 +479,7 @@ type Note struct {
 	UpdaterName string // 最后更新人显示名
 	GroupName   string // 所属文档组名（未分组为空）
 	MyAccess    string // 按查询者算出的权限档位：owner | edit | read | none
+	IsFav       bool   // 查询者是否收藏了本篇（note_favorites 按用户各记各的）
 }
 
 func (n *Note) CanRead() bool {

@@ -348,6 +348,14 @@
     }
 
     docsEl.addEventListener('click', function (e) {
+      /* 文档行「☆/★」收藏开关（读权限即可，服务端校验） */
+      var docFav = e.target.closest('.ne-doc-fav');
+      if (docFav) {
+        var favLink = docFav.parentElement.querySelector('a');
+        panelReq('POST', '/notes/' + favLink.dataset.noteId + '/favorite', { from: 'panel' })
+          .catch(panelErr);
+        return;
+      }
       /* 文档行「－」删除（仅 owner 行有此按钮，服务端另有属主校验）；
          删除的是当前打开的文档时不跳页——编辑区收敛为空白冻结态 */
       var docDel = e.target.closest('.ne-doc-del');
@@ -489,7 +497,8 @@
       var d = el.closest('.ne-dir');
       if (d && d.dataset.own) return { el: d.querySelector('.ne-dir-head'), group: d.dataset.dir };
       var head = el.closest('.ne-sec-head');
-      if (head) return { el: head, group: '' };
+      /* 「收藏」是镜像分区,不承载归组语义,不作为落点 */
+      if (head && head.parentElement.dataset.group !== 'fav') return { el: head, group: '' };
       return null;
     }
     function clearDrop() {
@@ -522,7 +531,7 @@
       var d = el.closest('.ne-dir');
       if (d && d.dataset.own && d.dataset.dir !== dragGid) return { dir: d, before: d.dataset.dir };
       var head = el.closest('.ne-sec-head');
-      if (head) return { el: head, before: '' };
+      if (head && head.parentElement.dataset.group !== 'fav') return { el: head, before: '' };
       return null;
     }
     docsEl.addEventListener('dragover', function (e) {

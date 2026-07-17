@@ -103,12 +103,17 @@ type notesListData struct {
 
 func notesList(w http.ResponseWriter, r *http.Request, d *Deps, fullPage bool) {
 	u := auth.UserFromContext(r)
-	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	// FormValue 兼容 GET 查询串与 POST 表单(收藏切换 hx-include 搜索框走 body)
+	query := strings.TrimSpace(r.FormValue("q"))
 	notes, err := d.Repo.ListNotes(u.ID, query)
 	if err != nil {
 		http.Error(w, "查询失败", http.StatusInternalServerError)
 		return
 	}
+	// 收藏置顶:收藏的浮到列表首,收藏内/未收藏内保持更新时间倒序
+	sort.SliceStable(notes, func(a, b int) bool {
+		return notes[a].IsFav && !notes[b].IsFav
+	})
 	data := &notesListData{Notes: notes, Query: query, CurrentUserID: u.ID}
 	if fullPage {
 		pd := auth.PageData(r, "notes")
@@ -157,19 +162,27 @@ func notesPanelData(d *Deps, userID int64) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	// 「收藏」是快捷入口分区:收藏的笔记同时保留在原分区,这里只是镜像;
+	// 空收藏时模板不渲染该分区
 	sections := []*notesPanelSection{
+		{Key: "fav", Title: "收藏"},
 		{Key: "public", Title: "公共文档"},
 		{Key: "shared", Title: "共享协作"},
 		{Key: "private", Title: "私人文档"},
 	}
+	for _, n := range notes {
+		if n.IsFav {
+			sections[0].Loose = append(sections[0].Loose, n)
+		}
+	}
 	secOf := func(n *model.Note) *notesPanelSection {
 		switch n.Visibility {
 		case model.NoteVisPrivate:
-			return sections[2]
+			return sections[3]
 		case model.NoteVisRestricted:
-			return sections[1]
+			return sections[2]
 		default:
-			return sections[0]
+			return sections[1]
 		}
 	}
 	// 每区一张 groupID → 节点 的索引；ListNotes 按更新时间倒序，组的出现
@@ -210,7 +223,7 @@ func notesPanelData(d *Deps, userID int64) (map[string]any, error) {
 			}
 		}
 		if !found {
-			sections[0].Groups = append(sections[0].Groups,
+			sections[1].Groups = append(sections[1].Groups,
 				&notesPanelGroup{ID: gr.ID, Name: gr.Name, Own: true})
 		}
 	}
@@ -539,6 +552,27 @@ func ExportNote(d *Deps) http.HandlerFunc {
 			`attachment; filename="note-%d.md"; filename*=UTF-8''%s.md`,
 			n.ID, url.PathEscape(name)))
 		_, _ = w.Write([]byte(n.ContentMD))
+	}
+}
+
+// ToggleNoteFavorite POST /notes/{id}/favorite — 收藏开关（有读权限即可）。
+// from=panel 返回侧栏面板片段，否则返回文库列表片段（带当前搜索词）。
+func ToggleNoteFavorite(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		n := loadNote(w, r, d)
+		if n == nil {
+			return
+		}
+		u := auth.UserFromContext(r)
+		if _, err := d.Repo.ToggleNoteFavorite(n.ID, u.ID); err != nil {
+			http.Error(w, "操作失败", http.StatusInternalServerError)
+			return
+		}
+		if r.FormValue("from") == "panel" {
+			writeNotesPanel(w, d, u.ID)
+			return
+		}
+		notesList(w, r, d, false)
 	}
 }
 

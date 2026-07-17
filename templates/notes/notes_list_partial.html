@@ -6,6 +6,13 @@
 <div class="ne-lib-list">
   {{range .Notes}}
   <div class="ne-lib-row">
+    {{/* 收藏开关:未收藏悬停浮现空星,已收藏常显实星(浅灰,兼作置顶标记) */}}
+    <button type="button" class="ne-lib-fav{{if .IsFav}} ne-on{{end}}"
+      hx-post="/notes/{{.ID}}/favorite"
+      hx-include="#note-search"
+      hx-target="#notes-list"
+      hx-swap="innerHTML"
+      title="{{if .IsFav}}取消收藏{{else}}收藏（置顶到列表首）{{end}}">{{if .IsFav}}★{{else}}☆{{end}}</button>
     <a class="ne-lib-title" href="/notes/{{.ID}}" target="_blank" rel="noopener">
       {{- if .Title}}{{.Title}}{{else}}无标题笔记{{end -}}
     </a>
