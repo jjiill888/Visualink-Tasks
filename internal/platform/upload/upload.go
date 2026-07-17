@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"visualink/internal/db"
 	"visualink/internal/model"
 	"visualink/internal/platform/auth"
 	"visualink/internal/platform/imageutil"
@@ -43,7 +42,7 @@ func randomSlug() string {
 
 // UploadImage handles POST /uploads/image — multipart/form-data with field "file".
 // Returns JSON { id, thumb_url, full_url, width, height }.
-func UploadImage(database *db.DB) http.HandlerFunc {
+func UploadImage(store *Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
@@ -108,7 +107,7 @@ func UploadImage(database *db.DB) http.HandlerFunc {
 			Bytes:      int64(len(result.Full.Bytes) + len(result.Thumb.Bytes)),
 			Original:   strings.TrimSpace(header.Filename),
 		}
-		if err := database.CreateAttachment(a); err != nil {
+		if err := store.CreateAttachment(a); err != nil {
 			_ = os.Remove(filepath.Join(UploadRoot, relFull))
 			_ = os.Remove(filepath.Join(UploadRoot, relThumb))
 			http.Error(w, "数据库写入失败", http.StatusInternalServerError)
@@ -128,7 +127,7 @@ func UploadImage(database *db.DB) http.HandlerFunc {
 
 // ServeUpload handles GET /uploads/{id}/{variant}. Variant: "thumb" | "full".
 // Images are immutable per id so we send aggressive caching headers.
-func ServeUpload(database *db.DB) http.HandlerFunc {
+func ServeUpload(store *Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if err != nil {
@@ -136,7 +135,7 @@ func ServeUpload(database *db.DB) http.HandlerFunc {
 			return
 		}
 		variant := chi.URLParam(r, "variant")
-		a, err := database.GetAttachment(id)
+		a, err := store.GetAttachment(id)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

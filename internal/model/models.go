@@ -52,7 +52,7 @@ type Feature struct {
 	CreatorRole string
 	GroupTitle  string
 	// Computed
-	IsWatched        bool
+	IsWatched         bool
 	HasUnreadComments bool
 }
 
@@ -386,14 +386,14 @@ func (c *IMChannel) LastMsgAtLabel() string {
 }
 
 type IMMessage struct {
-	ID         int64
-	ChannelID  int64
-	UserID     int64
-	Content    string
-	ReplyToID  *int64
-	EditedAt   *time.Time
-	DeletedAt  *time.Time
-	CreatedAt  time.Time
+	ID        int64
+	ChannelID int64
+	UserID    int64
+	Content   string
+	ReplyToID *int64
+	EditedAt  *time.Time
+	DeletedAt *time.Time
+	CreatedAt time.Time
 	// Joined
 	UserName    string
 	UserDisplay string

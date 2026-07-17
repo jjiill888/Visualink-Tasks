@@ -14,7 +14,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"visualink/internal/db"
+	"visualink/internal/platform/database"
 	"visualink/internal/im"
 	"visualink/internal/notes"
 	"visualink/internal/notification"
@@ -40,10 +40,27 @@ func main() {
 		log.Fatal("create data dir:", err)
 	}
 
-	database, err := db.Open(dbPath)
+	// 迁移按外键依赖排序:users 最先(全系统外键都指向它)
+	sqldb, err := database.Open(dbPath,
+		auth.Migrate,
+		tasks.Migrate,
+		notification.Migrate,
+		upload.Migrate,
+		notes.Migrate,
+		im.Migrate,
+	)
 	if err != nil {
 		log.Fatal("open db:", err)
 	}
+
+	// ── 数据访问装配:各模块 Repo 共享同一 *sql.DB;跨域依赖显式注入 ─────
+	users := auth.NewStore(sqldb.DB)
+	notifRepo := notification.NewRepo(sqldb.DB)
+	uploadStore := upload.NewStore(sqldb.DB)
+	tasksDeps := &tasks.Deps{Repo: tasks.NewRepo(sqldb.DB), Users: users, Notifs: notifRepo, Files: uploadStore}
+	notesDeps := &notes.Deps{Repo: notes.NewRepo(sqldb.DB), Users: users}
+	imDeps := &im.Deps{Repo: im.NewRepo(sqldb.DB), Users: users, Notifs: notifRepo}
+	notifDeps := &notification.Deps{Repo: notifRepo, Users: users}
 
 	// ── 静态资产:先于模板解析构建,版本号注入 web 包供模板函数读取 ──────
 	jsBundle, err := assets.NewBundle("static/js", []string{
@@ -139,24 +156,24 @@ func main() {
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 	})
-	auth.Routes(r, database)
+	auth.Routes(r, users)
 
 	// 登录后路由:各模块自挂
 	r.Group(func(r chi.Router) {
 		r.Use(func(next http.Handler) http.Handler {
-			return auth.RequireAuth(database, next)
+			return auth.RequireAuth(users, next)
 		})
 
 		r.Get("/sse", hub.SSE())
-		tasks.Routes(r, database)
-		notification.Routes(r, database)
-		im.Routes(r, database)
-		notes.Routes(r, database)
-		upload.Routes(r, database)
+		tasks.Routes(r, tasksDeps)
+		notification.Routes(r, notifDeps)
+		im.Routes(r, imDeps)
+		notes.Routes(r, notesDeps)
+		upload.Routes(r, uploadStore)
 	})
 
 	// 后台任务
-	tasks.StartAutoArchive(database)
+	tasks.StartAutoArchive(tasksDeps)
 
 	addr := ":8080"
 	if p := os.Getenv("PORT"); p != "" { // 本地开发可覆盖端口,默认行为不变

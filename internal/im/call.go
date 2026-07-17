@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"visualink/internal/db"
 	"visualink/internal/platform/auth"
 	"visualink/internal/platform/hub"
 )
@@ -13,7 +12,7 @@ import (
 // CallSignal handles POST /im/call/signal — WebRTC signaling relay via SSE broadcast.
 // Clients send offer/answer/ice/hangup payloads here; the server broadcasts them
 // to all SSE subscribers and clients filter by the `to` field.
-func CallSignal(database *db.DB) http.HandlerFunc {
+func CallSignal(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 

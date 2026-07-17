@@ -1,4 +1,4 @@
-package db
+package notes
 
 import (
 	"database/sql"
@@ -9,12 +9,19 @@ import (
 	"visualink/internal/model"
 )
 
+// Repo 持有云笔记(正文/FTS/分组/分享/修订/附件)全部表的数据访问。
+type Repo struct {
+	*sql.DB
+}
+
+func NewRepo(db *sql.DB) *Repo { return &Repo{db} }
+
 // ErrNoteConflict 表示乐观锁校验失败：客户端打开笔记后，其他人已保存过新版本。
 var ErrNoteConflict = errors.New("note updated by someone else")
 
 // migrateNotes 建立云笔记相关表。遵循项目惯例：CREATE TABLE IF NOT EXISTS 幂等建表。
 // notes.updated_at 用毫秒精度文本（strftime %f），既做排序键也做乐观锁 token。
-func (d *DB) migrateNotes() error {
+func Migrate(d *sql.DB) error {
 	// FTS5 trigram 分词器探测：笔记以中文为主，unicode61 无法按子串命中中文，
 	// trigram（SQLite >= 3.34 内置）是唯一开箱可用的中文子串方案。
 	// 若编译进来的 SQLite 不支持，这里会显式报错阻止启动，而不是静默降级。
@@ -157,7 +164,7 @@ func ftsQuote(q string) string {
 // ListNotes 返回当前用户可见的笔记（公开 + 自己的 + 名单内的受限），
 // 按更新时间倒序。search 非空时走 FTS；trigram 要求至少 3 个字符才能命中，
 // 少于 3 个字符（常见的双字中文词）退化为 LIKE 子串匹配。
-func (d *DB) ListNotes(userID int64, search string) ([]*model.Note, error) {
+func (d *Repo) ListNotes(userID int64, search string) ([]*model.Note, error) {
 	base := `SELECT ` + noteCols + `
 		FROM notes n
 		JOIN users o ON o.id = n.owner_id` + noteShareJoin + `
@@ -197,7 +204,7 @@ func (d *DB) ListNotes(userID int64, search string) ([]*model.Note, error) {
 
 // GetNote 返回未删除的笔记（MyAccess 按 userID 算好）；不存在或已软删除
 // 返回 nil。是否放行由 handler 依据 MyAccess 判断。
-func (d *DB) GetNote(id, userID int64) (*model.Note, error) {
+func (d *Repo) GetNote(id, userID int64) (*model.Note, error) {
 	q := `SELECT ` + noteCols + `
 		FROM notes n
 		JOIN users o ON o.id = n.owner_id` + noteShareJoin + `
@@ -212,7 +219,7 @@ func (d *DB) GetNote(id, userID int64) (*model.Note, error) {
 // CreateNote 建空笔记；groupID > 0 时直接落进该文档组（组归属校验在
 // handler），visibility 由 handler 校验合法档位（分区头「＋」新建的文档
 // 直接落在对应可见性分区）。
-func (d *DB) CreateNote(ownerID int64, title string, groupID int64, visibility string) (int64, error) {
+func (d *Repo) CreateNote(ownerID int64, title string, groupID int64, visibility string) (int64, error) {
 	res, err := d.Exec(
 		`INSERT INTO notes (title, owner_id, updated_by, group_id, visibility) VALUES (?,?,?,NULLIF(?,0),?)`,
 		title, ownerID, ownerID, groupID, visibility,
@@ -231,7 +238,7 @@ func (d *DB) CreateNote(ownerID int64, title string, groupID int64, visibility s
 //  3. 更新 notes 行（FTS 由 trigger 自动同步），返回新的 updated_at
 //
 // 可见性/名单不在保存路径里改，见下方 Permissions 一节的专用方法。
-func (d *DB) SaveNote(id, userID int64, title, contentMD, baseUpdatedAt string) (string, error) {
+func (d *Repo) SaveNote(id, userID int64, title, contentMD, baseUpdatedAt string) (string, error) {
 	tx, err := d.Begin()
 	if err != nil {
 		return "", err
@@ -292,7 +299,7 @@ func (d *DB) SaveNote(id, userID int64, title, contentMD, baseUpdatedAt string) 
 
 // SoftDeleteNote 软删除，仅 owner 可操作。同时从 FTS 索引移除（软删除不触发
 // notes 表的 DELETE trigger，这里手动清索引）。
-func (d *DB) SoftDeleteNote(id, ownerID int64) error {
+func (d *Repo) SoftDeleteNote(id, ownerID int64) error {
 	tx, err := d.Begin()
 	if err != nil {
 		return err
@@ -322,7 +329,7 @@ func (d *DB) SoftDeleteNote(id, ownerID int64) error {
 // ── Note groups（文档组：侧栏文件夹，纯组织结构不承载权限） ─────────────────
 
 // CreateNoteGroup 建文档组（name 由 handler 校验非空/限长）。
-func (d *DB) CreateNoteGroup(ownerID int64, name string) (int64, error) {
+func (d *Repo) CreateNoteGroup(ownerID int64, name string) (int64, error) {
 	res, err := d.Exec(`INSERT INTO note_groups (owner_id, name) VALUES (?,?)`, ownerID, name)
 	if err != nil {
 		return 0, err
@@ -332,7 +339,7 @@ func (d *DB) CreateNoteGroup(ownerID int64, name string) (int64, error) {
 
 // DeleteNoteGroup 删组（仅 owner）：事务内先把组内笔记回到未分组，再删组行。
 // 不删除任何笔记。
-func (d *DB) DeleteNoteGroup(id, ownerID int64) error {
+func (d *Repo) DeleteNoteGroup(id, ownerID int64) error {
 	tx, err := d.Begin()
 	if err != nil {
 		return err
@@ -353,7 +360,7 @@ func (d *DB) DeleteNoteGroup(id, ownerID int64) error {
 
 // SetNoteGroup 移动笔记归属组（groupID=0 移出）。双重属主校验在 SQL 里：
 // 笔记必须是 userID 自己的；目标组（非 0 时）也必须是自己建的。
-func (d *DB) SetNoteGroup(noteID, userID, groupID int64) error {
+func (d *Repo) SetNoteGroup(noteID, userID, groupID int64) error {
 	res, err := d.Exec(
 		`UPDATE notes SET group_id=NULLIF(?,0)
 		 WHERE id=? AND owner_id=? AND deleted_at IS NULL
@@ -370,7 +377,7 @@ func (d *DB) SetNoteGroup(noteID, userID, groupID int64) error {
 }
 
 // ListNoteGroups 返回用户自己建的全部文档组（含空组），按建立先后。
-func (d *DB) ListNoteGroups(ownerID int64) ([]*model.NoteGroup, error) {
+func (d *Repo) ListNoteGroups(ownerID int64) ([]*model.NoteGroup, error) {
 	rows, err := d.Query(`SELECT id, owner_id, name FROM note_groups WHERE owner_id=? ORDER BY id`, ownerID)
 	if err != nil {
 		return nil, err
@@ -388,7 +395,7 @@ func (d *DB) ListNoteGroups(ownerID int64) ([]*model.NoteGroup, error) {
 }
 
 // OwnsNoteGroup 组是否属于该用户（/notes/new?group=N 的入组校验）。
-func (d *DB) OwnsNoteGroup(id, ownerID int64) bool {
+func (d *Repo) OwnsNoteGroup(id, ownerID int64) bool {
 	var one int
 	err := d.QueryRow(`SELECT 1 FROM note_groups WHERE id=? AND owner_id=?`, id, ownerID).Scan(&one)
 	return err == nil
@@ -397,7 +404,7 @@ func (d *DB) OwnsNoteGroup(id, ownerID int64) bool {
 // ── Permissions（可见性 + 名单） ────────────────────────────────────────────
 
 // ListNoteShares 返回笔记的名单成员（带显示名），按加入先后排序。
-func (d *DB) ListNoteShares(noteID int64) ([]*model.NoteShare, error) {
+func (d *Repo) ListNoteShares(noteID int64) ([]*model.NoteShare, error) {
 	rows, err := d.Query(`
 		SELECT s.note_id, s.user_id, s.role,
 		       u.username, COALESCE(NULLIF(u.display_name,''), u.username)
@@ -424,7 +431,7 @@ func (d *DB) ListNoteShares(noteID int64) ([]*model.NoteShare, error) {
 // UpsertNoteShare 添加成员或改角色（role ∈ editor/reader，handler 已校验）。
 // 同一事务里把笔记切到 restricted——「加了第一个人就只剩创建者+名单」的语义；
 // 删人不做反向自动切换，防止删光名单时静默变回所有人可写。
-func (d *DB) UpsertNoteShare(noteID, userID int64, role string) error {
+func (d *Repo) UpsertNoteShare(noteID, userID int64, role string) error {
 	tx, err := d.Begin()
 	if err != nil {
 		return err
@@ -446,13 +453,13 @@ func (d *DB) UpsertNoteShare(noteID, userID int64, role string) error {
 	return tx.Commit()
 }
 
-func (d *DB) RemoveNoteShare(noteID, userID int64) error {
+func (d *Repo) RemoveNoteShare(noteID, userID int64) error {
 	_, err := d.Exec(`DELETE FROM note_shares WHERE note_id=? AND user_id=?`, noteID, userID)
 	return err
 }
 
 // SetNoteVisibility 直接切换可见性档位（visibility 由 handler 校验）。
-func (d *DB) SetNoteVisibility(noteID int64, visibility string) error {
+func (d *Repo) SetNoteVisibility(noteID int64, visibility string) error {
 	res, err := d.Exec(
 		`UPDATE notes SET visibility=? WHERE id=? AND deleted_at IS NULL`,
 		visibility, noteID,
@@ -468,7 +475,7 @@ func (d *DB) SetNoteVisibility(noteID int64, visibility string) error {
 
 // SearchShareCandidates 权限面板的用户搜索：用户名/显示名子串匹配，
 // 排除创建者与已在名单内的用户，最多 10 条。
-func (d *DB) SearchShareCandidates(noteID, ownerID int64, q string) ([]*model.User, error) {
+func (d *Repo) SearchShareCandidates(noteID, ownerID int64, q string) ([]*model.User, error) {
 	esc := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(q)
 	like := "%" + esc + "%"
 	rows, err := d.Query(`
@@ -497,7 +504,7 @@ func (d *DB) SearchShareCandidates(noteID, ownerID int64, q string) ([]*model.Us
 
 // ── Revisions ──────────────────────────────────────────────────────────────
 
-func (d *DB) ListNoteRevisions(noteID int64) ([]*model.NoteRevision, error) {
+func (d *Repo) ListNoteRevisions(noteID int64) ([]*model.NoteRevision, error) {
 	rows, err := d.Query(`
 		SELECT r.id, r.note_id, r.saved_by, r.saved_at,
 		       COALESCE(NULLIF(u.display_name,''), u.username)
@@ -521,7 +528,7 @@ func (d *DB) ListNoteRevisions(noteID int64) ([]*model.NoteRevision, error) {
 	return list, rows.Err()
 }
 
-func (d *DB) GetNoteRevision(noteID, revID int64) (*model.NoteRevision, error) {
+func (d *Repo) GetNoteRevision(noteID, revID int64) (*model.NoteRevision, error) {
 	rev := &model.NoteRevision{}
 	err := d.QueryRow(`
 		SELECT r.id, r.note_id, r.content_md, r.saved_by, r.saved_at,
@@ -538,7 +545,7 @@ func (d *DB) GetNoteRevision(noteID, revID int64) (*model.NoteRevision, error) {
 
 // RestoreNoteRevision 恢复到某历史版本：恢复前先把当前正文存一条 revision
 // （不受 5 分钟节流限制，保证可以回退「恢复」这个动作本身），再覆盖正文。
-func (d *DB) RestoreNoteRevision(noteID, revID, userID int64) error {
+func (d *Repo) RestoreNoteRevision(noteID, revID, userID int64) error {
 	tx, err := d.Begin()
 	if err != nil {
 		return err
@@ -589,7 +596,7 @@ func (d *DB) RestoreNoteRevision(noteID, revID, userID int64) error {
 
 // ── Attachments ────────────────────────────────────────────────────────────
 
-func (d *DB) CreateNoteAttachment(a *model.NoteAttachment) error {
+func (d *Repo) CreateNoteAttachment(a *model.NoteAttachment) error {
 	res, err := d.Exec(
 		`INSERT INTO note_attachments (note_id, filename, stored_path, size) VALUES (?,?,?,?)`,
 		a.NoteID, a.Filename, a.StoredPath, a.Size,

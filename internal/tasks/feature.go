@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 
-	"visualink/internal/db"
 	"visualink/internal/model"
 	"visualink/internal/platform/auth"
 	"visualink/internal/platform/hub"
@@ -50,7 +49,7 @@ func renderMentions(content string, displayMap map[string]string) template.HTML 
 
 // renderCommentViews resolves @username handles in all comments to display names in one batch query.
 // currentUserID and isAdmin determine whether each comment shows a delete button.
-func renderCommentViews(comments []*model.Comment, database *db.DB, currentUserID int64, isAdmin bool) []commentView {
+func renderCommentViews(comments []*model.Comment, d *Deps, currentUserID int64, isAdmin bool) []commentView {
 	seen := map[string]bool{}
 	var usernames []string
 	for _, c := range comments {
@@ -61,12 +60,12 @@ func renderCommentViews(comments []*model.Comment, database *db.DB, currentUserI
 			}
 		}
 	}
-	displayMap, _ := database.MentionDisplayMap(usernames)
+	displayMap, _ := d.Users.MentionDisplayMap(usernames)
 	ids := make([]int64, 0, len(comments))
 	for _, c := range comments {
 		ids = append(ids, c.ID)
 	}
-	attMap, _ := database.ListAttachmentsForOwners("comment", ids)
+	attMap, _ := d.Files.ListAttachmentsForOwners("comment", ids)
 	views := make([]commentView, len(comments))
 	for i, c := range comments {
 		views[i] = commentView{
@@ -92,11 +91,11 @@ func notificationSenderName(u *model.User) string {
 	return "系统"
 }
 
-func createNewCommentNotification(database *db.DB, recipientID, featureID, commentID int64, fromUser, featureTitle string) {
+func createNewCommentNotification(d *Deps, recipientID, featureID, commentID int64, fromUser, featureTitle string) {
 	if recipientID <= 0 {
 		return
 	}
-	if err := database.CreateNotification(&model.Notification{
+	if err := d.Notifs.CreateNotification(&model.Notification{
 		UserID:       recipientID,
 		FeatureID:    featureID,
 		CommentID:    commentID,
@@ -108,11 +107,11 @@ func createNewCommentNotification(database *db.DB, recipientID, featureID, comme
 	}
 }
 
-func createMentionNotification(database *db.DB, recipientID, featureID, commentID int64, fromUser, featureTitle string) {
+func createMentionNotification(d *Deps, recipientID, featureID, commentID int64, fromUser, featureTitle string) {
 	if recipientID <= 0 {
 		return
 	}
-	if err := database.CreateNotification(&model.Notification{
+	if err := d.Notifs.CreateNotification(&model.Notification{
 		UserID:       recipientID,
 		FeatureID:    featureID,
 		CommentID:    commentID,
@@ -125,11 +124,11 @@ func createMentionNotification(database *db.DB, recipientID, featureID, commentI
 	}
 }
 
-func createFeatureStatusNotification(database *db.DB, recipientID int64, feature *model.Feature, fromUser string, status string, automatic bool) {
+func createFeatureStatusNotification(d *Deps, recipientID int64, feature *model.Feature, fromUser string, status string, automatic bool) {
 	if recipientID <= 0 || feature == nil {
 		return
 	}
-	if err := database.CreateNotification(&model.Notification{
+	if err := d.Notifs.CreateNotification(&model.Notification{
 		UserID:       recipientID,
 		FeatureID:    feature.ID,
 		FromUser:     fromUser,
@@ -164,20 +163,20 @@ type dashboardData struct {
 	Status     string
 }
 
-func Dashboard(database *db.DB) http.HandlerFunc {
+func Dashboard(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
-		stats, err := database.GetStats()
+		stats, err := d.Repo.GetStats()
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		features, err := database.ListFeaturesWithWatch(u.ID, "", "", "", nil, nil, nil, pageSize, 0)
+		features, err := d.Repo.ListFeaturesWithWatch(u.ID, "", "", "", nil, nil, nil, pageSize, 0)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		groups, err := database.ListGroups()
+		groups, err := d.Repo.ListGroups()
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -219,7 +218,7 @@ type featuresListData struct {
 }
 
 // ListFeatures is the HTMX partial endpoint — returns only the feature rows.
-func ListFeatures(database *db.DB) http.HandlerFunc {
+func ListFeatures(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		q := r.URL.Query()
@@ -239,7 +238,7 @@ func ListFeatures(database *db.DB) http.HandlerFunc {
 		var err error
 
 		if view == "personal" {
-			features, err = database.ListFeaturesPersonal(u.ID, priority, status, search, fetchLimit, offset)
+			features, err = d.Repo.ListFeaturesPersonal(u.ID, priority, status, search, fetchLimit, offset)
 		} else {
 			var groupID, assigneeID, creatorID *int64
 			if v := q.Get("group_id"); v != "" {
@@ -257,7 +256,7 @@ func ListFeatures(database *db.DB) http.HandlerFunc {
 					creatorID = &id
 				}
 			}
-			features, err = database.ListFeaturesWithWatch(u.ID, priority, status, search, groupID, assigneeID, creatorID, fetchLimit, offset)
+			features, err = d.Repo.ListFeaturesWithWatch(u.ID, priority, status, search, groupID, assigneeID, creatorID, fetchLimit, offset)
 		}
 		if err != nil {
 			http.Error(w, err.Error(), 500)
@@ -287,13 +286,13 @@ func ListFeatures(database *db.DB) http.HandlerFunc {
 		}
 		// Piggyback OOB stats on list refreshes to avoid a separate round-trip
 		if page == 1 {
-			writeOOBStats(database, w)
+			writeOOBStats(d, w)
 		}
 	}
 }
 
 // UpdateStatus handles PATCH /features/{id}/status (HTMX)
-func UpdateStatus(database *db.DB) http.HandlerFunc {
+func UpdateStatus(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		idStr := chi.URLParam(r, "id")
@@ -307,7 +306,7 @@ func UpdateStatus(database *db.DB) http.HandlerFunc {
 			http.Error(w, "invalid status", 400)
 			return
 		}
-		f, err := database.GetFeature(id)
+		f, err := d.Repo.GetFeature(id)
 		if err != nil || f == nil {
 			http.Error(w, "not found", 404)
 			return
@@ -322,12 +321,12 @@ func UpdateStatus(database *db.DB) http.HandlerFunc {
 		modalResponse := wantsModalResponse(r)
 		if oldStatus == status {
 			// 状态未变，直接返回当前视图，不写事件记录（防止重复点击产生冗余历史）
-			if err := writeFeatureMutationResponse(database, w, r, id, modalResponse); err != nil {
+			if err := writeFeatureMutationResponse(d, w, r, id, modalResponse); err != nil {
 				http.Error(w, err.Error(), 500)
 			}
 			return
 		}
-		if err := database.UpdateFeatureStatus(id, status); err != nil {
+		if err := d.Repo.UpdateFeatureStatus(id, status); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
@@ -338,25 +337,25 @@ func UpdateStatus(database *db.DB) http.HandlerFunc {
 				fromUser = u.Username
 			}
 			for _, token := range parseMentions(f.Description) {
-				mentioned, _ := database.GetUserByUsername(token)
+				mentioned, _ := d.Users.GetUserByUsername(token)
 				if mentioned == nil {
-					mentioned, _ = database.GetUserByDisplayName(token)
+					mentioned, _ = d.Users.GetUserByDisplayName(token)
 				}
 				if mentioned == nil || mentioned.ID == u.ID {
 					continue
 				}
-				createMentionNotification(database, mentioned.ID, f.ID, 0, fromUser, f.Title)
+				createMentionNotification(d, mentioned.ID, f.ID, 0, fromUser, f.Title)
 			}
 		}
 		if shouldNotifyFeatureCreatorOnStatusChange(f, u.ID, status) {
-			createFeatureStatusNotification(database, f.CreatedBy, f, notificationSenderName(u), status, false)
+			createFeatureStatusNotification(d, f.CreatedBy, f, notificationSenderName(u), status, false)
 		}
-		f, err = database.GetFeature(id)
+		f, err = d.Repo.GetFeature(id)
 		if err != nil || f == nil {
 			http.Error(w, "not found", 404)
 			return
 		}
-		_ = database.CreateFeatureEvent(&model.FeatureEvent{
+		_ = d.Repo.CreateFeatureEvent(&model.FeatureEvent{
 			FeatureID:  id,
 			OperatorID: u.ID,
 			Action:     "status_changed",
@@ -365,16 +364,16 @@ func UpdateStatus(database *db.DB) http.HandlerFunc {
 		})
 		hub.Global.Broadcast("feature-row-updated:" + idStr)
 		hub.Global.Broadcast("stats-updated")
-		if err := writeFeatureMutationResponse(database, w, r, id, modalResponse); err != nil {
+		if err := writeFeatureMutationResponse(d, w, r, id, modalResponse); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}
 }
 
 // GetStats handles GET /stats — returns stats grid partial + OOB banner update
-func GetStats(database *db.DB) http.HandlerFunc {
+func GetStats(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		stats, err := database.GetStats()
+		stats, err := d.Repo.GetStats()
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -387,9 +386,9 @@ func GetStats(database *db.DB) http.HandlerFunc {
 }
 
 // FeatureSubmitPage handles GET /features/submit — standalone full-page submit form.
-func FeatureSubmitPage(database *db.DB) http.HandlerFunc {
+func FeatureSubmitPage(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		groups, err := database.ListGroups()
+		groups, err := d.Repo.ListGroups()
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -401,9 +400,9 @@ func FeatureSubmitPage(database *db.DB) http.HandlerFunc {
 }
 
 // FeatureForm handles GET /features/new — returns the submit form as a modal partial.
-func FeatureForm(database *db.DB) http.HandlerFunc {
+func FeatureForm(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		groups, err := database.ListGroups()
+		groups, err := d.Repo.ListGroups()
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -416,7 +415,7 @@ func FeatureForm(database *db.DB) http.HandlerFunc {
 }
 
 // CreateFeature handles POST /features
-func CreateFeature(database *db.DB) http.HandlerFunc {
+func CreateFeature(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 
@@ -455,15 +454,15 @@ func CreateFeature(database *db.DB) http.HandlerFunc {
 				f.GroupID = &gid
 			}
 		}
-		if err := database.CreateFeature(f); err != nil {
+		if err := d.Repo.CreateFeature(f); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
 		if ids := parseAttachmentIDs(r.FormValue("attachment_ids")); len(ids) > 0 {
-			_ = database.AttachTo("feature", f.ID, u.ID, ids)
+			_ = d.Files.AttachTo("feature", f.ID, u.ID, ids)
 		}
 		if f.Status != "draft" {
-			_ = database.CreateFeatureEvent(&model.FeatureEvent{
+			_ = d.Repo.CreateFeatureEvent(&model.FeatureEvent{
 				FeatureID:  f.ID,
 				OperatorID: u.ID,
 				Action:     "created",
@@ -486,10 +485,10 @@ type mineData struct {
 	Features []featureRowData
 }
 
-func Mine(database *db.DB) http.HandlerFunc {
+func Mine(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
-		features, err := database.ListFeaturesByUser(u.ID)
+		features, err := d.Repo.ListFeaturesByUser(u.ID)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -530,8 +529,8 @@ func canEditStatus(role string) bool {
 
 // writeOOBStats appends the stats partial with OOB swap to the response writer.
 // Errors are silently ignored since stats are best-effort.
-func writeOOBStats(database *db.DB, w io.Writer) {
-	stats, err := database.GetStats()
+func writeOOBStats(d *Deps, w io.Writer) {
+	stats, err := d.Repo.GetStats()
 	if err != nil {
 		return
 	}
@@ -552,21 +551,21 @@ func wantsModalResponse(r *http.Request) bool {
 	return strings.TrimSpace(r.Header.Get("HX-Target")) == "modal-content"
 }
 
-func buildFeatureDetailData(database *db.DB, u *model.User, f *model.Feature) (featureDetailData, error) {
-	comments, err := database.ListComments(f.ID)
+func buildFeatureDetailData(d *Deps, u *model.User, f *model.Feature) (featureDetailData, error) {
+	comments, err := d.Repo.ListComments(f.ID)
 	if err != nil {
 		return featureDetailData{}, err
 	}
-	events, err := database.ListFeatureEvents(f.ID)
+	events, err := d.Repo.ListFeatureEvents(f.ID)
 	if err != nil {
 		return featureDetailData{}, err
 	}
-	f.IsWatched, _ = database.IsFeatureWatched(u.ID, f.ID)
-	_ = database.MarkCommentsRead(u.ID, f.ID)
-	atts, _ := loadAttachments(database, f.ID)
+	f.IsWatched, _ = d.Repo.IsFeatureWatched(u.ID, f.ID)
+	_ = d.Repo.MarkCommentsRead(u.ID, f.ID)
+	atts, _ := loadAttachments(d, f.ID)
 	return featureDetailData{
 		Feature:         f,
-		Comments:        renderCommentViews(comments, database, u.ID, u.Role == "admin"),
+		Comments:        renderCommentViews(comments, d, u.ID, u.Role == "admin"),
 		Events:          events,
 		Attachments:     atts,
 		CanEditStatus:   canEditStatus(u.Role),
@@ -577,8 +576,8 @@ func buildFeatureDetailData(database *db.DB, u *model.User, f *model.Feature) (f
 	}, nil
 }
 
-func writeFeatureRow(database *db.DB, w io.Writer, r *http.Request, featureID int64, oobSwap string) error {
-	f, err := database.GetFeature(featureID)
+func writeFeatureRow(d *Deps, w io.Writer, r *http.Request, featureID int64, oobSwap string) error {
+	f, err := d.Repo.GetFeature(featureID)
 	if err != nil {
 		return err
 	}
@@ -586,14 +585,14 @@ func writeFeatureRow(database *db.DB, w io.Writer, r *http.Request, featureID in
 		return fmt.Errorf("feature %d not found", featureID)
 	}
 	u := auth.UserFromContext(r)
-	f.IsWatched, _ = database.IsFeatureWatched(u.ID, featureID)
-	f.HasUnreadComments, _ = database.HasUnreadComments(u.ID, featureID)
+	f.IsWatched, _ = d.Repo.IsFeatureWatched(u.ID, featureID)
+	f.HasUnreadComments, _ = d.Repo.HasUnreadComments(u.ID, featureID)
 	row := featureRowData{Feature: f, CanEditStatus: canEditStatus(u.Role), OOBSwap: oobSwap}
 	return partials.ExecuteTemplate(w, "feature_row.html", row)
 }
 
-func writeFeatureDetail(database *db.DB, w io.Writer, r *http.Request, featureID int64) error {
-	f, err := database.GetFeature(featureID)
+func writeFeatureDetail(d *Deps, w io.Writer, r *http.Request, featureID int64) error {
+	f, err := d.Repo.GetFeature(featureID)
 	if err != nil {
 		return err
 	}
@@ -602,32 +601,32 @@ func writeFeatureDetail(database *db.DB, w io.Writer, r *http.Request, featureID
 	}
 	u := auth.UserFromContext(r)
 	if f.Status == "draft" && f.CreatedBy == u.ID {
-		groups, err := database.ListGroups()
+		groups, err := d.Repo.ListGroups()
 		if err != nil {
 			return err
 		}
-		users, err := database.ListAllUsers()
+		users, err := d.Users.ListAllUsers()
 		if err != nil {
 			return err
 		}
-		atts, csv := loadAttachments(database, f.ID)
+		atts, csv := loadAttachments(d, f.ID)
 		return partials.ExecuteTemplate(w, "feature_draft_edit.html", draftEditData{Feature: f, Groups: groups, Users: users, Attachments: atts, AttachmentIDsCSV: csv})
 	}
-	detail, err := buildFeatureDetailData(database, u, f)
+	detail, err := buildFeatureDetailData(d, u, f)
 	if err != nil {
 		return err
 	}
 	return partials.ExecuteTemplate(w, "feature_detail.html", detail)
 }
 
-func writeFeatureMutationResponse(database *db.DB, w http.ResponseWriter, r *http.Request, featureID int64, modalResponse bool) error {
+func writeFeatureMutationResponse(d *Deps, w http.ResponseWriter, r *http.Request, featureID int64, modalResponse bool) error {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if !modalResponse {
-		return writeFeatureRow(database, w, r, featureID, "")
+		return writeFeatureRow(d, w, r, featureID, "")
 	}
 
 	var detailBuf bytes.Buffer
-	if err := writeFeatureDetail(database, &detailBuf, r, featureID); err != nil {
+	if err := writeFeatureDetail(d, &detailBuf, r, featureID); err != nil {
 		return err
 	}
 	if _, err := w.Write(detailBuf.Bytes()); err != nil {
@@ -635,7 +634,7 @@ func writeFeatureMutationResponse(database *db.DB, w http.ResponseWriter, r *htt
 	}
 
 	var rowBuf bytes.Buffer
-	if err := writeFeatureRow(database, &rowBuf, r, featureID, "morph:outerHTML"); err != nil {
+	if err := writeFeatureRow(d, &rowBuf, r, featureID, "morph:outerHTML"); err != nil {
 		return err
 	}
 	_, err := w.Write(rowBuf.Bytes())
@@ -643,14 +642,14 @@ func writeFeatureMutationResponse(database *db.DB, w http.ResponseWriter, r *htt
 }
 
 // FeatureDetail returns the modal content partial via HTMX GET /features/{id}
-func FeatureDetail(database *db.DB) http.HandlerFunc {
+func FeatureDetail(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if err != nil {
 			http.Error(w, "invalid id", 400)
 			return
 		}
-		f, err := database.GetFeature(id)
+		f, err := d.Repo.GetFeature(id)
 		if err != nil || f == nil {
 			http.Error(w, "not found", 404)
 			return
@@ -658,17 +657,17 @@ func FeatureDetail(database *db.DB) http.HandlerFunc {
 		u := auth.UserFromContext(r)
 		// 草稿默认进入编辑模式
 		if f.Status == "draft" && f.CreatedBy == u.ID {
-			groups, err := database.ListGroups()
+			groups, err := d.Repo.ListGroups()
 			if err != nil {
 				http.Error(w, err.Error(), 500)
 				return
 			}
-			users, err := database.ListAllUsers()
+			users, err := d.Users.ListAllUsers()
 			if err != nil {
 				http.Error(w, err.Error(), 500)
 				return
 			}
-			atts, csv := loadAttachments(database, f.ID)
+			atts, csv := loadAttachments(d, f.ID)
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			if err := partials.ExecuteTemplate(w, "feature_draft_edit.html", draftEditData{Feature: f, Groups: groups, Users: users, Attachments: atts, AttachmentIDsCSV: csv}); err != nil {
 				http.Error(w, err.Error(), 500)
@@ -678,11 +677,11 @@ func FeatureDetail(database *db.DB) http.HandlerFunc {
 		// Mark specific notification as read when arriving from messages center
 		if notifIDStr := r.URL.Query().Get("notif_id"); notifIDStr != "" {
 			if notifID, err := strconv.ParseInt(notifIDStr, 10, 64); err == nil && notifID > 0 {
-				_ = database.MarkNotificationReadByID(u.ID, notifID)
+				_ = d.Notifs.MarkNotificationReadByID(u.ID, notifID)
 			}
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		detail, err := buildFeatureDetailData(database, u, f)
+		detail, err := buildFeatureDetailData(d, u, f)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -693,7 +692,7 @@ func FeatureDetail(database *db.DB) http.HandlerFunc {
 		// arrives before this HTMX response settles, causing refreshOpenCenter to overwrite modal.
 		isBackground := r.URL.Query().Get("bg") == "1"
 		if !isBackground {
-			_ = database.MarkNotificationsReadByFeature(u.ID, id)
+			_ = d.Notifs.MarkNotificationsReadByFeature(u.ID, id)
 			w.Header().Set("HX-Trigger", "message-refresh")
 		}
 		if err := partials.ExecuteTemplate(w, "feature_detail.html", detail); err != nil {
@@ -701,12 +700,12 @@ func FeatureDetail(database *db.DB) http.HandlerFunc {
 			return
 		}
 		// Append OOB row update so the blue bar disappears immediately in the list.
-		_ = writeFeatureRow(database, w, r, id, "morph:outerHTML")
+		_ = writeFeatureRow(d, w, r, id, "morph:outerHTML")
 	}
 }
 
 // RetractFeature handles DELETE /features/{id} — creator can retract their own pending feature
-func RetractFeature(database *db.DB) http.HandlerFunc {
+func RetractFeature(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -714,7 +713,7 @@ func RetractFeature(database *db.DB) http.HandlerFunc {
 			http.Error(w, "invalid id", 400)
 			return
 		}
-		f, err := database.GetFeature(id)
+		f, err := d.Repo.GetFeature(id)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -731,7 +730,7 @@ func RetractFeature(database *db.DB) http.HandlerFunc {
 			http.Error(w, fmt.Sprintf("无法撤回：当前状态为「%s」，只有待处理或草稿状态可撤回", f.Status), 403)
 			return
 		}
-		if err := database.DeleteFeature(id, u.ID); err != nil {
+		if err := d.Repo.DeleteFeature(id, u.ID); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
@@ -742,7 +741,7 @@ func RetractFeature(database *db.DB) http.HandlerFunc {
 }
 
 // AddComment handles POST /features/{id}/comments (HTMX)
-func AddComment(database *db.DB) http.HandlerFunc {
+func AddComment(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -757,30 +756,30 @@ func AddComment(database *db.DB) http.HandlerFunc {
 			return
 		}
 		c := &model.Comment{FeatureID: id, UserID: u.ID, Content: content}
-		if err := database.CreateComment(c); err != nil {
+		if err := d.Repo.CreateComment(c); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
 		if len(attachmentIDs) > 0 {
-			_ = database.AttachTo("comment", c.ID, u.ID, attachmentIDs)
+			_ = d.Files.AttachTo("comment", c.ID, u.ID, attachmentIDs)
 		}
 
 		// Notify feature creator when someone else comments.
-		f, _ := database.GetFeature(id)
+		f, _ := d.Repo.GetFeature(id)
 		fromUser := u.DisplayName
 		if fromUser == "" {
 			fromUser = u.Username
 		}
 		if f != nil && f.CreatedBy != u.ID {
-			createNewCommentNotification(database, f.CreatedBy, id, c.ID, fromUser, f.Title)
+			createNewCommentNotification(d, f.CreatedBy, id, c.ID, fromUser, f.Title)
 		}
 
 		// Parse @mentions and create notifications
 		for _, token := range parseMentions(content) {
-			mentioned, _ := database.GetUserByUsername(token)
+			mentioned, _ := d.Users.GetUserByUsername(token)
 			if mentioned == nil {
 				// token may be a display_name (e.g. @哈几米 where username differs)
-				mentioned, _ = database.GetUserByDisplayName(token)
+				mentioned, _ = d.Users.GetUserByDisplayName(token)
 			}
 			if mentioned == nil {
 				continue
@@ -789,28 +788,28 @@ func AddComment(database *db.DB) http.HandlerFunc {
 			if f != nil {
 				featureTitle = f.Title
 			}
-			createMentionNotification(database, mentioned.ID, id, c.ID, fromUser, featureTitle)
+			createMentionNotification(d, mentioned.ID, id, c.ID, fromUser, featureTitle)
 		}
 
-		comments, err := database.ListComments(id)
+		comments, err := d.Repo.ListComments(id)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
 		// Mark the commenter's own comment as seen so their row doesn't show a red dot.
-		_ = database.MarkCommentsRead(u.ID, id)
+		_ = d.Repo.MarkCommentsRead(u.ID, id)
 		hub.Global.Broadcast("comment-added:" + chi.URLParam(r, "id"))
 		// Refresh feature rows for all connected clients so the unread dot appears.
 		hub.Global.Broadcast("feature-row-updated:" + chi.URLParam(r, "id"))
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := partials.ExecuteTemplate(w, "comments_partial.html", renderCommentViews(comments, database, u.ID, u.Role == "admin")); err != nil {
+		if err := partials.ExecuteTemplate(w, "comments_partial.html", renderCommentViews(comments, d, u.ID, u.Role == "admin")); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}
 }
 
 // DeleteComment handles DELETE /features/{id}/comments/{commentID}
-func DeleteComment(database *db.DB) http.HandlerFunc {
+func DeleteComment(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		featureID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -823,7 +822,7 @@ func DeleteComment(database *db.DB) http.HandlerFunc {
 			http.Error(w, "invalid comment id", 400)
 			return
 		}
-		ok, err := database.DeleteComment(commentID, u.ID, u.Role == "admin")
+		ok, err := d.Repo.DeleteComment(commentID, u.ID, u.Role == "admin")
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -832,17 +831,17 @@ func DeleteComment(database *db.DB) http.HandlerFunc {
 			http.Error(w, "无权删除或评论不存在", 403)
 			return
 		}
-		_ = database.DetachAttachments("comment", commentID)
-		comments, err := database.ListComments(featureID)
+		_ = d.Files.DetachAttachments("comment", commentID)
+		comments, err := d.Repo.ListComments(featureID)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
 		// Keep the commenter's read pointer valid after deletion.
-		_ = database.MarkCommentsRead(u.ID, featureID)
+		_ = d.Repo.MarkCommentsRead(u.ID, featureID)
 		hub.Global.Broadcast("feature-row-updated:" + chi.URLParam(r, "id"))
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := partials.ExecuteTemplate(w, "comments_partial.html", renderCommentViews(comments, database, u.ID, u.Role == "admin")); err != nil {
+		if err := partials.ExecuteTemplate(w, "comments_partial.html", renderCommentViews(comments, d, u.ID, u.Role == "admin")); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}
@@ -862,7 +861,7 @@ func parseMentions(content string) []string {
 }
 
 // ArchiveFeature handles POST /features/{id}/archive — dev/admin 手动归档已完成功能
-func ArchiveFeature(database *db.DB) http.HandlerFunc {
+func ArchiveFeature(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		if !canEditStatus(u.Role) {
@@ -874,7 +873,7 @@ func ArchiveFeature(database *db.DB) http.HandlerFunc {
 			http.Error(w, "invalid id", 400)
 			return
 		}
-		f, err := database.GetFeature(id)
+		f, err := d.Repo.GetFeature(id)
 		if err != nil || f == nil {
 			http.Error(w, "not found", 404)
 			return
@@ -883,14 +882,14 @@ func ArchiveFeature(database *db.DB) http.HandlerFunc {
 			http.Error(w, "only done or rejected features can be archived", 400)
 			return
 		}
-		if err := database.UpdateFeatureStatus(id, "archived"); err != nil {
+		if err := d.Repo.UpdateFeatureStatus(id, "archived"); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
 		if shouldNotifyFeatureCreatorOnStatusChange(f, u.ID, "archived") {
-			createFeatureStatusNotification(database, f.CreatedBy, f, notificationSenderName(u), "archived", false)
+			createFeatureStatusNotification(d, f.CreatedBy, f, notificationSenderName(u), "archived", false)
 		}
-		_ = database.CreateFeatureEvent(&model.FeatureEvent{
+		_ = d.Repo.CreateFeatureEvent(&model.FeatureEvent{
 			FeatureID:  id,
 			OperatorID: u.ID,
 			Action:     "status_changed",
@@ -905,7 +904,7 @@ func ArchiveFeature(database *db.DB) http.HandlerFunc {
 
 // GetFeatureRow handles GET /features/{id}/row — returns single feature row partial for SSE targeted update.
 // If ?with_stats=1 is set, appends OOB stats partial to avoid a separate round-trip.
-func GetFeatureRow(database *db.DB) http.HandlerFunc {
+func GetFeatureRow(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if err != nil {
@@ -913,18 +912,18 @@ func GetFeatureRow(database *db.DB) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := writeFeatureRow(database, w, r, id, ""); err != nil {
+		if err := writeFeatureRow(d, w, r, id, ""); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
 		if r.URL.Query().Get("with_stats") == "1" {
-			writeOOBStats(database, w)
+			writeOOBStats(d, w)
 		}
 	}
 }
 
 // WatchFeature handles POST /features/{id}/watch
-func WatchFeature(database *db.DB) http.HandlerFunc {
+func WatchFeature(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -932,11 +931,11 @@ func WatchFeature(database *db.DB) http.HandlerFunc {
 			http.Error(w, "invalid id", 400)
 			return
 		}
-		if err := database.WatchFeature(u.ID, id); err != nil {
+		if err := d.Repo.WatchFeature(u.ID, id); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		f, err := database.GetFeature(id)
+		f, err := d.Repo.GetFeature(id)
 		if err != nil || f == nil {
 			http.Error(w, "not found", 404)
 			return
@@ -950,7 +949,7 @@ func WatchFeature(database *db.DB) http.HandlerFunc {
 }
 
 // UnwatchFeature handles DELETE /features/{id}/watch
-func UnwatchFeature(database *db.DB) http.HandlerFunc {
+func UnwatchFeature(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -958,11 +957,11 @@ func UnwatchFeature(database *db.DB) http.HandlerFunc {
 			http.Error(w, "invalid id", 400)
 			return
 		}
-		if err := database.UnwatchFeature(u.ID, id); err != nil {
+		if err := d.Repo.UnwatchFeature(u.ID, id); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		f, err := database.GetFeature(id)
+		f, err := d.Repo.GetFeature(id)
 		if err != nil || f == nil {
 			http.Error(w, "not found", 404)
 			return
@@ -983,8 +982,8 @@ type draftEditData struct {
 	AttachmentIDsCSV string
 }
 
-func loadAttachments(database *db.DB, featureID int64) ([]*model.Attachment, string) {
-	list, err := database.ListAttachments("feature", featureID)
+func loadAttachments(d *Deps, featureID int64) ([]*model.Attachment, string) {
+	list, err := d.Files.ListAttachments("feature", featureID)
 	if err != nil || len(list) == 0 {
 		return nil, ""
 	}
@@ -1012,7 +1011,7 @@ func parseAttachmentIDs(raw string) []int64 {
 }
 
 // DraftEditForm handles GET /features/{id}/edit — returns edit form modal partial for drafts.
-func DraftEditForm(database *db.DB) http.HandlerFunc {
+func DraftEditForm(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -1020,7 +1019,7 @@ func DraftEditForm(database *db.DB) http.HandlerFunc {
 			http.Error(w, "invalid id", 400)
 			return
 		}
-		f, err := database.GetFeature(id)
+		f, err := d.Repo.GetFeature(id)
 		if err != nil || f == nil {
 			http.Error(w, "not found", 404)
 			return
@@ -1029,17 +1028,17 @@ func DraftEditForm(database *db.DB) http.HandlerFunc {
 			http.Error(w, "forbidden", 403)
 			return
 		}
-		groups, err := database.ListGroups()
+		groups, err := d.Repo.ListGroups()
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		users, err := database.ListAllUsers()
+		users, err := d.Users.ListAllUsers()
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		atts, csv := loadAttachments(database, f.ID)
+		atts, csv := loadAttachments(d, f.ID)
 		data := draftEditData{Feature: f, Groups: groups, Users: users, Attachments: atts, AttachmentIDsCSV: csv}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if err := partials.ExecuteTemplate(w, "feature_draft_edit.html", data); err != nil {
@@ -1049,7 +1048,7 @@ func DraftEditForm(database *db.DB) http.HandlerFunc {
 }
 
 // UpdateDraft handles POST /features/{id}/edit — saves draft field changes.
-func UpdateDraft(database *db.DB) http.HandlerFunc {
+func UpdateDraft(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -1073,18 +1072,18 @@ func UpdateDraft(database *db.DB) http.HandlerFunc {
 				groupID = &gid
 			}
 		}
-		if err := database.UpdateFeatureDraft(id, u.ID, title, description, priority, groupID); err != nil {
+		if err := d.Repo.UpdateFeatureDraft(id, u.ID, title, description, priority, groupID); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		_ = database.SyncFeatureAttachments(id, u.ID, parseAttachmentIDs(r.FormValue("attachment_ids")))
+		_ = d.Files.SyncFeatureAttachments(id, u.ID, parseAttachmentIDs(r.FormValue("attachment_ids")))
 		// action=publish: 保存后直接发布为 pending
 		if r.FormValue("action") == "publish" {
-			if err := database.UpdateFeatureStatus(id, "pending"); err != nil {
+			if err := d.Repo.UpdateFeatureStatus(id, "pending"); err != nil {
 				http.Error(w, err.Error(), 500)
 				return
 			}
-			_ = database.CreateFeatureEvent(&model.FeatureEvent{
+			_ = d.Repo.CreateFeatureEvent(&model.FeatureEvent{
 				FeatureID:  id,
 				OperatorID: u.ID,
 				Action:     "created",
@@ -1096,19 +1095,19 @@ func UpdateDraft(database *db.DB) http.HandlerFunc {
 					fromUser = u.Username
 				}
 				for _, token := range parseMentions(description) {
-					mentioned, _ := database.GetUserByUsername(token)
+					mentioned, _ := d.Users.GetUserByUsername(token)
 					if mentioned == nil {
-						mentioned, _ = database.GetUserByDisplayName(token)
+						mentioned, _ = d.Users.GetUserByDisplayName(token)
 					}
 					if mentioned == nil || mentioned.ID == u.ID {
 						continue
 					}
-					f2, _ := database.GetFeature(id)
+					f2, _ := d.Repo.GetFeature(id)
 					ftitle := title
 					if f2 != nil {
 						ftitle = f2.Title
 					}
-					createMentionNotification(database, mentioned.ID, id, 0, fromUser, ftitle)
+					createMentionNotification(d, mentioned.ID, id, 0, fromUser, ftitle)
 				}
 			}
 			hub.Global.Broadcast("feature-list-changed")
@@ -1117,7 +1116,7 @@ func UpdateDraft(database *db.DB) http.HandlerFunc {
 			return
 		}
 		// Return updated detail view
-		f, err := database.GetFeature(id)
+		f, err := d.Repo.GetFeature(id)
 		if err != nil || f == nil {
 			http.Error(w, "not found", 404)
 			return
@@ -1135,7 +1134,7 @@ func UpdateDraft(database *db.DB) http.HandlerFunc {
 }
 
 // ModifyContentForm handles GET /features/{id}/modify — returns edit form for pending/rejected features.
-func ModifyContentForm(database *db.DB) http.HandlerFunc {
+func ModifyContentForm(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -1143,7 +1142,7 @@ func ModifyContentForm(database *db.DB) http.HandlerFunc {
 			http.Error(w, "invalid id", 400)
 			return
 		}
-		f, err := database.GetFeature(id)
+		f, err := d.Repo.GetFeature(id)
 		if err != nil || f == nil {
 			http.Error(w, "not found", 404)
 			return
@@ -1152,17 +1151,17 @@ func ModifyContentForm(database *db.DB) http.HandlerFunc {
 			http.Error(w, "forbidden", 403)
 			return
 		}
-		groups, err := database.ListGroups()
+		groups, err := d.Repo.ListGroups()
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		users, err := database.ListAllUsers()
+		users, err := d.Users.ListAllUsers()
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		atts, csv := loadAttachments(database, f.ID)
+		atts, csv := loadAttachments(d, f.ID)
 		data := draftEditData{Feature: f, Groups: groups, Users: users, Attachments: atts, AttachmentIDsCSV: csv}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if err := partials.ExecuteTemplate(w, "feature_modify.html", data); err != nil {
@@ -1172,7 +1171,7 @@ func ModifyContentForm(database *db.DB) http.HandlerFunc {
 }
 
 // UpdateFeatureContent handles POST /features/{id}/modify — saves content changes for pending/rejected features.
-func UpdateFeatureContent(database *db.DB) http.HandlerFunc {
+func UpdateFeatureContent(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -1198,7 +1197,7 @@ func UpdateFeatureContent(database *db.DB) http.HandlerFunc {
 		}
 
 		// Read old status before updating
-		fOld, err := database.GetFeature(id)
+		fOld, err := d.Repo.GetFeature(id)
 		if err != nil || fOld == nil {
 			http.Error(w, "not found", 404)
 			return
@@ -1209,25 +1208,25 @@ func UpdateFeatureContent(database *db.DB) http.HandlerFunc {
 		}
 		oldStatus := fOld.Status
 
-		if err := database.UpdateFeatureContent(id, u.ID, title, description, priority, groupID); err != nil {
+		if err := d.Repo.UpdateFeatureContent(id, u.ID, title, description, priority, groupID); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		_ = database.SyncFeatureAttachments(id, u.ID, parseAttachmentIDs(r.FormValue("attachment_ids")))
+		_ = d.Files.SyncFeatureAttachments(id, u.ID, parseAttachmentIDs(r.FormValue("attachment_ids")))
 
 		// If the proposal was rejected, revert it to pending for re-review
 		if oldStatus == "rejected" {
-			if err := database.UpdateFeatureStatus(id, "pending"); err != nil {
+			if err := d.Repo.UpdateFeatureStatus(id, "pending"); err != nil {
 				http.Error(w, err.Error(), 500)
 				return
 			}
-			_ = database.CreateFeatureEvent(&model.FeatureEvent{
+			_ = d.Repo.CreateFeatureEvent(&model.FeatureEvent{
 				FeatureID:  id,
 				OperatorID: u.ID,
 				Action:     "resubmitted",
 			})
 		} else {
-			_ = database.CreateFeatureEvent(&model.FeatureEvent{
+			_ = d.Repo.CreateFeatureEvent(&model.FeatureEvent{
 				FeatureID:  id,
 				OperatorID: u.ID,
 				Action:     "edited",
@@ -1238,12 +1237,12 @@ func UpdateFeatureContent(database *db.DB) http.HandlerFunc {
 		hub.Global.Broadcast("feature-list-changed")
 		hub.Global.Broadcast("stats-updated")
 
-		f, err := database.GetFeature(id)
+		f, err := d.Repo.GetFeature(id)
 		if err != nil || f == nil {
 			http.Error(w, "not found", 404)
 			return
 		}
-		detail, err := buildFeatureDetailData(database, u, f)
+		detail, err := buildFeatureDetailData(d, u, f)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -1256,7 +1255,7 @@ func UpdateFeatureContent(database *db.DB) http.HandlerFunc {
 }
 
 // GetComments handles GET /features/{id}/comments — returns comments partial for SSE targeted update.
-func GetComments(database *db.DB) http.HandlerFunc {
+func GetComments(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -1264,14 +1263,14 @@ func GetComments(database *db.DB) http.HandlerFunc {
 			http.Error(w, "invalid id", 400)
 			return
 		}
-		comments, err := database.ListComments(id)
+		comments, err := d.Repo.ListComments(id)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		_ = database.MarkCommentsRead(u.ID, id)
+		_ = d.Repo.MarkCommentsRead(u.ID, id)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := partials.ExecuteTemplate(w, "comments_partial.html", renderCommentViews(comments, database, u.ID, u.Role == "admin")); err != nil {
+		if err := partials.ExecuteTemplate(w, "comments_partial.html", renderCommentViews(comments, d, u.ID, u.Role == "admin")); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}

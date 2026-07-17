@@ -16,15 +16,14 @@ import (
 	"strconv"
 	"strings"
 
-	"visualink/internal/db"
 	"visualink/internal/model"
 
 	"github.com/go-chi/chi/v5"
 )
 
 // renderNotePerms 渲染权限弹层整体片段（各写端点成功后复用）。
-func renderNotePerms(w http.ResponseWriter, database *db.DB, n *model.Note) {
-	shares, err := database.ListNoteShares(n.ID)
+func renderNotePerms(w http.ResponseWriter, d *Deps, n *model.Note) {
+	shares, err := d.Repo.ListNoteShares(n.ID)
 	if err != nil {
 		http.Error(w, "查询失败", http.StatusInternalServerError)
 		return
@@ -37,20 +36,20 @@ func renderNotePerms(w http.ResponseWriter, database *db.DB, n *model.Note) {
 }
 
 // NotePermsPanel GET /notes/{id}/permissions
-func NotePermsPanel(database *db.DB) http.HandlerFunc {
+func NotePermsPanel(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n := loadNoteOwner(w, r, database)
+		n := loadNoteOwner(w, r, d)
 		if n == nil {
 			return
 		}
-		renderNotePerms(w, database, n)
+		renderNotePerms(w, d, n)
 	}
 }
 
 // SetNoteVisibility PUT /notes/{id}/visibility — 表单字段 visibility。
-func SetNoteVisibility(database *db.DB) http.HandlerFunc {
+func SetNoteVisibility(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n := loadNoteOwner(w, r, database)
+		n := loadNoteOwner(w, r, d)
 		if n == nil {
 			return
 		}
@@ -59,20 +58,20 @@ func SetNoteVisibility(database *db.DB) http.HandlerFunc {
 			http.Error(w, "无效的可见性档位", http.StatusBadRequest)
 			return
 		}
-		if err := database.SetNoteVisibility(n.ID, v); err != nil {
+		if err := d.Repo.SetNoteVisibility(n.ID, v); err != nil {
 			http.Error(w, "保存失败", http.StatusInternalServerError)
 			return
 		}
 		n.Visibility = v
-		renderNotePerms(w, database, n)
+		renderNotePerms(w, d, n)
 	}
 }
 
 // AddNoteShare POST /notes/{id}/shares — 表单字段 user_id、role。
 // 已在名单内则改角色（名单行的角色下拉切换也走这里）。
-func AddNoteShare(database *db.DB) http.HandlerFunc {
+func AddNoteShare(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n := loadNoteOwner(w, r, database)
+		n := loadNoteOwner(w, r, d)
 		if n == nil {
 			return
 		}
@@ -90,24 +89,24 @@ func AddNoteShare(database *db.DB) http.HandlerFunc {
 			http.Error(w, "创建者始终拥有全部权限，无需添加", http.StatusBadRequest)
 			return
 		}
-		target, err := database.GetUserByID(uid)
+		target, err := d.Users.GetUserByID(uid)
 		if err != nil || target == nil {
 			http.Error(w, "用户不存在", http.StatusBadRequest)
 			return
 		}
-		if err := database.UpsertNoteShare(n.ID, uid, role); err != nil {
+		if err := d.Repo.UpsertNoteShare(n.ID, uid, role); err != nil {
 			http.Error(w, "保存失败", http.StatusInternalServerError)
 			return
 		}
 		n.Visibility = model.NoteVisRestricted // UpsertNoteShare 已在库里切档
-		renderNotePerms(w, database, n)
+		renderNotePerms(w, d, n)
 	}
 }
 
 // RemoveNoteShare DELETE /notes/{id}/shares/{uid}
-func RemoveNoteShare(database *db.DB) http.HandlerFunc {
+func RemoveNoteShare(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n := loadNoteOwner(w, r, database)
+		n := loadNoteOwner(w, r, d)
 		if n == nil {
 			return
 		}
@@ -116,18 +115,18 @@ func RemoveNoteShare(database *db.DB) http.HandlerFunc {
 			http.Error(w, "无效的用户 ID", http.StatusBadRequest)
 			return
 		}
-		if err := database.RemoveNoteShare(n.ID, uid); err != nil {
+		if err := d.Repo.RemoveNoteShare(n.ID, uid); err != nil {
 			http.Error(w, "移除失败", http.StatusInternalServerError)
 			return
 		}
-		renderNotePerms(w, database, n)
+		renderNotePerms(w, d, n)
 	}
 }
 
 // NoteShareSearch GET /notes/{id}/share-search?q= — 候选用户小片段。
-func NoteShareSearch(database *db.DB) http.HandlerFunc {
+func NoteShareSearch(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n := loadNoteOwner(w, r, database)
+		n := loadNoteOwner(w, r, d)
 		if n == nil {
 			return
 		}
@@ -135,7 +134,7 @@ func NoteShareSearch(database *db.DB) http.HandlerFunc {
 		var users []*model.User
 		if q != "" {
 			var err error
-			users, err = database.SearchShareCandidates(n.ID, n.OwnerID, q)
+			users, err = d.Repo.SearchShareCandidates(n.ID, n.OwnerID, q)
 			if err != nil {
 				http.Error(w, "查询失败", http.StatusInternalServerError)
 				return

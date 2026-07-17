@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	"visualink/internal/db"
 	"visualink/internal/model"
 	"visualink/internal/platform/auth"
 	"visualink/internal/platform/hub"
@@ -104,20 +103,20 @@ func messageCenterURL(kind string, userID int64, search string) string {
 	return "/messages/center?" + strings.Join(parts, "&")
 }
 
-func buildMessageCenterData(database *db.DB, u *model.User, kind string, targetUserID int64, search string) (messageCenterData, error) {
+func buildMessageCenterData(d *Deps, u *model.User, kind string, targetUserID int64, search string) (messageCenterData, error) {
 	search = strings.TrimSpace(search)
 	if kind == "user" && targetUserID > 0 {
-		if err := database.MarkDirectMessagesRead(u.ID, targetUserID); err != nil {
+		if err := d.Repo.MarkDirectMessagesRead(u.ID, targetUserID); err != nil {
 			return messageCenterData{}, err
 		}
 	}
 	// 不再自动全部已读系统通知，单条已读由 notif_list.html 控制
 
-	systemContact, err := database.BuildSystemContact(u.ID)
+	systemContact, err := d.Repo.BuildSystemContact(u.ID)
 	if err != nil {
 		return messageCenterData{}, err
 	}
-	contacts, err := database.ListMessageContacts(u.ID, search)
+	contacts, err := d.Repo.ListMessageContacts(u.ID, search)
 	if err != nil {
 		return messageCenterData{}, err
 	}
@@ -127,7 +126,7 @@ func buildMessageCenterData(database *db.DB, u *model.User, kind string, targetU
 			kind = "user"
 			targetUserID = contacts[0].UserID
 			search = ""
-			contacts, err = database.ListMessageContacts(u.ID, "")
+			contacts, err = d.Repo.ListMessageContacts(u.ID, "")
 			if err != nil {
 				return messageCenterData{}, err
 			}
@@ -150,7 +149,7 @@ func buildMessageCenterData(database *db.DB, u *model.User, kind string, targetU
 			}
 		}
 		if !found {
-			other, err := database.GetUserByID(targetUserID)
+			other, err := d.Users.GetUserByID(targetUserID)
 			if err != nil {
 				return messageCenterData{}, err
 			}
@@ -191,7 +190,7 @@ func buildMessageCenterData(database *db.DB, u *model.User, kind string, targetU
 	if kind == "system" {
 		data.ActiveTitle = systemContact.Title
 		data.ActiveSubline = systemContact.Secondary
-		notifications, err := database.ListRecentNotifications(u.ID, 200)
+		notifications, err := d.Repo.ListRecentNotifications(u.ID, 200)
 		if err != nil {
 			return messageCenterData{}, err
 		}
@@ -203,11 +202,11 @@ func buildMessageCenterData(database *db.DB, u *model.User, kind string, targetU
 			data.EmptyState = "暂无系统通知"
 		}
 		// 打开系统通知列表时全部标已读（蓝条不受影响，仍需实际查看功能才消除）
-		_ = database.MarkAllNotificationsRead(u.ID)
+		_ = d.Repo.MarkAllNotificationsRead(u.ID)
 		return data, nil
 	}
 
-	other, err := database.GetUserByID(targetUserID)
+	other, err := d.Users.GetUserByID(targetUserID)
 	if err != nil {
 		return messageCenterData{}, err
 	}
@@ -221,7 +220,7 @@ func buildMessageCenterData(database *db.DB, u *model.User, kind string, targetU
 	data.ActiveTitle = other.DisplayName
 	data.ActiveSubline = "@" + other.Username
 	data.ActiveRole = messageRoleLabel(other.Role)
-	messages, err := database.ListDirectMessages(u.ID, other.ID, 200)
+	messages, err := d.Repo.ListDirectMessages(u.ID, other.ID, 200)
 	if err != nil {
 		return messageCenterData{}, err
 	}
@@ -232,10 +231,10 @@ func buildMessageCenterData(database *db.DB, u *model.User, kind string, targetU
 	return data, nil
 }
 
-func GetMessageBadge(database *db.DB) http.HandlerFunc {
+func GetMessageBadge(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
-		count, err := database.CountUnreadInbox(u.ID)
+		count, err := d.Repo.CountUnreadInbox(u.ID)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -247,20 +246,20 @@ func GetMessageBadge(database *db.DB) http.HandlerFunc {
 	}
 }
 
-func GetMessagePreview(database *db.DB) http.HandlerFunc {
+func GetMessagePreview(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
-		count, err := database.CountUnreadInbox(u.ID)
+		count, err := d.Repo.CountUnreadInbox(u.ID)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		systemContact, err := database.BuildSystemContact(u.ID)
+		systemContact, err := d.Repo.BuildSystemContact(u.ID)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		contacts, err := database.ListMessageContacts(u.ID, "")
+		contacts, err := d.Repo.ListMessageContacts(u.ID, "")
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -304,13 +303,13 @@ func GetMessagePreview(database *db.DB) http.HandlerFunc {
 	}
 }
 
-func GetMessageCenter(database *db.DB) http.HandlerFunc {
+func GetMessageCenter(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		search := strings.TrimSpace(r.URL.Query().Get("q"))
 		kind := strings.TrimSpace(r.URL.Query().Get("kind"))
 		targetUserID, _ := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
-		data, err := buildMessageCenterData(database, u, kind, targetUserID, search)
+		data, err := buildMessageCenterData(d, u, kind, targetUserID, search)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -327,7 +326,7 @@ func GetMessageCenter(database *db.DB) http.HandlerFunc {
 	}
 }
 
-func SendMessage(database *db.DB) http.HandlerFunc {
+func SendMessage(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		recipientID, err := strconv.ParseInt(r.FormValue("recipient_id"), 10, 64)
@@ -344,7 +343,7 @@ func SendMessage(database *db.DB) http.HandlerFunc {
 			http.Error(w, "消息不能为空", 400)
 			return
 		}
-		other, err := database.GetUserByID(recipientID)
+		other, err := d.Users.GetUserByID(recipientID)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -353,14 +352,14 @@ func SendMessage(database *db.DB) http.HandlerFunc {
 			http.Error(w, "联系人不存在", 404)
 			return
 		}
-		if _, err := database.CreateDirectMessage(u.ID, recipientID, content); err != nil {
+		if _, err := d.Repo.CreateDirectMessage(u.ID, recipientID, content); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
 		hub.Global.Broadcast(fmt.Sprintf("mailbox-updated:%d", recipientID))
 		hub.Global.Broadcast(fmt.Sprintf("mailbox-updated:%d", u.ID))
 
-		data, err := buildMessageCenterData(database, u, "user", recipientID, strings.TrimSpace(r.FormValue("q")))
+		data, err := buildMessageCenterData(d, u, "user", recipientID, strings.TrimSpace(r.FormValue("q")))
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return

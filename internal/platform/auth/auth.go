@@ -9,9 +9,7 @@ import (
 	"regexp"
 	"strings"
 
-	"visualink/internal/db"
 	"visualink/internal/model"
-	"visualink/internal/platform/session"
 	"visualink/internal/platform/web"
 
 	"github.com/go-chi/chi/v5"
@@ -37,9 +35,9 @@ type contextKey string
 
 const ctxUser contextKey = "user"
 
-func RequireAuth(database *db.DB, next http.Handler) http.Handler {
+func RequireAuth(store *Store, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		u, err := session.GetUser(r, database)
+		u, err := SessionUser(r, store)
 		if err != nil || u == nil {
 			web.Redirect(w, r, "/login")
 			return
@@ -71,12 +69,12 @@ func WithFlash(pd *model.PageData, t, msg string) *model.PageData {
 // ── 路由 ────────────────────────────────────────────────────────────────
 
 // Routes 注册公开路由(登录/注册/退出)。
-func Routes(r chi.Router, database *db.DB) {
-	r.Get("/login", loginPage(database))
-	r.Post("/login", login(database))
-	r.Get("/register", registerPage(database))
-	r.Post("/register", register(database))
-	r.Post("/logout", logout(database))
+func Routes(r chi.Router, store *Store) {
+	r.Get("/login", loginPage(store))
+	r.Post("/login", login(store))
+	r.Get("/register", registerPage(store))
+	r.Post("/register", register(store))
+	r.Post("/logout", logout(store))
 }
 
 // ── 端点 ────────────────────────────────────────────────────────────────
@@ -85,9 +83,9 @@ func render(w http.ResponseWriter, name string, data *model.PageData) {
 	web.RenderPage(w, pages, name, data)
 }
 
-func loginPage(database *db.DB) http.HandlerFunc {
+func loginPage(store *Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if u, _ := session.GetUser(r, database); u != nil {
+		if u, _ := SessionUser(r, store); u != nil {
 			web.Redirect(w, r, "/dashboard")
 			return
 		}
@@ -95,12 +93,12 @@ func loginPage(database *db.DB) http.HandlerFunc {
 	}
 }
 
-func login(database *db.DB) http.HandlerFunc {
+func login(store *Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username := strings.TrimSpace(r.FormValue("username"))
 		password := r.FormValue("password")
 
-		u, err := database.GetUserByUsername(username)
+		u, err := store.GetUserByUsername(username)
 		if err != nil {
 			render(w, "login.html", WithFlash(&model.PageData{}, "error", "服务器错误，请重试"))
 			return
@@ -109,7 +107,7 @@ func login(database *db.DB) http.HandlerFunc {
 			render(w, "login.html", WithFlash(&model.PageData{}, "error", "用户名或密码错误"))
 			return
 		}
-		if err := session.Set(w, r, database, u.ID); err != nil {
+		if err := SetSession(w, store, u.ID); err != nil {
 			render(w, "login.html", WithFlash(&model.PageData{}, "error", "登录失败，请重试"))
 			return
 		}
@@ -117,9 +115,9 @@ func login(database *db.DB) http.HandlerFunc {
 	}
 }
 
-func registerPage(database *db.DB) http.HandlerFunc {
+func registerPage(store *Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if u, _ := session.GetUser(r, database); u != nil {
+		if u, _ := SessionUser(r, store); u != nil {
 			web.Redirect(w, r, "/dashboard")
 			return
 		}
@@ -127,7 +125,7 @@ func registerPage(database *db.DB) http.HandlerFunc {
 	}
 }
 
-func register(database *db.DB) http.HandlerFunc {
+func register(store *Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username := strings.TrimSpace(r.FormValue("username"))
 		displayName := strings.TrimSpace(r.FormValue("display_name"))
@@ -154,12 +152,12 @@ func register(database *db.DB) http.HandlerFunc {
 			displayName = username
 		}
 
-		exists, _ := database.UsernameExists(username)
+		exists, _ := store.UsernameExists(username)
 		if exists {
 			render(w, "register.html", WithFlash(&model.PageData{}, "error", "用户名已被占用"))
 			return
 		}
-		eExists, _ := database.EmailExists(email)
+		eExists, _ := store.EmailExists(email)
 		if eExists {
 			render(w, "register.html", WithFlash(&model.PageData{}, "error", "邮箱已被注册"))
 			return
@@ -171,11 +169,11 @@ func register(database *db.DB) http.HandlerFunc {
 			return
 		}
 		u := &model.User{Username: username, DisplayName: displayName, Email: email, Password: string(hash), Role: role}
-		if err := database.CreateUser(u); err != nil {
+		if err := store.CreateUser(u); err != nil {
 			render(w, "register.html", WithFlash(&model.PageData{}, "error", "注册失败，请重试"))
 			return
 		}
-		if err := session.Set(w, r, database, u.ID); err != nil {
+		if err := SetSession(w, store, u.ID); err != nil {
 			web.Redirect(w, r, "/login")
 			return
 		}
@@ -183,9 +181,9 @@ func register(database *db.DB) http.HandlerFunc {
 	}
 }
 
-func logout(database *db.DB) http.HandlerFunc {
+func logout(store *Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		session.Delete(w, r, database)
+		ClearSession(w, r, store)
 		web.Redirect(w, r, "/login")
 	}
 }

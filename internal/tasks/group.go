@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"strings"
 
-	"visualink/internal/db"
 	"visualink/internal/model"
 	"visualink/internal/platform/auth"
 
@@ -16,9 +15,9 @@ type groupsData struct {
 	Groups []*model.Group
 }
 
-func ListGroups(database *db.DB) http.HandlerFunc {
+func ListGroups(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		groups, err := database.ListGroups()
+		groups, err := d.Repo.ListGroups()
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -38,7 +37,7 @@ type groupDetailData struct {
 	CanManage bool
 }
 
-func GroupDetail(database *db.DB) http.HandlerFunc {
+func GroupDetail(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -46,12 +45,12 @@ func GroupDetail(database *db.DB) http.HandlerFunc {
 			http.Error(w, "invalid id", 400)
 			return
 		}
-		g, err := database.GetGroup(id)
+		g, err := d.Repo.GetGroup(id)
 		if err != nil || g == nil {
 			http.Error(w, "not found", 404)
 			return
 		}
-		features, err := database.ListFeaturesInGroup(id)
+		features, err := d.Repo.ListFeaturesInGroup(id)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -61,11 +60,11 @@ func GroupDetail(database *db.DB) http.HandlerFunc {
 		for i, f := range features {
 			rows[i] = featureRowData{Feature: f, CanEditStatus: canEdit}
 		}
-		members, _ := database.ListGroupMembers(id)
-		subType, _ := database.GetGroupSubscription(u.ID, id)
+		members, _ := d.Repo.ListGroupMembers(id)
+		subType, _ := d.Repo.GetGroupSubscription(u.ID, id)
 		var allUsers []*model.User
 		if u.Role == "admin" {
-			allUsers, _ = database.ListAllUsers()
+			allUsers, _ = d.Users.ListAllUsers()
 		}
 		pd := auth.PageData(r, "groups")
 		pd.Data = groupDetailData{
@@ -80,7 +79,7 @@ func GroupDetail(database *db.DB) http.HandlerFunc {
 	}
 }
 
-func CreateGroup(database *db.DB) http.HandlerFunc {
+func CreateGroup(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		title := strings.TrimSpace(r.FormValue("title"))
@@ -90,7 +89,7 @@ func CreateGroup(database *db.DB) http.HandlerFunc {
 			return
 		}
 		g := &model.Group{Title: title, Description: description, CreatedBy: u.ID}
-		if err := database.CreateGroup(g); err != nil {
+		if err := d.Repo.CreateGroup(g); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
@@ -99,8 +98,8 @@ func CreateGroup(database *db.DB) http.HandlerFunc {
 }
 
 // groupActionResponse re-renders the group action button partial.
-func groupActionResponse(w http.ResponseWriter, database *db.DB, groupID, userID int64) {
-	subType, _ := database.GetGroupSubscription(userID, groupID)
+func groupActionResponse(w http.ResponseWriter, d *Deps, groupID, userID int64) {
+	subType, _ := d.Repo.GetGroupSubscription(userID, groupID)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = partials.ExecuteTemplate(w, "group_action_btn.html", map[string]any{
 		"GroupID": groupID,
@@ -109,7 +108,7 @@ func groupActionResponse(w http.ResponseWriter, database *db.DB, groupID, userID
 }
 
 // JoinGroup handles POST /groups/{id}/join — self-join as member
-func JoinGroup(database *db.DB) http.HandlerFunc {
+func JoinGroup(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -117,16 +116,16 @@ func JoinGroup(database *db.DB) http.HandlerFunc {
 			http.Error(w, "invalid id", 400)
 			return
 		}
-		if err := database.UpsertGroupSubscription(u.ID, id, "member"); err != nil {
+		if err := d.Repo.UpsertGroupSubscription(u.ID, id, "member"); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		groupActionResponse(w, database, id, u.ID)
+		groupActionResponse(w, d, id, u.ID)
 	}
 }
 
 // LeaveGroup handles DELETE /groups/{id}/join — self-leave
-func LeaveGroup(database *db.DB) http.HandlerFunc {
+func LeaveGroup(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -134,16 +133,16 @@ func LeaveGroup(database *db.DB) http.HandlerFunc {
 			http.Error(w, "invalid id", 400)
 			return
 		}
-		if err := database.DeleteGroupSubscription(u.ID, id); err != nil {
+		if err := d.Repo.DeleteGroupSubscription(u.ID, id); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		groupActionResponse(w, database, id, u.ID)
+		groupActionResponse(w, d, id, u.ID)
 	}
 }
 
 // WatchGroup handles POST /groups/{id}/watch — subscribe without joining
-func WatchGroup(database *db.DB) http.HandlerFunc {
+func WatchGroup(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -152,19 +151,19 @@ func WatchGroup(database *db.DB) http.HandlerFunc {
 			return
 		}
 		// Only set watch if not already a member
-		cur, _ := database.GetGroupSubscription(u.ID, id)
+		cur, _ := d.Repo.GetGroupSubscription(u.ID, id)
 		if cur != "member" {
-			if err := database.UpsertGroupSubscription(u.ID, id, "watch"); err != nil {
+			if err := d.Repo.UpsertGroupSubscription(u.ID, id, "watch"); err != nil {
 				http.Error(w, err.Error(), 500)
 				return
 			}
 		}
-		groupActionResponse(w, database, id, u.ID)
+		groupActionResponse(w, d, id, u.ID)
 	}
 }
 
 // UnwatchGroup handles DELETE /groups/{id}/watch
-func UnwatchGroup(database *db.DB) http.HandlerFunc {
+func UnwatchGroup(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -172,19 +171,19 @@ func UnwatchGroup(database *db.DB) http.HandlerFunc {
 			http.Error(w, "invalid id", 400)
 			return
 		}
-		cur, _ := database.GetGroupSubscription(u.ID, id)
+		cur, _ := d.Repo.GetGroupSubscription(u.ID, id)
 		if cur == "watch" {
-			if err := database.DeleteGroupSubscription(u.ID, id); err != nil {
+			if err := d.Repo.DeleteGroupSubscription(u.ID, id); err != nil {
 				http.Error(w, err.Error(), 500)
 				return
 			}
 		}
-		groupActionResponse(w, database, id, u.ID)
+		groupActionResponse(w, d, id, u.ID)
 	}
 }
 
 // AddGroupMember handles POST /groups/{id}/members — admin adds a user as member
-func AddGroupMember(database *db.DB) http.HandlerFunc {
+func AddGroupMember(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		if u.Role != "admin" {
@@ -201,12 +200,12 @@ func AddGroupMember(database *db.DB) http.HandlerFunc {
 			http.Error(w, "invalid user_id", 400)
 			return
 		}
-		if err := database.UpsertGroupSubscription(userID, groupID, "member"); err != nil {
+		if err := d.Repo.UpsertGroupSubscription(userID, groupID, "member"); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		members, _ := database.ListGroupMembers(groupID)
-		allUsers, _ := database.ListAllUsers()
+		members, _ := d.Repo.ListGroupMembers(groupID)
+		allUsers, _ := d.Users.ListAllUsers()
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_ = partials.ExecuteTemplate(w, "group_members_partial.html", map[string]any{
 			"GroupID":   groupID,
@@ -218,7 +217,7 @@ func AddGroupMember(database *db.DB) http.HandlerFunc {
 }
 
 // RemoveGroupMember handles DELETE /groups/{id}/members/{uid} — admin removes a member
-func RemoveGroupMember(database *db.DB) http.HandlerFunc {
+func RemoveGroupMember(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		if u.Role != "admin" {
@@ -235,12 +234,12 @@ func RemoveGroupMember(database *db.DB) http.HandlerFunc {
 			http.Error(w, "invalid uid", 400)
 			return
 		}
-		if err := database.DeleteGroupSubscription(userID, groupID); err != nil {
+		if err := d.Repo.DeleteGroupSubscription(userID, groupID); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		members, _ := database.ListGroupMembers(groupID)
-		allUsers, _ := database.ListAllUsers()
+		members, _ := d.Repo.ListGroupMembers(groupID)
+		allUsers, _ := d.Users.ListAllUsers()
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_ = partials.ExecuteTemplate(w, "group_members_partial.html", map[string]any{
 			"GroupID":   groupID,

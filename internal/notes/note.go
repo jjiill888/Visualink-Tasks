@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"strings"
 
-	"visualink/internal/db"
 	"visualink/internal/model"
 	"visualink/internal/platform/auth"
 	"visualink/internal/platform/web"
@@ -49,13 +48,13 @@ var noteStoredNameRe = regexp.MustCompile(`^[a-f0-9]{16}\.[a-z0-9]{1,8}$`)
 
 // loadNote 解析路径中的 {id}、加载笔记并做可读性检查（MyAccess 由 SQL 按
 // 当前用户算好）。失败时已写好响应，返回 nil。
-func loadNote(w http.ResponseWriter, r *http.Request, database *db.DB) *model.Note {
+func loadNote(w http.ResponseWriter, r *http.Request, d *Deps) *model.Note {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
 		http.Error(w, "无效的笔记 ID", http.StatusBadRequest)
 		return nil
 	}
-	n, err := database.GetNote(id, auth.UserFromContext(r).ID)
+	n, err := d.Repo.GetNote(id, auth.UserFromContext(r).ID)
 	if err != nil {
 		http.Error(w, "服务器错误", http.StatusInternalServerError)
 		return nil
@@ -69,8 +68,8 @@ func loadNote(w http.ResponseWriter, r *http.Request, database *db.DB) *model.No
 }
 
 // loadNoteForEdit loadNote + 编辑权检查（受限笔记的 reader 只读）。
-func loadNoteForEdit(w http.ResponseWriter, r *http.Request, database *db.DB) *model.Note {
-	n := loadNote(w, r, database)
+func loadNoteForEdit(w http.ResponseWriter, r *http.Request, d *Deps) *model.Note {
+	n := loadNote(w, r, d)
 	if n == nil {
 		return nil
 	}
@@ -82,8 +81,8 @@ func loadNoteForEdit(w http.ResponseWriter, r *http.Request, database *db.DB) *m
 }
 
 // loadNoteOwner loadNote + 仅创建者（权限管理端点用）。
-func loadNoteOwner(w http.ResponseWriter, r *http.Request, database *db.DB) *model.Note {
-	n := loadNote(w, r, database)
+func loadNoteOwner(w http.ResponseWriter, r *http.Request, d *Deps) *model.Note {
+	n := loadNote(w, r, d)
 	if n == nil {
 		return nil
 	}
@@ -100,10 +99,10 @@ type notesListData struct {
 	CurrentUserID int64
 }
 
-func notesList(w http.ResponseWriter, r *http.Request, database *db.DB, fullPage bool) {
+func notesList(w http.ResponseWriter, r *http.Request, d *Deps, fullPage bool) {
 	u := auth.UserFromContext(r)
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
-	notes, err := database.ListNotes(u.ID, query)
+	notes, err := d.Repo.ListNotes(u.ID, query)
 	if err != nil {
 		http.Error(w, "查询失败", http.StatusInternalServerError)
 		return
@@ -122,9 +121,9 @@ func notesList(w http.ResponseWriter, r *http.Request, database *db.DB, fullPage
 }
 
 // NotesPage GET /notes — 列表页；HTMX 搜索请求只返回列表片段。
-func NotesPage(database *db.DB) http.HandlerFunc {
+func NotesPage(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		notesList(w, r, database, r.Header.Get("HX-Request") != "true")
+		notesList(w, r, d, r.Header.Get("HX-Request") != "true")
 	}
 }
 
@@ -151,8 +150,8 @@ type notesPanelGroup struct {
 // 文档组是纯组织结构：笔记落在哪个区仍由 visibility 决定，同组笔记可见性
 // 不同时文件夹会在多个区分别出现（各显示各区的笔记）。自己建的空组
 // （或组内笔记当前都不可见）挂在公共区——新文档默认公开，会落回这里。
-func notesPanelData(database *db.DB, userID int64) (map[string]any, error) {
-	notes, err := database.ListNotes(userID, "")
+func notesPanelData(d *Deps, userID int64) (map[string]any, error) {
+	notes, err := d.Repo.ListNotes(userID, "")
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +195,7 @@ func notesPanelData(database *db.DB, userID int64) (map[string]any, error) {
 		dir.Notes = append(dir.Notes, n)
 	}
 	// 自己建的组补 Own 标记；没有可见笔记的组挂公共区（空组也要能看到/删掉）
-	owned, err := database.ListNoteGroups(userID)
+	owned, err := d.Repo.ListNoteGroups(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -217,8 +216,8 @@ func notesPanelData(database *db.DB, userID int64) (map[string]any, error) {
 }
 
 // writeNotesPanel 渲染侧栏文档列表片段（面板刷新与组增删/移动的共同出口）。
-func writeNotesPanel(w http.ResponseWriter, database *db.DB, userID int64) {
-	data, err := notesPanelData(database, userID)
+func writeNotesPanel(w http.ResponseWriter, d *Deps, userID int64) {
+	data, err := notesPanelData(d, userID)
 	if err != nil {
 		http.Error(w, "查询失败", http.StatusInternalServerError)
 		return
@@ -232,14 +231,14 @@ func writeNotesPanel(w http.ResponseWriter, database *db.DB, userID int64) {
 // NotesPanel GET /notes/panel — 侧栏文档列表片段。
 // 编辑页首屏由 NoteEditPage 直出同一片段（跨境高 RTT 下不必等 fetch），
 // 本端点只用于打开侧栏时的后台刷新。
-func NotesPanel(database *db.DB) http.HandlerFunc {
+func NotesPanel(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		writeNotesPanel(w, database, auth.UserFromContext(r).ID)
+		writeNotesPanel(w, d, auth.UserFromContext(r).ID)
 	}
 }
 
 // CreateNoteGroup POST /notes/groups — 新建文档组，返回刷新后的面板片段。
-func CreateNoteGroup(database *db.DB) http.HandlerFunc {
+func CreateNoteGroup(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		name := strings.TrimSpace(r.FormValue("name"))
@@ -251,17 +250,17 @@ func CreateNoteGroup(database *db.DB) http.HandlerFunc {
 			http.Error(w, "组名最多 50 个字符", http.StatusBadRequest)
 			return
 		}
-		if _, err := database.CreateNoteGroup(u.ID, name); err != nil {
+		if _, err := d.Repo.CreateNoteGroup(u.ID, name); err != nil {
 			http.Error(w, "创建失败", http.StatusInternalServerError)
 			return
 		}
-		writeNotesPanel(w, database, u.ID)
+		writeNotesPanel(w, d, u.ID)
 	}
 }
 
 // DeleteNoteGroup DELETE /notes/groups/{gid} — 删组（仅建组者），
 // 组内文档回到未分组，不删除文档。返回刷新后的面板片段。
-func DeleteNoteGroup(database *db.DB) http.HandlerFunc {
+func DeleteNoteGroup(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		gid, err := strconv.ParseInt(chi.URLParam(r, "gid"), 10, 64)
@@ -269,18 +268,18 @@ func DeleteNoteGroup(database *db.DB) http.HandlerFunc {
 			http.Error(w, "无效的组 ID", http.StatusBadRequest)
 			return
 		}
-		if err := database.DeleteNoteGroup(gid, u.ID); err != nil {
+		if err := d.Repo.DeleteNoteGroup(gid, u.ID); err != nil {
 			http.Error(w, "只有建组者可以删除这个组", http.StatusForbidden)
 			return
 		}
-		writeNotesPanel(w, database, u.ID)
+		writeNotesPanel(w, d, u.ID)
 	}
 }
 
 // SetNoteGroup PUT /notes/{id}/group — 移动笔记归属组（group_id 空/0 = 移出）。
 // 只有笔记创建者能移，且只能挂进自己建的组（SQL 双重属主校验）。
 // 返回刷新后的面板片段。
-func SetNoteGroup(database *db.DB) http.HandlerFunc {
+func SetNoteGroup(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -295,19 +294,19 @@ func SetNoteGroup(database *db.DB) http.HandlerFunc {
 				return
 			}
 		}
-		if err := database.SetNoteGroup(id, u.ID, gid); err != nil {
+		if err := d.Repo.SetNoteGroup(id, u.ID, gid); err != nil {
 			http.Error(w, "只能把自己的文档移进自己建的组", http.StatusForbidden)
 			return
 		}
-		writeNotesPanel(w, database, u.ID)
+		writeNotesPanel(w, d, u.ID)
 	}
 }
 
 // renderNoteEdit 渲染编辑页（NoteEditPage 与 NewNote 共用）。
 // 侧栏文档列表随页面直出（查询失败不阻塞编辑，Panel 为 nil 时
 // 模板显示占位，前端打开侧栏时再 fetch 补拉）。
-func renderNoteEdit(w http.ResponseWriter, r *http.Request, database *db.DB, n *model.Note) {
-	panel, err := notesPanelData(database, auth.UserFromContext(r).ID)
+func renderNoteEdit(w http.ResponseWriter, r *http.Request, d *Deps, n *model.Note) {
+	panel, err := notesPanelData(d, auth.UserFromContext(r).ID)
 	if err != nil {
 		panel = nil
 	}
@@ -334,13 +333,13 @@ func renderNoteEdit(w http.ResponseWriter, r *http.Request, database *db.DB, n *
 // 跨境高 RTT 下 302+跟随 = 两个串行来回；直出省掉一跳，模板里的
 // history.replaceState 把地址栏归一到 /notes/{id}（防刷新重复建）。
 // 用 GET 是为了让「新建笔记」做成 target="_blank" 的普通链接。
-func NewNote(database *db.DB) http.HandlerFunc {
+func NewNote(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		// ?group=N：在文档组内新建（侧栏组行的「＋」）；不是自己的组则忽略入组
 		var groupID int64
 		if v := r.URL.Query().Get("group"); v != "" {
-			if gid, err := strconv.ParseInt(v, 10, 64); err == nil && database.OwnsNoteGroup(gid, u.ID) {
+			if gid, err := strconv.ParseInt(v, 10, 64); err == nil && d.Repo.OwnsNoteGroup(gid, u.ID) {
 				groupID = gid
 			}
 		}
@@ -350,30 +349,30 @@ func NewNote(database *db.DB) http.HandlerFunc {
 		if vis != model.NoteVisPrivate && vis != model.NoteVisRestricted {
 			vis = model.NoteVisPublic
 		}
-		id, err := database.CreateNote(u.ID, "无标题笔记", groupID, vis)
+		id, err := d.Repo.CreateNote(u.ID, "无标题笔记", groupID, vis)
 		if err != nil {
 			http.Error(w, "创建失败", http.StatusInternalServerError)
 			return
 		}
-		n, err := database.GetNote(id, u.ID)
+		n, err := d.Repo.GetNote(id, u.ID)
 		if err != nil || n == nil {
 			// 建成了但读不回来（几乎不可能），退回跳转兜底
 			http.Redirect(w, r, fmt.Sprintf("/notes/%d", id), http.StatusFound)
 			return
 		}
-		renderNoteEdit(w, r, database, n)
+		renderNoteEdit(w, r, d, n)
 	}
 }
 
 // NoteEditPage GET /notes/{id} — 编辑页（Milkdown 客户端渲染岛）。
 // 独立标签页打开，不套 base.html 应用外壳（Typora 式极简风格）。
-func NoteEditPage(database *db.DB) http.HandlerFunc {
+func NoteEditPage(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n := loadNote(w, r, database)
+		n := loadNote(w, r, d)
 		if n == nil {
 			return
 		}
-		renderNoteEdit(w, r, database, n)
+		renderNoteEdit(w, r, d, n)
 	}
 }
 
@@ -385,9 +384,9 @@ type saveNoteReq struct {
 
 // SaveNote PUT /notes/{id} — 编辑器自动保存（需编辑权）。请求/响应均为 JSON。
 // base_updated_at 与库中不一致时返回 409（乐观锁）。
-func SaveNote(database *db.DB) http.HandlerFunc {
+func SaveNote(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n := loadNoteForEdit(w, r, database)
+		n := loadNoteForEdit(w, r, d)
 		if n == nil {
 			return
 		}
@@ -404,8 +403,8 @@ func SaveNote(database *db.DB) http.HandlerFunc {
 			title = "无标题笔记"
 		}
 
-		newUpdatedAt, err := database.SaveNote(n.ID, u.ID, title, req.ContentMD, req.BaseUpdatedAt)
-		if errors.Is(err, db.ErrNoteConflict) {
+		newUpdatedAt, err := d.Repo.SaveNote(n.ID, u.ID, title, req.ContentMD, req.BaseUpdatedAt)
+		if errors.Is(err, ErrNoteConflict) {
 			w.Header().Set("Content-Type", "application/json; charset=utf-8")
 			w.WriteHeader(http.StatusConflict)
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": "笔记已被他人修改"})
@@ -421,9 +420,9 @@ func SaveNote(database *db.DB) http.HandlerFunc {
 }
 
 // DeleteNote DELETE /notes/{id} — 软删除（仅 owner），HTMX 返回刷新后的列表片段。
-func DeleteNote(database *db.DB) http.HandlerFunc {
+func DeleteNote(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n := loadNote(w, r, database)
+		n := loadNote(w, r, d)
 		if n == nil {
 			return
 		}
@@ -432,27 +431,27 @@ func DeleteNote(database *db.DB) http.HandlerFunc {
 			http.Error(w, "仅创建者可删除笔记", http.StatusForbidden)
 			return
 		}
-		if err := database.SoftDeleteNote(n.ID, u.ID); err != nil {
+		if err := d.Repo.SoftDeleteNote(n.ID, u.ID); err != nil {
 			http.Error(w, "删除失败", http.StatusInternalServerError)
 			return
 		}
 		// 文库页 HTMX 请求返回列表片段；侧栏文件树 fetch 返回面板片段
 		if r.Header.Get("HX-Request") == "true" {
-			notesList(w, r, database, false)
+			notesList(w, r, d, false)
 			return
 		}
-		writeNotesPanel(w, database, u.ID)
+		writeNotesPanel(w, d, u.ID)
 	}
 }
 
 // NoteHistory GET /notes/{id}/history — 版本列表（HTMX 弹层内容）。
-func NoteHistory(database *db.DB) http.HandlerFunc {
+func NoteHistory(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n := loadNote(w, r, database)
+		n := loadNote(w, r, d)
 		if n == nil {
 			return
 		}
-		revs, err := database.ListNoteRevisions(n.ID)
+		revs, err := d.Repo.ListNoteRevisions(n.ID)
 		if err != nil {
 			http.Error(w, "查询失败", http.StatusInternalServerError)
 			return
@@ -466,9 +465,9 @@ func NoteHistory(database *db.DB) http.HandlerFunc {
 }
 
 // NoteRevisionPage GET /notes/{id}/revisions/{rid} — 历史版本只读渲染页。
-func NoteRevisionPage(database *db.DB) http.HandlerFunc {
+func NoteRevisionPage(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n := loadNote(w, r, database)
+		n := loadNote(w, r, d)
 		if n == nil {
 			return
 		}
@@ -477,7 +476,7 @@ func NoteRevisionPage(database *db.DB) http.HandlerFunc {
 			http.Error(w, "无效的版本 ID", http.StatusBadRequest)
 			return
 		}
-		rev, err := database.GetNoteRevision(n.ID, rid)
+		rev, err := d.Repo.GetNoteRevision(n.ID, rid)
 		if err != nil {
 			http.Error(w, "服务器错误", http.StatusInternalServerError)
 			return
@@ -493,9 +492,9 @@ func NoteRevisionPage(database *db.DB) http.HandlerFunc {
 }
 
 // RestoreNoteRevision POST /notes/{id}/restore/{rid} — 恢复到某历史版本（需编辑权）。
-func RestoreNoteRevision(database *db.DB) http.HandlerFunc {
+func RestoreNoteRevision(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n := loadNoteForEdit(w, r, database)
+		n := loadNoteForEdit(w, r, d)
 		if n == nil {
 			return
 		}
@@ -505,7 +504,7 @@ func RestoreNoteRevision(database *db.DB) http.HandlerFunc {
 			http.Error(w, "无效的版本 ID", http.StatusBadRequest)
 			return
 		}
-		if err := database.RestoreNoteRevision(n.ID, rid, u.ID); err != nil {
+		if err := d.Repo.RestoreNoteRevision(n.ID, rid, u.ID); err != nil {
 			http.Error(w, "恢复失败："+err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -522,9 +521,9 @@ func RestoreNoteRevision(database *db.DB) http.HandlerFunc {
 
 // UploadNoteAttachment POST /notes/{id}/attachments — 图片/文件上传（需编辑权）。
 // 校验大小（≤20MB）与扩展名白名单，返回 JSON {url, filename, is_image}。
-func UploadNoteAttachment(database *db.DB) http.HandlerFunc {
+func UploadNoteAttachment(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n := loadNoteForEdit(w, r, database)
+		n := loadNoteForEdit(w, r, d)
 		if n == nil {
 			return
 		}
@@ -576,7 +575,7 @@ func UploadNoteAttachment(database *db.DB) http.HandlerFunc {
 			StoredPath: filepath.ToSlash(filepath.Join(strconv.FormatInt(n.ID, 10), storedName)),
 			Size:       size,
 		}
-		if err := database.CreateNoteAttachment(a); err != nil {
+		if err := d.Repo.CreateNoteAttachment(a); err != nil {
 			_ = os.Remove(absPath)
 			http.Error(w, "数据库写入失败", http.StatusInternalServerError)
 			return
@@ -593,9 +592,9 @@ func UploadNoteAttachment(database *db.DB) http.HandlerFunc {
 
 // ServeNoteAttachment GET /attachments/{id}/{name} — 附件静态服务（需登录，
 // 且校验对所属笔记的可见性；私有笔记附件外人不可见）。
-func ServeNoteAttachment(database *db.DB) http.HandlerFunc {
+func ServeNoteAttachment(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n := loadNote(w, r, database)
+		n := loadNote(w, r, d)
 		if n == nil {
 			return
 		}

@@ -27,8 +27,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"visualink/internal/db"
 )
 
 // CollabUpstream y-sweet 服务地址（compose 内网，如 http://ysweet:8080）。
@@ -171,13 +169,13 @@ func InlineCollabToken(r *http.Request, noteID int64) string {
 // （受限笔记的 reader 拿不到 token，进不了协作房间）。
 // 返回给浏览器的 ClientToken 里，内网 ws 地址已改写为本服务的 /collab 反代路径
 // （按请求的 Host 和协议动态拼，生产走 VPN 直连 IP、开发走 localhost 都不用配置）。
-func CollabToken(database *db.DB) http.HandlerFunc {
+func CollabToken(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !CollabEnabled() {
 			http.Error(w, "协作服务未启用", http.StatusServiceUnavailable)
 			return
 		}
-		n := loadNoteForEdit(w, r, database)
+		n := loadNoteForEdit(w, r, d)
 		if n == nil {
 			return
 		}

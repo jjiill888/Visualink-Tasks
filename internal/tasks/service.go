@@ -5,18 +5,17 @@ import (
 	"log"
 	"time"
 
-	"visualink/internal/db"
 	"visualink/internal/model"
 	"visualink/internal/platform/hub"
 )
 
 // StartAutoArchive 启动自动归档后台任务(原 main 里的匿名 goroutine):
 // 每小时扫描一次,将 done 超过 24h 的功能归档并通知创建者。
-func StartAutoArchive(database *db.DB) {
+func StartAutoArchive(d *Deps) {
 	go func() {
 		for {
 			time.Sleep(1 * time.Hour)
-			archived, err := database.AutoArchiveFeatures()
+			archived, err := d.Repo.AutoArchiveFeatures()
 			if err != nil {
 				log.Println("auto-archive error:", err)
 				continue
@@ -26,7 +25,7 @@ func StartAutoArchive(database *db.DB) {
 			}
 			seen := map[int64]bool{}
 			for _, f := range archived {
-				if err := database.CreateNotification(&model.Notification{
+				if err := d.Notifs.CreateNotification(&model.Notification{
 					UserID:       f.CreatedBy,
 					FeatureID:    f.ID,
 					FromUser:     "系统",

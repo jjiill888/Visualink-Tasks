@@ -5,15 +5,14 @@ import (
 	"net/http"
 	"strconv"
 
-	"visualink/internal/db"
 	"visualink/internal/platform/auth"
 )
 
 // MarkAllNotificationsRead handles POST /notifications/read-all
-func MarkAllNotificationsRead(database *db.DB) http.HandlerFunc {
+func MarkAllNotificationsRead(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
-		if err := database.MarkAllNotificationsRead(u.ID); err != nil {
+		if err := d.Repo.MarkAllNotificationsRead(u.ID); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
@@ -26,10 +25,10 @@ func MarkAllNotificationsRead(database *db.DB) http.HandlerFunc {
 }
 
 // GetNotificationBadge handles GET /notifications/count — returns badge HTML for nav bell.
-func GetNotificationBadge(database *db.DB) http.HandlerFunc {
+func GetNotificationBadge(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
-		notifs, err := database.ListUnreadNotifications(u.ID)
+		notifs, err := d.Repo.ListUnreadNotifications(u.ID)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -42,10 +41,10 @@ func GetNotificationBadge(database *db.DB) http.HandlerFunc {
 }
 
 // GetNotificationList handles GET /notifications — returns dropdown list HTML.
-func GetNotificationList(database *db.DB) http.HandlerFunc {
+func GetNotificationList(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
-		notifs, err := database.ListUnreadNotifications(u.ID)
+		notifs, err := d.Repo.ListUnreadNotifications(u.ID)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -59,7 +58,7 @@ func GetNotificationList(database *db.DB) http.HandlerFunc {
 
 // MarkNotificationsRead handles POST /notifications/read — marks feature's notifs as read,
 // returns updated badge + list HTML via OOB swap.
-func MarkNotificationsRead(database *db.DB) http.HandlerFunc {
+func MarkNotificationsRead(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFromContext(r)
 		notifIDStr := r.FormValue("id")
@@ -69,7 +68,7 @@ func MarkNotificationsRead(database *db.DB) http.HandlerFunc {
 				http.Error(w, "invalid id", 400)
 				return
 			}
-			if err := database.MarkNotificationReadByID(u.ID, notifID); err != nil {
+			if err := d.Repo.MarkNotificationReadByID(u.ID, notifID); err != nil {
 				http.Error(w, err.Error(), 500)
 				return
 			}
@@ -80,12 +79,12 @@ func MarkNotificationsRead(database *db.DB) http.HandlerFunc {
 				http.Error(w, "invalid feature_id", 400)
 				return
 			}
-			if err := database.MarkNotificationsReadByFeature(u.ID, featureID); err != nil {
+			if err := d.Repo.MarkNotificationsReadByFeature(u.ID, featureID); err != nil {
 				http.Error(w, err.Error(), 500)
 				return
 			}
 		}
-		notifs, err := database.ListUnreadNotifications(u.ID)
+		notifs, err := d.Repo.ListUnreadNotifications(u.ID)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return

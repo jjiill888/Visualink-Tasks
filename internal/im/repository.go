@@ -1,4 +1,4 @@
-package db
+package im
 
 import (
 	"database/sql"
@@ -8,17 +8,24 @@ import (
 	"visualink/internal/model"
 )
 
+// Repo 持有 IM(频道/成员/消息)全部表的数据访问。
+type Repo struct {
+	*sql.DB
+}
+
+func NewRepo(db *sql.DB) *Repo { return &Repo{db} }
+
 // ── Channel queries ─────────────────────────────────────────────────────────
 
 // GetIMChannel returns a channel by ID without membership context.
-func (d *DB) GetIMChannel(id int64) (*model.IMChannel, error) {
+func (d *Repo) GetIMChannel(id int64) (*model.IMChannel, error) {
 	row := d.QueryRow(`
 		SELECT id, name, display_name, description, type, created_by, created_at
 		FROM im_channels WHERE id = ?`, id)
 	return scanIMChannel(row)
 }
 
-func (d *DB) getIMChannelByName(name string) (*model.IMChannel, error) {
+func (d *Repo) getIMChannelByName(name string) (*model.IMChannel, error) {
 	row := d.QueryRow(`
 		SELECT id, name, display_name, description, type, created_by, created_at
 		FROM im_channels WHERE name = ?`, name)
@@ -41,7 +48,7 @@ func scanIMChannel(row *sql.Row) (*model.IMChannel, error) {
 
 // ListUserIMChannels returns the group channels and DM channels the user belongs to,
 // enriched with unread count and last message preview.
-func (d *DB) ListUserIMChannels(userID int64) (myChannels []*model.IMChannel, myDMs []*model.IMChannel, err error) {
+func (d *Repo) ListUserIMChannels(userID int64) (myChannels []*model.IMChannel, myDMs []*model.IMChannel, err error) {
 	rows, err := d.Query(`
 		SELECT
 			c.id, c.name,
@@ -106,7 +113,7 @@ func (d *DB) ListUserIMChannels(userID int64) (myChannels []*model.IMChannel, my
 }
 
 // GetOrCreateDMChannel finds or creates a 1-to-1 DM channel between two users.
-func (d *DB) GetOrCreateDMChannel(userA, userB int64) (*model.IMChannel, error) {
+func (d *Repo) GetOrCreateDMChannel(userA, userB int64) (*model.IMChannel, error) {
 	min, max := userA, userB
 	if min > max {
 		min, max = max, min
@@ -151,7 +158,7 @@ func (d *DB) GetOrCreateDMChannel(userA, userB int64) (*model.IMChannel, error) 
 }
 
 // CreateIMChannel creates a new public/private channel and adds the creator as owner.
-func (d *DB) CreateIMChannel(name, displayName, description, chType string, createdBy int64) (*model.IMChannel, error) {
+func (d *Repo) CreateIMChannel(name, displayName, description, chType string, createdBy int64) (*model.IMChannel, error) {
 	tx, err := d.Begin()
 	if err != nil {
 		return nil, err
@@ -181,7 +188,7 @@ func (d *DB) CreateIMChannel(name, displayName, description, chType string, crea
 }
 
 // IsIMChannelMember returns true if the user is a member of the channel.
-func (d *DB) IsIMChannelMember(channelID, userID int64) (bool, error) {
+func (d *Repo) IsIMChannelMember(channelID, userID int64) (bool, error) {
 	var count int
 	err := d.QueryRow(
 		`SELECT COUNT(*) FROM im_channel_members WHERE channel_id=? AND user_id=?`,
@@ -191,7 +198,7 @@ func (d *DB) IsIMChannelMember(channelID, userID int64) (bool, error) {
 }
 
 // JoinIMChannel adds a user to a channel (idempotent).
-func (d *DB) JoinIMChannel(channelID, userID int64) error {
+func (d *Repo) JoinIMChannel(channelID, userID int64) error {
 	_, err := d.Exec(
 		`INSERT OR IGNORE INTO im_channel_members (channel_id, user_id, role) VALUES (?, ?, 'member')`,
 		channelID, userID,
@@ -200,7 +207,7 @@ func (d *DB) JoinIMChannel(channelID, userID int64) error {
 }
 
 // LeaveIMChannel removes a user from a channel.
-func (d *DB) LeaveIMChannel(channelID, userID int64) error {
+func (d *Repo) LeaveIMChannel(channelID, userID int64) error {
 	_, err := d.Exec(
 		`DELETE FROM im_channel_members WHERE channel_id=? AND user_id=?`,
 		channelID, userID,
@@ -209,7 +216,7 @@ func (d *DB) LeaveIMChannel(channelID, userID int64) error {
 }
 
 // ListIMChannelMembers returns all members of a channel.
-func (d *DB) ListIMChannelMembers(channelID int64) ([]*model.IMChannelMember, error) {
+func (d *Repo) ListIMChannelMembers(channelID int64) ([]*model.IMChannelMember, error) {
 	rows, err := d.Query(`
 		SELECT cm.channel_id, cm.user_id, cm.role, cm.last_read_msg_id, cm.joined_at,
 		       u.display_name, u.username
@@ -236,7 +243,7 @@ func (d *DB) ListIMChannelMembers(channelID int64) ([]*model.IMChannelMember, er
 }
 
 // GetIMChannelByNamePublic returns a public channel by its internal name, or nil.
-func (d *DB) GetIMChannelByNamePublic(name string) (*model.IMChannel, error) {
+func (d *Repo) GetIMChannelByNamePublic(name string) (*model.IMChannel, error) {
 	row := d.QueryRow(`
 		SELECT id, name, display_name, description, type, created_by, created_at
 		FROM im_channels WHERE name = ? AND type = 'public'`, name)
@@ -248,7 +255,7 @@ func (d *DB) GetIMChannelByNamePublic(name string) (*model.IMChannel, error) {
 }
 
 // ListPublicIMChannels returns all public channels (for discovery).
-func (d *DB) ListPublicIMChannels(userID int64) ([]*model.IMChannel, error) {
+func (d *Repo) ListPublicIMChannels(userID int64) ([]*model.IMChannel, error) {
 	rows, err := d.Query(`
 		SELECT c.id, c.name, COALESCE(NULLIF(c.display_name,''), c.name) as display_name,
 		       c.description, c.type, c.created_by, c.created_at,
@@ -314,7 +321,7 @@ func scanIMMessages(rows *sql.Rows) ([]*model.IMMessage, error) {
 // ListIMMessages returns up to `limit` messages before `beforeID` (cursor pagination).
 // If beforeID == 0, returns the most recent messages.
 // Results are returned oldest-first (ascending order for display).
-func (d *DB) ListIMMessages(channelID, beforeID int64, limit int) ([]*model.IMMessage, error) {
+func (d *Repo) ListIMMessages(channelID, beforeID int64, limit int) ([]*model.IMMessage, error) {
 	var rows *sql.Rows
 	var err error
 	if beforeID <= 0 {
@@ -341,7 +348,7 @@ func (d *DB) ListIMMessages(channelID, beforeID int64, limit int) ([]*model.IMMe
 }
 
 // ListNewIMMessages returns messages newer than afterID (for SSE-triggered refresh).
-func (d *DB) ListNewIMMessages(channelID, afterID int64) ([]*model.IMMessage, error) {
+func (d *Repo) ListNewIMMessages(channelID, afterID int64) ([]*model.IMMessage, error) {
 	rows, err := d.Query(imMessageSelect+`
 		WHERE m.channel_id = ? AND m.id > ? AND m.deleted_at IS NULL
 		ORDER BY m.id ASC LIMIT 100`, channelID, afterID)
@@ -352,7 +359,7 @@ func (d *DB) ListNewIMMessages(channelID, afterID int64) ([]*model.IMMessage, er
 }
 
 // CreateIMMessage inserts a new message and returns its ID.
-func (d *DB) CreateIMMessage(channelID, userID int64, content string) (int64, error) {
+func (d *Repo) CreateIMMessage(channelID, userID int64, content string) (int64, error) {
 	res, err := d.Exec(
 		`INSERT INTO im_messages (channel_id, user_id, content) VALUES (?, ?, ?)`,
 		channelID, userID, content,
@@ -364,7 +371,7 @@ func (d *DB) CreateIMMessage(channelID, userID int64, content string) (int64, er
 }
 
 // DeleteIMMessage soft-deletes a message (only owner can delete).
-func (d *DB) DeleteIMMessage(msgID, userID int64) error {
+func (d *Repo) DeleteIMMessage(msgID, userID int64) error {
 	_, err := d.Exec(
 		`UPDATE im_messages SET deleted_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?`,
 		msgID, userID,
@@ -373,7 +380,7 @@ func (d *DB) DeleteIMMessage(msgID, userID int64) error {
 }
 
 // EditIMMessage updates message content (only owner can edit).
-func (d *DB) EditIMMessage(msgID, userID int64, content string) error {
+func (d *Repo) EditIMMessage(msgID, userID int64, content string) error {
 	_, err := d.Exec(
 		`UPDATE im_messages SET content=?, edited_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=? AND deleted_at IS NULL`,
 		content, msgID, userID,
@@ -382,7 +389,7 @@ func (d *DB) EditIMMessage(msgID, userID int64, content string) error {
 }
 
 // UpdateIMLastRead updates the user's last-read message ID in a channel.
-func (d *DB) UpdateIMLastRead(channelID, userID, msgID int64) error {
+func (d *Repo) UpdateIMLastRead(channelID, userID, msgID int64) error {
 	_, err := d.Exec(
 		`UPDATE im_channel_members SET last_read_msg_id=MAX(last_read_msg_id, ?) WHERE channel_id=? AND user_id=?`,
 		msgID, channelID, userID,
@@ -391,7 +398,7 @@ func (d *DB) UpdateIMLastRead(channelID, userID, msgID int64) error {
 }
 
 // MaxIMMessageID returns the highest message ID in a channel (0 if empty).
-func (d *DB) MaxIMMessageID(channelID int64) (int64, error) {
+func (d *Repo) MaxIMMessageID(channelID int64) (int64, error) {
 	var id sql.NullInt64
 	err := d.QueryRow(
 		`SELECT MAX(id) FROM im_messages WHERE channel_id=? AND deleted_at IS NULL`,
@@ -401,7 +408,7 @@ func (d *DB) MaxIMMessageID(channelID int64) (int64, error) {
 }
 
 // CountIMUnreadTotal returns total unread count across all IM channels for a user.
-func (d *DB) CountIMUnreadTotal(userID int64) (int, error) {
+func (d *Repo) CountIMUnreadTotal(userID int64) (int, error) {
 	var count int
 	err := d.QueryRow(`
 		SELECT COALESCE(SUM(
@@ -414,7 +421,7 @@ func (d *DB) CountIMUnreadTotal(userID int64) (int, error) {
 }
 
 // GetIMChannelForUser returns a channel enriched with the current user's membership data.
-func (d *DB) GetIMChannelForUser(channelID, userID int64) (*model.IMChannel, error) {
+func (d *Repo) GetIMChannelForUser(channelID, userID int64) (*model.IMChannel, error) {
 	row := d.QueryRow(`
 		SELECT c.id, c.name,
 			CASE c.type

@@ -1,4 +1,4 @@
-package db
+package upload
 
 import (
 	"database/sql"
@@ -8,7 +8,14 @@ import (
 	"visualink/internal/model"
 )
 
-func (d *DB) migrateAttachments() error {
+// Store 持有通用附件表的数据访问(owner_kind 机制,feature 评论图等共用)。
+type Store struct {
+	*sql.DB
+}
+
+func NewStore(db *sql.DB) *Store { return &Store{db} }
+
+func Migrate(d *sql.DB) error {
 	_, err := d.Exec(`
 	CREATE TABLE IF NOT EXISTS attachments (
 		id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,7 +39,7 @@ func (d *DB) migrateAttachments() error {
 
 // CreateAttachment inserts an orphan attachment (owner fields empty) — caller
 // later calls AttachTo once it knows the feature/comment id.
-func (d *DB) CreateAttachment(a *model.Attachment) error {
+func (d *Store) CreateAttachment(a *model.Attachment) error {
 	res, err := d.Exec(
 		`INSERT INTO attachments (owner_kind, owner_id, uploader_id, path_full, path_thumb, width, height, bytes, original)
 		 VALUES (?,?,?,?,?,?,?,?,?)`,
@@ -46,10 +53,10 @@ func (d *DB) CreateAttachment(a *model.Attachment) error {
 	return nil
 }
 
-// AttachTo binds a set of orphan attachments (owner_kind='', owner_id=0) to
+// AttachTo binds a set of orphan attachments (owner_kind=”, owner_id=0) to
 // a concrete owner. Only attachments uploaded by uploaderID are bound — this
 // prevents client-supplied ids from hijacking other users' uploads.
-func (d *DB) AttachTo(kind string, ownerID, uploaderID int64, attachmentIDs []int64) error {
+func (d *Store) AttachTo(kind string, ownerID, uploaderID int64, attachmentIDs []int64) error {
 	if len(attachmentIDs) == 0 {
 		return nil
 	}
@@ -69,7 +76,7 @@ func (d *DB) AttachTo(kind string, ownerID, uploaderID int64, attachmentIDs []in
 // feature, and detaches (back to orphan) any existing feature attachments
 // not present in the desired id list. Orphans will be GC'd by PurgeOrphanAttachments.
 // Used on edit flows where the user may have removed previously-attached images.
-func (d *DB) SyncFeatureAttachments(featureID, uploaderID int64, ids []int64) error {
+func (d *Store) SyncFeatureAttachments(featureID, uploaderID int64, ids []int64) error {
 	tx, err := d.Begin()
 	if err != nil {
 		return err
@@ -136,7 +143,7 @@ func (d *DB) SyncFeatureAttachments(featureID, uploaderID int64, ids []int64) er
 	return tx.Commit()
 }
 
-func (d *DB) GetAttachment(id int64) (*model.Attachment, error) {
+func (d *Store) GetAttachment(id int64) (*model.Attachment, error) {
 	a := &model.Attachment{}
 	err := d.QueryRow(
 		`SELECT id, owner_kind, owner_id, uploader_id, path_full, path_thumb, width, height, bytes, original, created_at
@@ -150,7 +157,7 @@ func (d *DB) GetAttachment(id int64) (*model.Attachment, error) {
 
 // ListAttachmentsForOwners loads attachments for many owners in a single query.
 // Returns a map keyed by owner_id. Avoids N+1 when rendering lists (e.g., comments).
-func (d *DB) ListAttachmentsForOwners(kind string, ownerIDs []int64) (map[int64][]*model.Attachment, error) {
+func (d *Store) ListAttachmentsForOwners(kind string, ownerIDs []int64) (map[int64][]*model.Attachment, error) {
 	out := map[int64][]*model.Attachment{}
 	if len(ownerIDs) == 0 {
 		return out, nil
@@ -181,12 +188,12 @@ func (d *DB) ListAttachmentsForOwners(kind string, ownerIDs []int64) (map[int64]
 
 // DetachAttachments orphans all attachments of a given owner so PurgeOrphanAttachments
 // will GC them. Used when a comment is soft-deleted.
-func (d *DB) DetachAttachments(kind string, ownerID int64) error {
+func (d *Store) DetachAttachments(kind string, ownerID int64) error {
 	_, err := d.Exec(`UPDATE attachments SET owner_kind='', owner_id=0 WHERE owner_kind=? AND owner_id=?`, kind, ownerID)
 	return err
 }
 
-func (d *DB) ListAttachments(kind string, ownerID int64) ([]*model.Attachment, error) {
+func (d *Store) ListAttachments(kind string, ownerID int64) ([]*model.Attachment, error) {
 	rows, err := d.Query(
 		`SELECT id, owner_kind, owner_id, uploader_id, path_full, path_thumb, width, height, bytes, original, created_at
 		 FROM attachments WHERE owner_kind=? AND owner_id=? ORDER BY id ASC`,
@@ -209,7 +216,7 @@ func (d *DB) ListAttachments(kind string, ownerID int64) ([]*model.Attachment, e
 
 // PurgeOrphanAttachments deletes orphan rows older than cutoff and returns
 // their on-disk paths so the caller can unlink the files.
-func (d *DB) PurgeOrphanAttachments(olderThan time.Time) ([]string, error) {
+func (d *Store) PurgeOrphanAttachments(olderThan time.Time) ([]string, error) {
 	rows, err := d.Query(
 		`SELECT id, path_full, path_thumb FROM attachments
 		 WHERE owner_kind='' AND created_at < ?`, olderThan,
