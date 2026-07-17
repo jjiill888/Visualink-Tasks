@@ -24,8 +24,8 @@ var pages map[string]*template.Template
 // InitTemplates 解析本模块的页面模板集(登录/注册,套 base.html)。
 func InitTemplates() {
 	pages = map[string]*template.Template{
-		"login.html":    web.ParseSet("base.html", "login.html"),
-		"register.html": web.ParseSet("base.html", "register.html"),
+		"login.html":    web.ParseSet("shared/base.html", "shared/login.html"),
+		"register.html": web.ParseSet("shared/base.html", "shared/register.html"),
 	}
 }
 

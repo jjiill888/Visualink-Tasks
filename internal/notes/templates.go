@@ -17,18 +17,19 @@ var partials *template.Template
 
 // InitTemplates 解析本模块的全部模板集;main 启动时调用。
 func InitTemplates() {
+	// 键=裸文件名(handler 与模板入口名都按原名),路径带模块目录
 	pages = map[string]*template.Template{
 		// 编辑页独立标签页,侧栏「文件」视图片段随页直出(/notes/panel 复用同一片段)
-		"note_edit.html": web.ParseSet("note_edit.html", "notes_panel_partial.html"),
+		"note_edit.html": web.ParseSet("notes/note_edit.html", "notes/notes_panel_partial.html"),
 		// 文库页内嵌列表片段(搜索时 HTMX 单独刷新)
-		"notes.html":         web.ParseSet("notes.html", "notes_list_partial.html"),
-		"note_revision.html": web.ParseSet("base.html", "note_revision.html"),
+		"notes.html":         web.ParseSet("notes/notes.html", "notes/notes_list_partial.html"),
+		"note_revision.html": web.ParseSet("shared/base.html", "notes/note_revision.html"),
 	}
 	partials = web.ParseSet(
-		"notes_list_partial.html",
-		"notes_panel_partial.html",
-		"note_history.html",
-		"note_perms_partial.html",
+		"notes/notes_list_partial.html",
+		"notes/notes_panel_partial.html",
+		"notes/note_history.html",
+		"notes/note_perms_partial.html",
 	)
 }
 

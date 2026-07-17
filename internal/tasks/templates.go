@@ -17,33 +17,33 @@ var partials *template.Template
 // InitTemplates 解析本模块的全部模板集;main 启动时调用。
 func InitTemplates() {
 	pages = map[string]*template.Template{}
-	// 需要功能行与讨论组片段的页面
+	// 需要功能行与讨论组片段的页面(键=裸文件名,handler 按原名查;路径带模块目录)
 	for _, page := range []string{"dashboard.html", "mine.html", "group_detail.html"} {
 		pages[page] = web.ParseSet(
-			"base.html",
-			"feature_row.html",
-			"group_action_btn.html",
-			"group_members_partial.html",
-			"feature_watch_btn.html",
-			page,
+			"shared/base.html",
+			"tasks/feature_row.html",
+			"tasks/group_action_btn.html",
+			"tasks/group_members_partial.html",
+			"tasks/feature_watch_btn.html",
+			"tasks/"+page,
 		)
 	}
 	for _, page := range []string{"groups.html", "submit_standalone.html"} {
-		pages[page] = web.ParseSet("base.html", page)
+		pages[page] = web.ParseSet("shared/base.html", "tasks/"+page)
 	}
 	partials = web.ParseSet(
-		"feature_row.html",
-		"features_partial.html",
-		"comments_partial.html",
-		"feature_detail.html",
-		"feature_watch_btn.html",
-		"stats_partial.html",
-		"submit_form_modal.html",
-		"feature_draft_edit.html",
-		"feature_modify.html",
-		"group_action_btn.html",
-		"group_members_partial.html",
-		"preferences_partial.html",
+		"tasks/feature_row.html",
+		"tasks/features_partial.html",
+		"tasks/comments_partial.html",
+		"tasks/feature_detail.html",
+		"tasks/feature_watch_btn.html",
+		"tasks/stats_partial.html",
+		"tasks/submit_form_modal.html",
+		"tasks/feature_draft_edit.html",
+		"tasks/feature_modify.html",
+		"tasks/group_action_btn.html",
+		"tasks/group_members_partial.html",
+		"tasks/preferences_partial.html",
 	)
 }
 

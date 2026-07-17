@@ -2,6 +2,17 @@
 
 本文件作为功能跟踪文档，按阶段记录重要改动（新→旧）。
 
+## 2026-07-16 架构重构：单体解耦为内部模块（不拆仓库，一仓一进程一库不变）
+
+问题：业务代码开始粘连——`main()` 里堆着全部路由、`buildPartialTmpl()` 把十个域的模板混进一个集合、一个 handler 包 12 个文件共享全局模板变量、`internal/db` 一个结构体挂 ~100 个跨域方法（db.go 1597 行）。方案：不拆仓库，拆内部模块。四个阶段各自独立提交，每阶段编译+冒烟通过：
+
+1. **改名与骨架**：go module `featuretrack`→`visualink`；`main.go`→`cmd/visualink/`（二进制仍须于仓库根运行）；session/assets/hub/imageutil 迁入 `internal/platform/`
+2. **handler 解体**：`internal/{tasks,notes,im,notification}` 各自持有 handler+templates.go+routes.go——谁的页面谁解析（隔离模板集），谁的路由谁挂载；platform 层新增 web（模板函数/资产版本/渲染原语）、auth（中间件/用户上下文/登录注册）、upload（通用图片）；SSE 并入 hub；自动归档 goroutine 收进 tasks/service.go
+3. **db 解体**：各模块得自己的 `repository.go`（Repo 共享同一 \*sql.DB）+ `migrate.go`（谁的表谁建，`platform/database.Open` 按外键依赖顺序执行）；用户/会话归 `platform/auth`（session 包并入）；跨域调用显式化为 Deps 依赖束注入（tasks→{Repo,Users,Notifs,Files}），main 装配处一眼可见全部跨模块依赖
+4. **模板归位**：`templates/{shared,tasks,notes,im,notification}/`，键仍用裸文件名（ParseFiles 按 basename 命名模板，`{{template "feature_row.html"}}` 等跨引用零改动）
+
+不变量：一个仓库、一个 Go 二进制、一个 Docker 容器、一个 SQLite；Dockerfile 构建路径改 `./cmd/visualink`（产物名/CMD 不变）。验证：生产库副本迁移后 9 张关键表行数逐一比对零丢失；全新库建表冒烟通过；15+ 端点与评论/建笔记/保存写路径正常。遗留：`internal/model` 暂保留为共享叶子包（无依赖不构成粘连），待模型分化时（如 IM 重做）再按模块拆。
+
 ## 2026-07-16 修复：brotli 压缩闷死 SSE（实时推送全线失效的生产 bug）
 
 httpcompression 中间件对 `text/event-stream` 也做压缩，小事件被闷在编码缓冲区里刷不出去——浏览器 EventSource 恒带 `Accept-Encoding`，导致看板/IM/消息角标的实时推送自 7 月 8 日引入压缩中间件起全部失效（事件字节数被 Logger 记为已写出，但客户端收不到；curl 不带压缩头时走透传，极易误判为正常）。修复：压缩适配器黑名单豁免 `text/event-stream`。验证：带 `Accept-Encoding: br` 连 /sse，响应无 `Content-Encoding`，ping 事件即时到达。**以后新增任何响应中间件（压缩/缓冲类）都必须豁免 /sse。**

@@ -12,11 +12,11 @@ var partials *template.Template
 // InitTemplates 解析本模块的片段模板集;main 启动时调用。
 func InitTemplates() {
 	partials = web.ParseSet(
-		"notif_badge.html",
-		"notif_list.html",
-		"notif_read_response.html",
-		"message_badge.html",
-		"messages_preview.html",
-		"messages_center.html",
+		"notification/notif_badge.html",
+		"notification/notif_list.html",
+		"notification/notif_read_response.html",
+		"notification/message_badge.html",
+		"notification/messages_preview.html",
+		"notification/messages_center.html",
 	)
 }
