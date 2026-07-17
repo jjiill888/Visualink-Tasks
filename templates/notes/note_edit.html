@@ -480,8 +480,10 @@
     }
 
     /* 拖拽归组（仿 VSCode）：自己的文档（data-own）可拖——拖到自己的组
-       任意位置入组、拖到分区标题行移出组；服务端另有笔记/组双重属主校验 */
-    var dragId = null;
+       任意位置入组、拖到分区标题行移出组；服务端另有笔记/组双重属主校验。
+       组排序：自己的组头也可拖——拖到另一个自己的组=插到它前面（顶缘蓝线），
+       拖到分区标题行=移到末尾；顺序是全局的（组出现在多个分区时一起变） */
+    var dragId = null, dragGid = null;
     function dropTargetOf(el) {
       if (!el.closest) return null;
       var d = el.closest('.ne-dir');
@@ -491,16 +493,50 @@
       return null;
     }
     function clearDrop() {
-      docsEl.querySelectorAll('.ne-drop').forEach(function (n) { n.classList.remove('ne-drop'); });
+      docsEl.querySelectorAll('.ne-drop, .ne-drop-before').forEach(function (n) {
+        n.classList.remove('ne-drop');
+        n.classList.remove('ne-drop-before');
+      });
     }
     docsEl.addEventListener('dragstart', function (e) {
       var a = e.target.closest && e.target.closest('a[data-own]');
-      if (!a) { e.preventDefault(); return; }
-      dragId = a.dataset.noteId;
-      e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', dragId);
+      if (a) {
+        dragId = a.dataset.noteId;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', dragId);
+        return;
+      }
+      var gh = e.target.closest && e.target.closest('.ne-dir-head');
+      var gd = gh && gh.closest('.ne-dir');
+      if (gd && gd.dataset.own) {
+        dragGid = gd.dataset.dir;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', 'group:' + dragGid);
+        return;
+      }
+      e.preventDefault();
     });
+    /* 组排序的落点：另一个自己的组（插前）或分区头（移末尾） */
+    function groupDropTargetOf(el) {
+      if (!el.closest) return null;
+      var d = el.closest('.ne-dir');
+      if (d && d.dataset.own && d.dataset.dir !== dragGid) return { dir: d, before: d.dataset.dir };
+      var head = el.closest('.ne-sec-head');
+      if (head) return { el: head, before: '' };
+      return null;
+    }
     docsEl.addEventListener('dragover', function (e) {
+      if (dragGid) {
+        var g = groupDropTargetOf(e.target);
+        clearDrop();
+        if (g) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          if (g.dir) g.dir.classList.add('ne-drop-before');
+          else g.el.classList.add('ne-drop');
+        }
+        return;
+      }
       if (!dragId) return;
       var t = dropTargetOf(e.target);
       clearDrop();
@@ -511,6 +547,16 @@
       }
     });
     docsEl.addEventListener('drop', function (e) {
+      if (dragGid) {
+        var g = groupDropTargetOf(e.target);
+        clearDrop();
+        if (g) {
+          e.preventDefault();
+          panelReq('PUT', '/notes/groups/' + dragGid + '/move', { before: g.before }).catch(panelErr);
+        }
+        dragGid = null;
+        return;
+      }
       var t = dropTargetOf(e.target);
       clearDrop();
       if (!dragId || !t) return;
@@ -518,7 +564,7 @@
       panelReq('PUT', '/notes/' + dragId + '/group', { group_id: t.group }).catch(panelErr);
       dragId = null;
     });
-    docsEl.addEventListener('dragend', function () { dragId = null; clearDrop(); });
+    docsEl.addEventListener('dragend', function () { dragId = null; dragGid = null; clearDrop(); });
 
     /* 「＋」菜单：每个分区头右端的「＋」（悬停浮现，点击弹出）——
        「新建文档 / 新建文档组」。菜单挂在 #ne-panel 下 fixed 定位贴着

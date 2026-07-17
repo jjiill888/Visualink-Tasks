@@ -1323,6 +1323,11 @@ body.ne-diff-page .ne-page {
   color: var(--ne-err, #dc2626);
 }
 
+/* 组排序拖拽:落点组顶缘一条强调蓝插入线 */
+.ne-dir.ne-drop-before > .ne-dir-head {
+  box-shadow: inset 0 2px 0 var(--ne-accent);
+}
+
 /* 重命名按钮：铅笔 mask 图标（currentColor 着色，跟随 ne-dir-act 悬停变色） */
 .ne-dir-ren::before {
   content: '';

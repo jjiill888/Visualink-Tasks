@@ -25,6 +25,7 @@ func Routes(r chi.Router, d *Deps) {
 	// 文档组(侧栏文件树的文件夹,纯组织结构;四端点都返回刷新后的面板片段)
 	r.Post("/notes/groups", CreateNoteGroup(d))
 	r.Put("/notes/groups/{gid}", RenameNoteGroup(d))
+	r.Put("/notes/groups/{gid}/move", MoveNoteGroup(d))
 	r.Delete("/notes/groups/{gid}", DeleteNoteGroup(d))
 	r.Put("/notes/{id}/group", SetNoteGroup(d))
 	r.Get("/notes/{id}", NoteEditPage(d))

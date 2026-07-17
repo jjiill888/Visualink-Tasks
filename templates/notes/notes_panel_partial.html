@@ -16,7 +16,7 @@
   <div class="ne-panel-children">
     {{range .Groups}}
     <div class="ne-dir" data-dir="{{.ID}}" data-name="{{.Name}}"{{if .Own}} data-own="1"{{end}}>
-      <div class="ne-dir-head">
+      <div class="ne-dir-head"{{if .Own}} draggable="true" title="拖拽调整组顺序"{{end}}>
         <button type="button" class="ne-dir-name"><span class="ne-dir-label">{{.Name}}</span></button>
         {{if .Own}}
         <a class="ne-dir-act" href="/notes/new?group={{.ID}}" title="在「{{.Name}}」内新建文档">＋</a>

@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -213,6 +214,22 @@ func notesPanelData(d *Deps, userID int64) (map[string]any, error) {
 				&notesPanelGroup{ID: gr.ID, Name: gr.Name, Own: true})
 		}
 	}
+	// 组的展示顺序:自己的组按自定义顺序(ListNoteGroups 的 sort_order)在前,
+	// 他人的组保持「组内最新文档」的出现序在后
+	rank := map[int64]int{}
+	for i, gr := range owned {
+		rank[gr.ID] = i
+	}
+	for _, sec := range sections {
+		sort.SliceStable(sec.Groups, func(a, b int) bool {
+			ra, oka := rank[sec.Groups[a].ID]
+			rb, okb := rank[sec.Groups[b].ID]
+			if oka && okb {
+				return ra < rb
+			}
+			return oka && !okb
+		})
+	}
 	return map[string]any{"Sections": sections}, nil
 }
 
@@ -280,6 +297,31 @@ func RenameNoteGroup(d *Deps) http.HandlerFunc {
 		}
 		if err := d.Repo.RenameNoteGroup(gid, u.ID, name); err != nil {
 			http.Error(w, "只有建组者可以重命名这个组", http.StatusForbidden)
+			return
+		}
+		writeNotesPanel(w, d, u.ID)
+	}
+}
+
+// MoveNoteGroup PUT /notes/groups/{gid}/move — 组排序（仅建组者）：
+// 移到 before 指定的组之前，before 空 = 移到末尾。返回刷新后的面板片段。
+func MoveNoteGroup(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := auth.UserFromContext(r)
+		gid, err := strconv.ParseInt(chi.URLParam(r, "gid"), 10, 64)
+		if err != nil {
+			http.Error(w, "无效的组 ID", http.StatusBadRequest)
+			return
+		}
+		var before int64
+		if v := strings.TrimSpace(r.FormValue("before")); v != "" {
+			if before, err = strconv.ParseInt(v, 10, 64); err != nil || before < 0 {
+				http.Error(w, "无效的目标组 ID", http.StatusBadRequest)
+				return
+			}
+		}
+		if err := d.Repo.MoveNoteGroup(u.ID, gid, before); err != nil {
+			http.Error(w, "只能排序自己建的组", http.StatusForbidden)
 			return
 		}
 		writeNotesPanel(w, d, u.ID)

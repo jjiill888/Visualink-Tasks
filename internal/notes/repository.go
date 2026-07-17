@@ -84,12 +84,15 @@ func Migrate(d *sql.DB) error {
 		id         INTEGER PRIMARY KEY AUTOINCREMENT,
 		owner_id   INTEGER NOT NULL REFERENCES users(id),
 		name       TEXT NOT NULL,
+		sort_order INTEGER NOT NULL DEFAULT 0,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 	`)
 	if err != nil {
 		return err
 	}
+	// 老库补列:组自定义排序(全零 = 沿用建立先后)
+	_, _ = d.Exec(`ALTER TABLE note_groups ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`)
 
 	// 老库补列（列已存在时报错，按项目惯例忽略），并把旧的 is_private 开关
 	// 一次性并入 visibility：迁移后 is_private 归零，重启不会把 owner 后来
@@ -329,9 +332,12 @@ func (d *Repo) SoftDeleteNote(id, ownerID int64) error {
 
 // ── Note groups（文档组：侧栏文件夹，纯组织结构不承载权限） ─────────────────
 
-// CreateNoteGroup 建文档组（name 由 handler 校验非空/限长）。
+// CreateNoteGroup 建文档组（name 由 handler 校验非空/限长），排在自己组列表末尾。
 func (d *Repo) CreateNoteGroup(ownerID int64, name string) (int64, error) {
-	res, err := d.Exec(`INSERT INTO note_groups (owner_id, name) VALUES (?,?)`, ownerID, name)
+	res, err := d.Exec(
+		`INSERT INTO note_groups (owner_id, name, sort_order)
+		 SELECT ?, ?, COALESCE(MAX(sort_order)+1, 0) FROM note_groups WHERE owner_id=?`,
+		ownerID, name, ownerID)
 	if err != nil {
 		return 0, err
 	}
@@ -389,9 +395,10 @@ func (d *Repo) SetNoteGroup(noteID, userID, groupID int64) error {
 	return nil
 }
 
-// ListNoteGroups 返回用户自己建的全部文档组（含空组），按建立先后。
+// ListNoteGroups 返回用户自己建的全部文档组（含空组），按自定义顺序
+// （sort_order 全零的老数据退回建立先后）。
 func (d *Repo) ListNoteGroups(ownerID int64) ([]*model.NoteGroup, error) {
-	rows, err := d.Query(`SELECT id, owner_id, name FROM note_groups WHERE owner_id=? ORDER BY id`, ownerID)
+	rows, err := d.Query(`SELECT id, owner_id, name FROM note_groups WHERE owner_id=? ORDER BY sort_order, id`, ownerID)
 	if err != nil {
 		return nil, err
 	}
@@ -405,6 +412,71 @@ func (d *Repo) ListNoteGroups(ownerID int64) ([]*model.NoteGroup, error) {
 		list = append(list, gr)
 	}
 	return list, rows.Err()
+}
+
+// MoveNoteGroup 把自己的组 gid 移到组 beforeGid 之前（beforeGid=0 移到末尾），
+// 然后整表重排 sort_order。两个组都必须属于 ownerID。
+func (d *Repo) MoveNoteGroup(ownerID, gid, beforeGid int64) error {
+	tx, err := d.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.Query(
+		`SELECT id FROM note_groups WHERE owner_id=? ORDER BY sort_order, id`, ownerID)
+	if err != nil {
+		return err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	// 摘出 gid,插到 beforeGid 之前(或末尾)
+	src := -1
+	for i, id := range ids {
+		if id == gid {
+			src = i
+			break
+		}
+	}
+	if src < 0 {
+		return fmt.Errorf("group not found or permission denied")
+	}
+	ids = append(ids[:src], ids[src+1:]...)
+	dst := len(ids)
+	if beforeGid != 0 {
+		dst = -1
+		for i, id := range ids {
+			if id == beforeGid {
+				dst = i
+				break
+			}
+		}
+		if dst < 0 {
+			return fmt.Errorf("target group not found or permission denied")
+		}
+	}
+	ids = append(ids[:dst], append([]int64{gid}, ids[dst:]...)...)
+
+	for i, id := range ids {
+		if _, err := tx.Exec(
+			`UPDATE note_groups SET sort_order=? WHERE id=? AND owner_id=?`, i, id, ownerID,
+		); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // OwnsNoteGroup 组是否属于该用户（/notes/new?group=N 的入组校验）。
