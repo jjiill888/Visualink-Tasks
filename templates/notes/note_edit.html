@@ -368,6 +368,10 @@
         }
         return;
       }
+      if (e.target.closest('.ne-dir-ren')) {
+        startRenameDir(e.target.closest('.ne-dir'));
+        return;
+      }
       var dirName = e.target.closest('.ne-dir-name');
       if (dirName) {
         var d = dirName.closest('.ne-dir');
@@ -387,6 +391,41 @@
         toggleFold(sec, sec.dataset.group);
       }
     });
+
+    /* 组重命名（仿 VSCode 就地改名）：组名按钮换成无边框输入框，
+       回车/失焦提交，Escape 取消，改名成功后端返回整块面板自然收尾；
+       失败恢复原名并走全局错误 Toast */
+    function startRenameDir(dir) {
+      var nameBtn = dir.querySelector('.ne-dir-name');
+      if (!nameBtn || dir.querySelector('.ne-dir-rename')) return;
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'ne-dir-rename';
+      input.maxLength = 50;
+      input.value = dir.dataset.name;
+      nameBtn.hidden = true;
+      nameBtn.after(input);
+      input.focus();
+      input.select();
+      var done = false;
+      function restore() { input.remove(); nameBtn.hidden = false; }
+      function cancel() { if (done) return; done = true; restore(); }
+      function commit() {
+        if (done) return;
+        var name = input.value.trim();
+        if (!name || name === dir.dataset.name) { cancel(); return; }
+        done = true;
+        panelReq('PUT', '/notes/groups/' + dir.dataset.dir, { name: name })
+          .catch(function (err) { panelErr(err); restore(); });
+      }
+      input.addEventListener('keydown', function (e) {
+        e.stopPropagation(); /* 别惊动编辑器/菜单的全局快捷键 */
+        if (e.key === 'Enter') { e.preventDefault(); commit(); }
+        else if (e.key === 'Escape') cancel();
+      });
+      input.addEventListener('blur', commit);
+      input.addEventListener('click', function (e) { e.stopPropagation(); });
+    }
 
     /* 当前文档高亮（直出与刷新后各标一次），顺带重放分区/组折叠状态；
        首次载入若当前文档藏在折叠的分区或组里则逐层展开（仿 VSCode reveal），

@@ -258,6 +258,33 @@ func CreateNoteGroup(d *Deps) http.HandlerFunc {
 	}
 }
 
+// RenameNoteGroup PUT /notes/groups/{gid} — 组重命名（仅建组者），
+// 返回刷新后的面板片段。
+func RenameNoteGroup(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := auth.UserFromContext(r)
+		gid, err := strconv.ParseInt(chi.URLParam(r, "gid"), 10, 64)
+		if err != nil {
+			http.Error(w, "无效的组 ID", http.StatusBadRequest)
+			return
+		}
+		name := strings.TrimSpace(r.FormValue("name"))
+		if name == "" {
+			http.Error(w, "请输入组名", http.StatusBadRequest)
+			return
+		}
+		if len([]rune(name)) > 50 {
+			http.Error(w, "组名最多 50 个字符", http.StatusBadRequest)
+			return
+		}
+		if err := d.Repo.RenameNoteGroup(gid, u.ID, name); err != nil {
+			http.Error(w, "只有建组者可以重命名这个组", http.StatusForbidden)
+			return
+		}
+		writeNotesPanel(w, d, u.ID)
+	}
+}
+
 // DeleteNoteGroup DELETE /notes/groups/{gid} — 删组（仅建组者），
 // 组内文档回到未分组，不删除文档。返回刷新后的面板片段。
 func DeleteNoteGroup(d *Deps) http.HandlerFunc {

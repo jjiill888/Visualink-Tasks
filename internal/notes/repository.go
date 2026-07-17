@@ -338,6 +338,18 @@ func (d *Repo) CreateNoteGroup(ownerID int64, name string) (int64, error) {
 	return res.LastInsertId()
 }
 
+// RenameNoteGroup 组重命名（仅 owner，属主校验压在 SQL 里；name 由 handler 校验）。
+func (d *Repo) RenameNoteGroup(id, ownerID int64, name string) error {
+	res, err := d.Exec(`UPDATE note_groups SET name=? WHERE id=? AND owner_id=?`, name, id, ownerID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("group not found or permission denied")
+	}
+	return nil
+}
+
 // DeleteNoteGroup 删组（仅 owner）：事务内先把组内笔记回到未分组，再删组行。
 // 不删除任何笔记。
 func (d *Repo) DeleteNoteGroup(id, ownerID int64) error {
