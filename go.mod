@@ -1,4 +1,4 @@
-module featuretrack
+module visualink
 
 go 1.25.0
 

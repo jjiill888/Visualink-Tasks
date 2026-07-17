@@ -28,7 +28,7 @@ import (
 	"sync"
 	"time"
 
-	"featuretrack/internal/db"
+	"visualink/internal/db"
 )
 
 // CollabUpstream y-sweet 服务地址（compose 内网，如 http://ysweet:8080）。

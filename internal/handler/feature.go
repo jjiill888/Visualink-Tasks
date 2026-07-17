@@ -10,9 +10,9 @@ import (
 	"strconv"
 	"strings"
 
-	"featuretrack/internal/db"
-	"featuretrack/internal/hub"
-	"featuretrack/internal/model"
+	"visualink/internal/db"
+	"visualink/internal/platform/hub"
+	"visualink/internal/model"
 
 	"github.com/go-chi/chi/v5"
 )

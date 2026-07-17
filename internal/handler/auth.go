@@ -7,9 +7,9 @@ import (
 	"regexp"
 	"strings"
 
-	"featuretrack/internal/db"
-	"featuretrack/internal/model"
-	"featuretrack/internal/session"
+	"visualink/internal/db"
+	"visualink/internal/model"
+	"visualink/internal/platform/session"
 
 	"golang.org/x/crypto/bcrypt"
 )

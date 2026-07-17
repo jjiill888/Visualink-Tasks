@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"featuretrack/internal/db"
-	"featuretrack/internal/model"
+	"visualink/internal/db"
+	"visualink/internal/model"
 )
 
 const cookieName = "ft_session"

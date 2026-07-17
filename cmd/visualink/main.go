@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"featuretrack/internal/assets"
-	"featuretrack/internal/db"
-	"featuretrack/internal/handler"
-	"featuretrack/internal/hub"
-	"featuretrack/internal/model"
+	"visualink/internal/platform/assets"
+	"visualink/internal/db"
+	"visualink/internal/handler"
+	"visualink/internal/platform/hub"
+	"visualink/internal/model"
 
 	httpcompression "github.com/CAFxX/httpcompression"
 	brotlihttp "github.com/CAFxX/httpcompression/contrib/andybalholm/brotli"

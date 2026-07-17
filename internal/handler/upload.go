@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"featuretrack/internal/db"
-	"featuretrack/internal/imageutil"
-	"featuretrack/internal/model"
+	"visualink/internal/db"
+	"visualink/internal/platform/imageutil"
+	"visualink/internal/model"
 
 	"github.com/go-chi/chi/v5"
 )

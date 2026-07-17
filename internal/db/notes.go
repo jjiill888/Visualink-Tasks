@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"featuretrack/internal/model"
+	"visualink/internal/model"
 )
 
 // ErrNoteConflict 表示乐观锁校验失败：客户端打开笔记后，其他人已保存过新版本。

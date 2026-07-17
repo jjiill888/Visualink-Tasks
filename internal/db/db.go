@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"featuretrack/internal/model"
+	"visualink/internal/model"
 
 	_ "modernc.org/sqlite"
 )

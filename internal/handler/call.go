@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"featuretrack/internal/db"
-	"featuretrack/internal/hub"
+	"visualink/internal/db"
+	"visualink/internal/platform/hub"
 )
 
 // CallSignal handles POST /im/call/signal — WebRTC signaling relay via SSE broadcast.

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"featuretrack/internal/model"
+	"visualink/internal/model"
 )
 
 // ── Channel queries ─────────────────────────────────────────────────────────

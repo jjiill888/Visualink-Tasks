@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"featuretrack/internal/model"
+	"visualink/internal/model"
 )
 
 func (d *DB) migrateAttachments() error {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"featuretrack/internal/hub"
+	"visualink/internal/platform/hub"
 )
 
 // SSE handles GET /sse — keeps the connection open and streams events.

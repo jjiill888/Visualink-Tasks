@@ -27,7 +27,7 @@ COPY . .
 # 模板/CSS 改动不会触发重新编译 Go 代码
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
-    CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w" -o featuretrack .
+    CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w" -o featuretrack ./cmd/visualink
 
 # ── Run stage ─────────────────────────────────────────────────────────────────
 FROM alpine:3.20

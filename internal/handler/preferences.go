@@ -3,7 +3,7 @@ package handler
 import (
 	"net/http"
 
-	"featuretrack/internal/db"
+	"visualink/internal/db"
 )
 
 // Preferences handles GET /preferences — returns the preferences panel partial.
