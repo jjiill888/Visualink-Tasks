@@ -495,8 +495,9 @@ body.ne-library .ne-page {
   opacity: 1;
 }
 
+/* 常显态压得很淡(只是个置顶记号);行悬停时由更高特异性的规则恢复清晰 */
 .ne-lib-fav.ne-on {
-  opacity: 1;
+  opacity: 0.45;
   color: var(--ne-faint);
 }
 
@@ -1493,8 +1494,9 @@ body.ne-diff-page .ne-page {
   opacity: 1;
 }
 
+/* 常显态压得很淡,行悬停恢复清晰(同文库) */
 .ne-doc-fav.ne-on {
-  opacity: 1;
+  opacity: 0.45;
   color: var(--ne-faint);
 }
 
