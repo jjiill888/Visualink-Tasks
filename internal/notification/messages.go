@@ -1,4 +1,4 @@
-package handler
+package notification
 
 import (
 	"fmt"
@@ -8,8 +8,9 @@ import (
 	"strings"
 
 	"visualink/internal/db"
-	"visualink/internal/platform/hub"
 	"visualink/internal/model"
+	"visualink/internal/platform/auth"
+	"visualink/internal/platform/hub"
 )
 
 type messageBadgeData struct {
@@ -233,14 +234,14 @@ func buildMessageCenterData(database *db.DB, u *model.User, kind string, targetU
 
 func GetMessageBadge(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		count, err := database.CountUnreadInbox(u.ID)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := PartialTmpl.ExecuteTemplate(w, "message_badge.html", messageBadgeData{Count: count}); err != nil {
+		if err := partials.ExecuteTemplate(w, "message_badge.html", messageBadgeData{Count: count}); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}
@@ -248,7 +249,7 @@ func GetMessageBadge(database *db.DB) http.HandlerFunc {
 
 func GetMessagePreview(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		count, err := database.CountUnreadInbox(u.ID)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
@@ -297,7 +298,7 @@ func GetMessagePreview(database *db.DB) http.HandlerFunc {
 		}
 		preview := model.MessagePreview{Count: count, Items: filtered}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := PartialTmpl.ExecuteTemplate(w, "messages_preview.html", preview); err != nil {
+		if err := partials.ExecuteTemplate(w, "messages_preview.html", preview); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}
@@ -305,7 +306,7 @@ func GetMessagePreview(database *db.DB) http.HandlerFunc {
 
 func GetMessageCenter(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		search := strings.TrimSpace(r.URL.Query().Get("q"))
 		kind := strings.TrimSpace(r.URL.Query().Get("kind"))
 		targetUserID, _ := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
@@ -320,7 +321,7 @@ func GetMessageCenter(database *db.DB) http.HandlerFunc {
 			w.Header().Set("HX-Trigger", "message-refresh")
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := PartialTmpl.ExecuteTemplate(w, "messages_center.html", data); err != nil {
+		if err := partials.ExecuteTemplate(w, "messages_center.html", data); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}
@@ -328,7 +329,7 @@ func GetMessageCenter(database *db.DB) http.HandlerFunc {
 
 func SendMessage(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		recipientID, err := strconv.ParseInt(r.FormValue("recipient_id"), 10, 64)
 		if err != nil || recipientID <= 0 {
 			http.Error(w, "invalid recipient", 400)
@@ -365,7 +366,7 @@ func SendMessage(database *db.DB) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := PartialTmpl.ExecuteTemplate(w, "messages_center.html", data); err != nil {
+		if err := partials.ExecuteTemplate(w, "messages_center.html", data); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}

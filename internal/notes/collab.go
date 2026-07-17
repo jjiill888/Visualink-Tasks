@@ -1,4 +1,4 @@
-package handler
+package notes
 
 // 云笔记阶段二：y-sweet 实时协作的服务端胶水。
 //
@@ -89,6 +89,7 @@ type collabClientToken struct {
 //     浏览器怎么访问到本服务，就用同一个主机名连 y-sweet，ZeroTier IP /
 //     localhost 都无需配置
 //   - 反代模式：本服务的 /collab 前缀路径
+//
 // wsScheme=true 输出 ws(s)，否则 http(s)；是否 TLS 看请求本身（生产纯 HTTP 直出）。
 func rewriteCollabURL(r *http.Request, upstream string, wsScheme bool) string {
 	u, err := url.Parse(upstream)

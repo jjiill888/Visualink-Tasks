@@ -1,4 +1,4 @@
-package handler
+package im
 
 import (
 	"encoding/json"
@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"visualink/internal/db"
+	"visualink/internal/platform/auth"
 	"visualink/internal/platform/hub"
 )
 
@@ -14,7 +15,7 @@ import (
 // to all SSE subscribers and clients filter by the `to` field.
 func CallSignal(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 
 		var req struct {
 			To        int64  `json:"to"`

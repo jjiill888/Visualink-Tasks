@@ -1,4 +1,4 @@
-package handler
+package notes
 
 // 云笔记权限管理：编辑页顶栏「权限」弹层的一组 HTMX 端点，全部仅创建者可用。
 //
@@ -31,7 +31,7 @@ func renderNotePerms(w http.ResponseWriter, database *db.DB, n *model.Note) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	data := map[string]any{"Note": n, "Shares": shares}
-	if err := PartialTmpl.ExecuteTemplate(w, "note_perms_partial.html", data); err != nil {
+	if err := partials.ExecuteTemplate(w, "note_perms_partial.html", data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
@@ -143,7 +143,7 @@ func NoteShareSearch(database *db.DB) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		data := map[string]any{"Note": n, "Users": users, "Query": q}
-		if err := PartialTmpl.ExecuteTemplate(w, "note_share_results", data); err != nil {
+		if err := partials.ExecuteTemplate(w, "note_share_results", data); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	}

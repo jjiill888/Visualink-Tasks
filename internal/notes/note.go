@@ -1,6 +1,8 @@
-package handler
+package notes
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +16,8 @@ import (
 
 	"visualink/internal/db"
 	"visualink/internal/model"
+	"visualink/internal/platform/auth"
+	"visualink/internal/platform/web"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -51,7 +55,7 @@ func loadNote(w http.ResponseWriter, r *http.Request, database *db.DB) *model.No
 		http.Error(w, "无效的笔记 ID", http.StatusBadRequest)
 		return nil
 	}
-	n, err := database.GetNote(id, UserFromContext(r).ID)
+	n, err := database.GetNote(id, auth.UserFromContext(r).ID)
 	if err != nil {
 		http.Error(w, "服务器错误", http.StatusInternalServerError)
 		return nil
@@ -97,7 +101,7 @@ type notesListData struct {
 }
 
 func notesList(w http.ResponseWriter, r *http.Request, database *db.DB, fullPage bool) {
-	u := UserFromContext(r)
+	u := auth.UserFromContext(r)
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	notes, err := database.ListNotes(u.ID, query)
 	if err != nil {
@@ -106,13 +110,13 @@ func notesList(w http.ResponseWriter, r *http.Request, database *db.DB, fullPage
 	}
 	data := &notesListData{Notes: notes, Query: query, CurrentUserID: u.ID}
 	if fullPage {
-		pd := pageData(r, "notes")
+		pd := auth.PageData(r, "notes")
 		pd.Data = data
 		renderStandalone(w, "notes.html", pd)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := PartialTmpl.ExecuteTemplate(w, "notes_list_partial.html", data); err != nil {
+	if err := partials.ExecuteTemplate(w, "notes_list_partial.html", data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
@@ -220,7 +224,7 @@ func writeNotesPanel(w http.ResponseWriter, database *db.DB, userID int64) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := PartialTmpl.ExecuteTemplate(w, "notes_panel_partial.html", data); err != nil {
+	if err := partials.ExecuteTemplate(w, "notes_panel_partial.html", data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
@@ -230,14 +234,14 @@ func writeNotesPanel(w http.ResponseWriter, database *db.DB, userID int64) {
 // 本端点只用于打开侧栏时的后台刷新。
 func NotesPanel(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		writeNotesPanel(w, database, UserFromContext(r).ID)
+		writeNotesPanel(w, database, auth.UserFromContext(r).ID)
 	}
 }
 
 // CreateNoteGroup POST /notes/groups — 新建文档组，返回刷新后的面板片段。
 func CreateNoteGroup(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		name := strings.TrimSpace(r.FormValue("name"))
 		if name == "" {
 			http.Error(w, "请输入组名", http.StatusBadRequest)
@@ -259,7 +263,7 @@ func CreateNoteGroup(database *db.DB) http.HandlerFunc {
 // 组内文档回到未分组，不删除文档。返回刷新后的面板片段。
 func DeleteNoteGroup(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		gid, err := strconv.ParseInt(chi.URLParam(r, "gid"), 10, 64)
 		if err != nil {
 			http.Error(w, "无效的组 ID", http.StatusBadRequest)
@@ -278,7 +282,7 @@ func DeleteNoteGroup(database *db.DB) http.HandlerFunc {
 // 返回刷新后的面板片段。
 func SetNoteGroup(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if err != nil {
 			http.Error(w, "无效的笔记 ID", http.StatusBadRequest)
@@ -303,7 +307,7 @@ func SetNoteGroup(database *db.DB) http.HandlerFunc {
 // 侧栏文档列表随页面直出（查询失败不阻塞编辑，Panel 为 nil 时
 // 模板显示占位，前端打开侧栏时再 fetch 补拉）。
 func renderNoteEdit(w http.ResponseWriter, r *http.Request, database *db.DB, n *model.Note) {
-	panel, err := notesPanelData(database, UserFromContext(r).ID)
+	panel, err := notesPanelData(database, auth.UserFromContext(r).ID)
 	if err != nil {
 		panel = nil
 	}
@@ -315,7 +319,7 @@ func renderNoteEdit(w http.ResponseWriter, r *http.Request, database *db.DB, n *
 		// 前端回退到 /notes/{id}/collab-token
 		collabToken = InlineCollabToken(r, n.ID)
 	}
-	pd := pageData(r, "notes")
+	pd := auth.PageData(r, "notes")
 	pd.Data = map[string]any{
 		"Note":        n,
 		"Panel":       panel,
@@ -332,7 +336,7 @@ func renderNoteEdit(w http.ResponseWriter, r *http.Request, database *db.DB, n *
 // 用 GET 是为了让「新建笔记」做成 target="_blank" 的普通链接。
 func NewNote(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		// ?group=N：在文档组内新建（侧栏组行的「＋」）；不是自己的组则忽略入组
 		var groupID int64
 		if v := r.URL.Query().Get("group"); v != "" {
@@ -387,7 +391,7 @@ func SaveNote(database *db.DB) http.HandlerFunc {
 		if n == nil {
 			return
 		}
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 
 		r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
 		var req saveNoteReq
@@ -423,7 +427,7 @@ func DeleteNote(database *db.DB) http.HandlerFunc {
 		if n == nil {
 			return
 		}
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		if n.OwnerID != u.ID {
 			http.Error(w, "仅创建者可删除笔记", http.StatusForbidden)
 			return
@@ -455,7 +459,7 @@ func NoteHistory(database *db.DB) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		data := map[string]any{"Note": n, "Revisions": revs, "CanEdit": n.CanEdit()}
-		if err := PartialTmpl.ExecuteTemplate(w, "note_history.html", data); err != nil {
+		if err := partials.ExecuteTemplate(w, "note_history.html", data); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	}
@@ -482,7 +486,7 @@ func NoteRevisionPage(database *db.DB) http.HandlerFunc {
 			http.Error(w, "版本不存在", http.StatusNotFound)
 			return
 		}
-		pd := pageData(r, "notes")
+		pd := auth.PageData(r, "notes")
 		pd.Data = map[string]any{"Note": n, "Rev": rev}
 		render(w, r, "note_revision.html", pd)
 	}
@@ -495,7 +499,7 @@ func RestoreNoteRevision(database *db.DB) http.HandlerFunc {
 		if n == nil {
 			return
 		}
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		rid, err := strconv.ParseInt(chi.URLParam(r, "rid"), 10, 64)
 		if err != nil {
 			http.Error(w, "无效的版本 ID", http.StatusBadRequest)
@@ -512,7 +516,7 @@ func RestoreNoteRevision(database *db.DB) http.HandlerFunc {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-		redirect(w, r, target)
+		web.Redirect(w, r, target)
 	}
 }
 
@@ -624,4 +628,11 @@ func ServeNoteAttachment(database *db.DB) http.HandlerFunc {
 		}
 		http.ServeFile(w, r, abs)
 	}
+}
+
+// randomSlug 生成 16 位十六进制随机文件名(与 platform/upload 同法,独立小工具不共享)。
+func randomSlug() string {
+	var b [8]byte
+	_, _ = rand.Read(b[:])
+	return hex.EncodeToString(b[:])
 }

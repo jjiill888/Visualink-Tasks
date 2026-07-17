@@ -1,4 +1,4 @@
-package handler
+package im
 
 import (
 	"fmt"
@@ -11,8 +11,9 @@ import (
 	"time"
 
 	"visualink/internal/db"
-	"visualink/internal/platform/hub"
 	"visualink/internal/model"
+	"visualink/internal/platform/auth"
+	"visualink/internal/platform/hub"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -33,8 +34,8 @@ type imMsgView struct {
 
 type imPageData struct {
 	CurrentUser   *model.User
-	MyChannels    []*model.IMChannel  // group channels (public/private)
-	MyDMs         []*model.IMChannel  // DM contacts from direct_messages
+	MyChannels    []*model.IMChannel // group channels (public/private)
+	MyDMs         []*model.IMChannel // DM contacts from direct_messages
 	ActiveChannel *model.IMChannel
 	Messages      []imMsgView
 	// Notification mode
@@ -121,14 +122,14 @@ func loadIMSidebar(database *db.DB, userID int64) (myChannels []*model.IMChannel
 
 func renderIMFull(w http.ResponseWriter, data *imPageData) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := IMTmpl.ExecuteTemplate(w, "im_layout.html", data); err != nil {
+	if err := imTmpl.ExecuteTemplate(w, "im_layout.html", data); err != nil {
 		http.Error(w, err.Error(), 500)
 	}
 }
 
 func renderIMPartial(w http.ResponseWriter, tmplName string, data any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := IMTmpl.ExecuteTemplate(w, tmplName, data); err != nil {
+	if err := imTmpl.ExecuteTemplate(w, tmplName, data); err != nil {
 		http.Error(w, err.Error(), 500)
 	}
 }
@@ -138,7 +139,7 @@ func renderIMPartial(w http.ResponseWriter, tmplName string, data any) {
 // IMHome handles GET /im — redirects to first group channel, first DM, or notifications.
 func IMHome(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 
 		myChannels, myDMs, _, err := loadIMSidebar(database, u.ID)
 		if err != nil {
@@ -179,7 +180,7 @@ func IMHome(database *db.DB) http.HandlerFunc {
 // IMChannel handles GET /im/c/{id} — group channel view.
 func IMChannel(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		channelID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if err != nil {
 			http.Error(w, "invalid channel", 400)
@@ -260,7 +261,7 @@ func loadChannelMessages(database *db.DB, channelID, beforeID int64) ([]*model.I
 // GetIMMessages handles GET /im/c/{id}/messages?before={id} — cursor pagination.
 func GetIMMessages(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		channelID, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		beforeID, _ := strconv.ParseInt(r.URL.Query().Get("before"), 10, 64)
 
@@ -294,7 +295,7 @@ func GetIMMessages(database *db.DB) http.HandlerFunc {
 // GetNewIMMessages handles GET /im/c/{id}/messages/new?after={id} — SSE-triggered.
 func GetNewIMMessages(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		channelID, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		afterID, _ := strconv.ParseInt(r.URL.Query().Get("after"), 10, 64)
 
@@ -323,7 +324,7 @@ func GetNewIMMessages(database *db.DB) http.HandlerFunc {
 // SendIMMessage handles POST /im/c/{id}/messages — group channel send.
 func SendIMMessage(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		channelID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if err != nil {
 			http.Error(w, "invalid channel", 400)
@@ -360,7 +361,7 @@ func SendIMMessage(database *db.DB) http.HandlerFunc {
 // IMDMView handles GET /im/dm/{userID} — open DM conversation using direct_messages.
 func IMDMView(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		partnerID, err := strconv.ParseInt(chi.URLParam(r, "userID"), 10, 64)
 		if err != nil || partnerID == u.ID {
 			http.Error(w, "invalid user", 400)
@@ -427,7 +428,7 @@ func IMDMView(database *db.DB) http.HandlerFunc {
 // SendIMDM handles POST /im/dm/{userID}/messages — writes to direct_messages.
 func SendIMDM(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		partnerID, err := strconv.ParseInt(chi.URLParam(r, "userID"), 10, 64)
 		if err != nil || partnerID == u.ID {
 			http.Error(w, "invalid user", 400)
@@ -460,7 +461,7 @@ func SendIMDM(database *db.DB) http.HandlerFunc {
 // GetNewIMDMMessages handles GET /im/dm/{userID}/messages/new?after={id}.
 func GetNewIMDMMessages(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		partnerID, _ := strconv.ParseInt(chi.URLParam(r, "userID"), 10, 64)
 		afterID, _ := strconv.ParseInt(r.URL.Query().Get("after"), 10, 64)
 
@@ -488,7 +489,7 @@ func GetNewIMDMMessages(database *db.DB) http.HandlerFunc {
 // IMNotifications handles GET /im/notifications — system notifications view.
 func IMNotifications(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 
 		notifs, err := database.ListRecentNotifications(u.ID, 200)
 		if err != nil {
@@ -528,7 +529,7 @@ func IMNotifications(database *db.DB) http.HandlerFunc {
 // CreateIMChannel handles POST /im/channels.
 func CreateIMChannel(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		name := strings.TrimSpace(strings.ToLower(r.FormValue("name")))
 		displayName := strings.TrimSpace(r.FormValue("display_name"))
 		description := strings.TrimSpace(r.FormValue("description"))
@@ -563,7 +564,7 @@ func CreateIMChannel(database *db.DB) http.HandlerFunc {
 // JoinIMChannel handles POST /im/c/{id}/join.
 func JoinIMChannel(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		channelID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if err != nil {
 			http.Error(w, "invalid channel", 400)
@@ -590,7 +591,7 @@ func JoinIMChannel(database *db.DB) http.HandlerFunc {
 // LeaveIMChannel handles DELETE /im/c/{id}/join.
 func LeaveIMChannel(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		channelID, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if err := database.LeaveIMChannel(channelID, u.ID); err != nil {
 			http.Error(w, err.Error(), 500)
@@ -603,7 +604,7 @@ func LeaveIMChannel(database *db.DB) http.HandlerFunc {
 // IMSidebar handles GET /im/sidebar — partial for HTMX refresh.
 func IMSidebar(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		activeChannelID, _ := strconv.ParseInt(r.URL.Query().Get("active"), 10, 64)
 		activeType := r.URL.Query().Get("type") // "direct", "system", or ""
 
@@ -631,7 +632,7 @@ func IMSidebar(database *db.DB) http.HandlerFunc {
 // IMNewChannelForm handles GET /im/channels/new.
 func IMNewChannelForm(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		myChannels, myDMs, notifUnread, _ := loadIMSidebar(database, u.ID)
 		renderIMFull(w, &imPageData{
 			CurrentUser:      u,

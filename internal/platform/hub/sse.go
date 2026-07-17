@@ -1,12 +1,10 @@
-package handler
+package hub
 
 import (
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
-
-	"visualink/internal/platform/hub"
 )
 
 // SSE handles GET /sse — keeps the connection open and streams events.
@@ -23,8 +21,8 @@ func SSE() http.HandlerFunc {
 			return
 		}
 
-		ch := hub.Global.Subscribe()
-		defer hub.Global.Unsubscribe(ch)
+		ch := Global.Subscribe()
+		defer Global.Unsubscribe(ch)
 
 		// Send an initial ping so the client knows it's connected.
 		fmt.Fprintf(w, "event: ping\ndata: connected\n\n")

@@ -1,4 +1,4 @@
-package handler
+package tasks
 
 import (
 	"bytes"
@@ -11,8 +11,9 @@ import (
 	"strings"
 
 	"visualink/internal/db"
-	"visualink/internal/platform/hub"
 	"visualink/internal/model"
+	"visualink/internal/platform/auth"
+	"visualink/internal/platform/hub"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -165,7 +166,7 @@ type dashboardData struct {
 
 func Dashboard(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		stats, err := database.GetStats()
 		if err != nil {
 			http.Error(w, err.Error(), 500)
@@ -181,7 +182,7 @@ func Dashboard(database *db.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		pd := pageData(r, "dashboard")
+		pd := auth.PageData(r, "dashboard")
 		pd.BannerMessage = fmt.Sprintf("共 %d 条待处理功能", stats.Pending)
 		canEdit := canEditStatus(u.Role)
 		featureRows := make([]featureRowData, len(features))
@@ -220,7 +221,7 @@ type featuresListData struct {
 // ListFeatures is the HTMX partial endpoint — returns only the feature rows.
 func ListFeatures(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		q := r.URL.Query()
 		priority := q.Get("priority")
 		status := q.Get("status")
@@ -280,7 +281,7 @@ func ListFeatures(database *db.DB) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := PartialTmpl.ExecuteTemplate(w, "features_partial.html", data); err != nil {
+		if err := partials.ExecuteTemplate(w, "features_partial.html", data); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
@@ -294,7 +295,7 @@ func ListFeatures(database *db.DB) http.HandlerFunc {
 // UpdateStatus handles PATCH /features/{id}/status (HTMX)
 func UpdateStatus(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		idStr := chi.URLParam(r, "id")
 		id, err := strconv.ParseInt(idStr, 10, 64)
 		if err != nil {
@@ -379,7 +380,7 @@ func GetStats(database *db.DB) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := PartialTmpl.ExecuteTemplate(w, "stats_partial.html", stats); err != nil {
+		if err := partials.ExecuteTemplate(w, "stats_partial.html", stats); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}
@@ -393,7 +394,7 @@ func FeatureSubmitPage(database *db.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		pd := pageData(r, "")
+		pd := auth.PageData(r, "")
 		pd.Data = struct{ Groups []*model.Group }{Groups: groups}
 		render(w, r, "submit_standalone.html", pd)
 	}
@@ -408,7 +409,7 @@ func FeatureForm(database *db.DB) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := PartialTmpl.ExecuteTemplate(w, "submit_form_modal.html", groups); err != nil {
+		if err := partials.ExecuteTemplate(w, "submit_form_modal.html", groups); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}
@@ -417,7 +418,7 @@ func FeatureForm(database *db.DB) http.HandlerFunc {
 // CreateFeature handles POST /features
 func CreateFeature(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 
 		title := strings.TrimSpace(r.FormValue("title"))
 		description := strings.TrimSpace(r.FormValue("description"))
@@ -487,7 +488,7 @@ type mineData struct {
 
 func Mine(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		features, err := database.ListFeaturesByUser(u.ID)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
@@ -498,7 +499,7 @@ func Mine(database *db.DB) http.HandlerFunc {
 		for i, f := range features {
 			rows[i] = featureRowData{Feature: f, CanEditStatus: canEdit}
 		}
-		pd := pageData(r, "mine")
+		pd := auth.PageData(r, "mine")
 		pd.Data = mineData{Features: rows}
 		render(w, r, "mine.html", pd)
 	}
@@ -584,11 +585,11 @@ func writeFeatureRow(database *db.DB, w io.Writer, r *http.Request, featureID in
 	if f == nil {
 		return fmt.Errorf("feature %d not found", featureID)
 	}
-	u := UserFromContext(r)
+	u := auth.UserFromContext(r)
 	f.IsWatched, _ = database.IsFeatureWatched(u.ID, featureID)
 	f.HasUnreadComments, _ = database.HasUnreadComments(u.ID, featureID)
 	row := featureRowData{Feature: f, CanEditStatus: canEditStatus(u.Role), OOBSwap: oobSwap}
-	return PartialTmpl.ExecuteTemplate(w, "feature_row.html", row)
+	return partials.ExecuteTemplate(w, "feature_row.html", row)
 }
 
 func writeFeatureDetail(database *db.DB, w io.Writer, r *http.Request, featureID int64) error {
@@ -599,7 +600,7 @@ func writeFeatureDetail(database *db.DB, w io.Writer, r *http.Request, featureID
 	if f == nil {
 		return fmt.Errorf("feature %d not found", featureID)
 	}
-	u := UserFromContext(r)
+	u := auth.UserFromContext(r)
 	if f.Status == "draft" && f.CreatedBy == u.ID {
 		groups, err := database.ListGroups()
 		if err != nil {
@@ -610,13 +611,13 @@ func writeFeatureDetail(database *db.DB, w io.Writer, r *http.Request, featureID
 			return err
 		}
 		atts, csv := loadAttachments(database, f.ID)
-		return PartialTmpl.ExecuteTemplate(w, "feature_draft_edit.html", draftEditData{Feature: f, Groups: groups, Users: users, Attachments: atts, AttachmentIDsCSV: csv})
+		return partials.ExecuteTemplate(w, "feature_draft_edit.html", draftEditData{Feature: f, Groups: groups, Users: users, Attachments: atts, AttachmentIDsCSV: csv})
 	}
 	detail, err := buildFeatureDetailData(database, u, f)
 	if err != nil {
 		return err
 	}
-	return PartialTmpl.ExecuteTemplate(w, "feature_detail.html", detail)
+	return partials.ExecuteTemplate(w, "feature_detail.html", detail)
 }
 
 func writeFeatureMutationResponse(database *db.DB, w http.ResponseWriter, r *http.Request, featureID int64, modalResponse bool) error {
@@ -654,7 +655,7 @@ func FeatureDetail(database *db.DB) http.HandlerFunc {
 			http.Error(w, "not found", 404)
 			return
 		}
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		// 草稿默认进入编辑模式
 		if f.Status == "draft" && f.CreatedBy == u.ID {
 			groups, err := database.ListGroups()
@@ -669,7 +670,7 @@ func FeatureDetail(database *db.DB) http.HandlerFunc {
 			}
 			atts, csv := loadAttachments(database, f.ID)
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			if err := PartialTmpl.ExecuteTemplate(w, "feature_draft_edit.html", draftEditData{Feature: f, Groups: groups, Users: users, Attachments: atts, AttachmentIDsCSV: csv}); err != nil {
+			if err := partials.ExecuteTemplate(w, "feature_draft_edit.html", draftEditData{Feature: f, Groups: groups, Users: users, Attachments: atts, AttachmentIDsCSV: csv}); err != nil {
 				http.Error(w, err.Error(), 500)
 			}
 			return
@@ -695,7 +696,7 @@ func FeatureDetail(database *db.DB) http.HandlerFunc {
 			_ = database.MarkNotificationsReadByFeature(u.ID, id)
 			w.Header().Set("HX-Trigger", "message-refresh")
 		}
-		if err := PartialTmpl.ExecuteTemplate(w, "feature_detail.html", detail); err != nil {
+		if err := partials.ExecuteTemplate(w, "feature_detail.html", detail); err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
@@ -707,7 +708,7 @@ func FeatureDetail(database *db.DB) http.HandlerFunc {
 // RetractFeature handles DELETE /features/{id} — creator can retract their own pending feature
 func RetractFeature(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if err != nil {
 			http.Error(w, "invalid id", 400)
@@ -743,7 +744,7 @@ func RetractFeature(database *db.DB) http.HandlerFunc {
 // AddComment handles POST /features/{id}/comments (HTMX)
 func AddComment(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if err != nil {
 			http.Error(w, "invalid id", 400)
@@ -802,7 +803,7 @@ func AddComment(database *db.DB) http.HandlerFunc {
 		// Refresh feature rows for all connected clients so the unread dot appears.
 		hub.Global.Broadcast("feature-row-updated:" + chi.URLParam(r, "id"))
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := PartialTmpl.ExecuteTemplate(w, "comments_partial.html", renderCommentViews(comments, database, u.ID, u.Role == "admin")); err != nil {
+		if err := partials.ExecuteTemplate(w, "comments_partial.html", renderCommentViews(comments, database, u.ID, u.Role == "admin")); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}
@@ -811,7 +812,7 @@ func AddComment(database *db.DB) http.HandlerFunc {
 // DeleteComment handles DELETE /features/{id}/comments/{commentID}
 func DeleteComment(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		featureID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if err != nil {
 			http.Error(w, "invalid feature id", 400)
@@ -841,7 +842,7 @@ func DeleteComment(database *db.DB) http.HandlerFunc {
 		_ = database.MarkCommentsRead(u.ID, featureID)
 		hub.Global.Broadcast("feature-row-updated:" + chi.URLParam(r, "id"))
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := PartialTmpl.ExecuteTemplate(w, "comments_partial.html", renderCommentViews(comments, database, u.ID, u.Role == "admin")); err != nil {
+		if err := partials.ExecuteTemplate(w, "comments_partial.html", renderCommentViews(comments, database, u.ID, u.Role == "admin")); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}
@@ -860,99 +861,10 @@ func parseMentions(content string) []string {
 	return names
 }
 
-// MarkAllNotificationsRead handles POST /notifications/read-all
-func MarkAllNotificationsRead(database *db.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
-		if err := database.MarkAllNotificationsRead(u.ID); err != nil {
-			http.Error(w, err.Error(), 500)
-			return
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		// Return empty badge (no more unread)
-		if err := PartialTmpl.ExecuteTemplate(w, "notif_read_response.html", nil); err != nil {
-			http.Error(w, err.Error(), 500)
-		}
-	}
-}
-
-// GetNotificationBadge handles GET /notifications/count — returns badge HTML for nav bell.
-func GetNotificationBadge(database *db.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
-		notifs, err := database.ListUnreadNotifications(u.ID)
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-			return
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := PartialTmpl.ExecuteTemplate(w, "notif_badge.html", notifs); err != nil {
-			http.Error(w, err.Error(), 500)
-		}
-	}
-}
-
-// GetNotificationList handles GET /notifications — returns dropdown list HTML.
-func GetNotificationList(database *db.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
-		notifs, err := database.ListUnreadNotifications(u.ID)
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-			return
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := PartialTmpl.ExecuteTemplate(w, "notif_list.html", notifs); err != nil {
-			http.Error(w, err.Error(), 500)
-		}
-	}
-}
-
-// MarkNotificationsRead handles POST /notifications/read — marks feature's notifs as read,
-// returns updated badge + list HTML via OOB swap.
-func MarkNotificationsRead(database *db.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
-		notifIDStr := r.FormValue("id")
-		if notifIDStr != "" {
-			notifID, err := strconv.ParseInt(notifIDStr, 10, 64)
-			if err != nil {
-				http.Error(w, "invalid id", 400)
-				return
-			}
-			if err := database.MarkNotificationReadByID(u.ID, notifID); err != nil {
-				http.Error(w, err.Error(), 500)
-				return
-			}
-		} else {
-			featureIDStr := r.FormValue("feature_id")
-			featureID, err := strconv.ParseInt(featureIDStr, 10, 64)
-			if err != nil {
-				http.Error(w, "invalid feature_id", 400)
-				return
-			}
-			if err := database.MarkNotificationsReadByFeature(u.ID, featureID); err != nil {
-				http.Error(w, err.Error(), 500)
-				return
-			}
-		}
-		notifs, err := database.ListUnreadNotifications(u.ID)
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-			return
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		// Return badge update + list update via OOB
-		if err := PartialTmpl.ExecuteTemplate(w, "notif_read_response.html", notifs); err != nil {
-			http.Error(w, err.Error(), 500)
-		}
-	}
-}
-
 // ArchiveFeature handles POST /features/{id}/archive — dev/admin 手动归档已完成功能
 func ArchiveFeature(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		if !canEditStatus(u.Role) {
 			http.Error(w, "forbidden", 403)
 			return
@@ -1014,7 +926,7 @@ func GetFeatureRow(database *db.DB) http.HandlerFunc {
 // WatchFeature handles POST /features/{id}/watch
 func WatchFeature(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if err != nil {
 			http.Error(w, "invalid id", 400)
@@ -1031,7 +943,7 @@ func WatchFeature(database *db.DB) http.HandlerFunc {
 		}
 		f.IsWatched = true
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := PartialTmpl.ExecuteTemplate(w, "feature_watch_btn.html", f); err != nil {
+		if err := partials.ExecuteTemplate(w, "feature_watch_btn.html", f); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}
@@ -1040,7 +952,7 @@ func WatchFeature(database *db.DB) http.HandlerFunc {
 // UnwatchFeature handles DELETE /features/{id}/watch
 func UnwatchFeature(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if err != nil {
 			http.Error(w, "invalid id", 400)
@@ -1057,7 +969,7 @@ func UnwatchFeature(database *db.DB) http.HandlerFunc {
 		}
 		f.IsWatched = false
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := PartialTmpl.ExecuteTemplate(w, "feature_watch_btn.html", f); err != nil {
+		if err := partials.ExecuteTemplate(w, "feature_watch_btn.html", f); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}
@@ -1102,7 +1014,7 @@ func parseAttachmentIDs(raw string) []int64 {
 // DraftEditForm handles GET /features/{id}/edit — returns edit form modal partial for drafts.
 func DraftEditForm(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if err != nil {
 			http.Error(w, "invalid id", 400)
@@ -1130,7 +1042,7 @@ func DraftEditForm(database *db.DB) http.HandlerFunc {
 		atts, csv := loadAttachments(database, f.ID)
 		data := draftEditData{Feature: f, Groups: groups, Users: users, Attachments: atts, AttachmentIDsCSV: csv}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := PartialTmpl.ExecuteTemplate(w, "feature_draft_edit.html", data); err != nil {
+		if err := partials.ExecuteTemplate(w, "feature_draft_edit.html", data); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}
@@ -1139,7 +1051,7 @@ func DraftEditForm(database *db.DB) http.HandlerFunc {
 // UpdateDraft handles POST /features/{id}/edit — saves draft field changes.
 func UpdateDraft(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if err != nil {
 			http.Error(w, "invalid id", 400)
@@ -1211,7 +1123,7 @@ func UpdateDraft(database *db.DB) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := PartialTmpl.ExecuteTemplate(w, "feature_detail.html", featureDetailData{
+		if err := partials.ExecuteTemplate(w, "feature_detail.html", featureDetailData{
 			Feature:         f,
 			CanEditStatus:   canEditStatus(u.Role),
 			CanRetract:      f.Status == "draft" && f.CreatedBy == u.ID,
@@ -1225,7 +1137,7 @@ func UpdateDraft(database *db.DB) http.HandlerFunc {
 // ModifyContentForm handles GET /features/{id}/modify — returns edit form for pending/rejected features.
 func ModifyContentForm(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if err != nil {
 			http.Error(w, "invalid id", 400)
@@ -1253,7 +1165,7 @@ func ModifyContentForm(database *db.DB) http.HandlerFunc {
 		atts, csv := loadAttachments(database, f.ID)
 		data := draftEditData{Feature: f, Groups: groups, Users: users, Attachments: atts, AttachmentIDsCSV: csv}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := PartialTmpl.ExecuteTemplate(w, "feature_modify.html", data); err != nil {
+		if err := partials.ExecuteTemplate(w, "feature_modify.html", data); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}
@@ -1262,7 +1174,7 @@ func ModifyContentForm(database *db.DB) http.HandlerFunc {
 // UpdateFeatureContent handles POST /features/{id}/modify — saves content changes for pending/rejected features.
 func UpdateFeatureContent(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if err != nil {
 			http.Error(w, "invalid id", 400)
@@ -1337,7 +1249,7 @@ func UpdateFeatureContent(database *db.DB) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := PartialTmpl.ExecuteTemplate(w, "feature_detail.html", detail); err != nil {
+		if err := partials.ExecuteTemplate(w, "feature_detail.html", detail); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}
@@ -1346,7 +1258,7 @@ func UpdateFeatureContent(database *db.DB) http.HandlerFunc {
 // GetComments handles GET /features/{id}/comments — returns comments partial for SSE targeted update.
 func GetComments(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if err != nil {
 			http.Error(w, "invalid id", 400)
@@ -1359,7 +1271,7 @@ func GetComments(database *db.DB) http.HandlerFunc {
 		}
 		_ = database.MarkCommentsRead(u.ID, id)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := PartialTmpl.ExecuteTemplate(w, "comments_partial.html", renderCommentViews(comments, database, u.ID, u.Role == "admin")); err != nil {
+		if err := partials.ExecuteTemplate(w, "comments_partial.html", renderCommentViews(comments, database, u.ID, u.Role == "admin")); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	}

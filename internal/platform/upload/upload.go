@@ -1,4 +1,4 @@
-package handler
+package upload
 
 import (
 	"crypto/rand"
@@ -14,8 +14,9 @@ import (
 	"time"
 
 	"visualink/internal/db"
-	"visualink/internal/platform/imageutil"
 	"visualink/internal/model"
+	"visualink/internal/platform/auth"
+	"visualink/internal/platform/imageutil"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -44,7 +45,7 @@ func randomSlug() string {
 // Returns JSON { id, thumb_url, full_url, width, height }.
 func UploadImage(database *db.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		u := UserFromContext(r)
+		u := auth.UserFromContext(r)
 		r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
 		if err := r.ParseMultipartForm(maxUploadBytes); err != nil {
 			http.Error(w, "文件过大或上传失败（限 25 MiB）", http.StatusRequestEntityTooLarge)
