@@ -246,6 +246,10 @@ func main() {
 	}
 	compress, err := httpcompression.DefaultAdapter(
 		httpcompression.Compressor(brotlihttp.Encoding, 1000, brComp),
+		// SSE 必须豁免:压缩器会把小事件闷在编码缓冲区里(浏览器 EventSource
+		// 恒带 Accept-Encoding),导致实时推送整体失效——事件字节数被 Logger
+		// 记为已写出,但客户端收不到。curl 不带压缩头时走透传,极易误判为正常
+		httpcompression.ContentTypes([]string{"text/event-stream"}, true),
 	)
 	if err != nil {
 		log.Fatal("compression adapter:", err)
