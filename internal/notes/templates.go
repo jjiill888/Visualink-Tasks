@@ -27,6 +27,7 @@ func InitTemplates() {
 	}
 	partials = web.ParseSet(
 		"notes/notes_list_partial.html",
+		"notes/notes_trash_partial.html",
 		"notes/notes_panel_partial.html",
 		"notes/note_history.html",
 		"notes/note_perms_partial.html",

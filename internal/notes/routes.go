@@ -18,6 +18,10 @@ func Routes(r chi.Router, d *Deps) {
 	r.Get("/notes", NotesPage(d))
 	r.Get("/notes/new", NewNote(d))
 	r.Get("/notes/panel", NotesPanel(d)) // chi 静态段优先于 {id}
+	// 回收站(仅创建者视角;恢复/彻底删除不走 loadNote——它只查未删除行)
+	r.Get("/notes/trash", NotesTrash(d))
+	r.Post("/notes/{id}/recover", RecoverNote(d))
+	r.Delete("/notes/{id}/purge", PurgeNote(d))
 	// 文档组(侧栏文件树的文件夹,纯组织结构;三端点都返回刷新后的面板片段)
 	r.Post("/notes/groups", CreateNoteGroup(d))
 	r.Delete("/notes/groups/{gid}", DeleteNoteGroup(d))

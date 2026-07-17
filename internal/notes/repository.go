@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"visualink/internal/model"
 )
@@ -606,4 +607,149 @@ func (d *Repo) CreateNoteAttachment(a *model.NoteAttachment) error {
 	}
 	a.ID, _ = res.LastInsertId()
 	return nil
+}
+
+// ── 回收站 ──────────────────────────────────────────────────────────────────
+// 软删除(deleted_at)早已存在,这里补齐找回链路:列表/恢复/彻底删除/到期清理。
+// 权属校验都压在 SQL 的 owner_id 条件里——回收站只对创建者存在。
+
+// TrashedNote 回收站行的最小视图(不复用 noteCols:已删笔记不参与权限联查)。
+// DeletedAt 直接扫 time.Time——modernc 驱动把 DATETIME 列以 RFC3339 交出,
+// 自己按 "2006-01-02 15:04:05" 解析会失败(实测界面漏出原始串)。
+type TrashedNote struct {
+	ID        int64
+	Title     string
+	DeletedAt time.Time
+}
+
+// DeletedAtLabel 转东八区显示(与文库列表的时间格式一致)。
+func (t TrashedNote) DeletedAtLabel() string {
+	return t.DeletedAt.In(time.FixedZone("CST", 8*3600)).Format("2006-01-02 15:04")
+}
+
+// ListTrashedNotes 列出自己删除的笔记,新删的在前。
+func (d *Repo) ListTrashedNotes(ownerID int64) ([]*TrashedNote, error) {
+	rows, err := d.Query(
+		`SELECT id, title, deleted_at FROM notes
+		 WHERE owner_id = ? AND deleted_at IS NOT NULL
+		 ORDER BY deleted_at DESC LIMIT 200`, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []*TrashedNote
+	for rows.Next() {
+		t := &TrashedNote{}
+		if err := rows.Scan(&t.ID, &t.Title, &t.DeletedAt); err != nil {
+			return nil, err
+		}
+		list = append(list, t)
+	}
+	return list, rows.Err()
+}
+
+// RecoverNote 从回收站恢复(清 deleted_at,笔记回到原分区/原分组)。
+// ⚠ FTS 成对律:SoftDeleteNote 删除时把行摘出 notes_fts(已删的不该被搜到),
+// 恢复必须塞回去——否则恢复后搜不到,且再次软删除时 FTS 'delete' 命令
+// 对不在索引的行报错(external-content 表的 'delete' 要求行在索引中)。
+func (d *Repo) RecoverNote(id, ownerID int64) error {
+	tx, err := d.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	res, err := tx.Exec(
+		`UPDATE notes SET deleted_at = NULL
+		 WHERE id = ? AND owner_id = ? AND deleted_at IS NOT NULL`, id, ownerID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("note not in trash or not owned")
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO notes_fts(rowid, title, content_md)
+		 SELECT id, title, content_md FROM notes WHERE id=?`, id,
+	); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// PurgeNote 彻底删除:行删除经外键 CASCADE 带走 shares/revisions/attachments;
+// 磁盘附件目录由 handler 负责移除。
+// ⚠ FTS 成对律的另一面:软删除时行已被摘出索引,而 notes 的 AFTER DELETE
+// 触发器会再发一次 FTS 'delete'——对不在索引的行报错。先把行塞回索引,
+// 让触发器的 'delete' 有的放矢(同一事务内,索引不会短暂可搜)。
+func (d *Repo) PurgeNote(id, ownerID int64) error {
+	tx, err := d.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(
+		`INSERT INTO notes_fts(rowid, title, content_md)
+		 SELECT id, title, content_md FROM notes
+		 WHERE id = ? AND owner_id = ? AND deleted_at IS NOT NULL`, id, ownerID,
+	); err != nil {
+		return err
+	}
+	res, err := tx.Exec(
+		`DELETE FROM notes WHERE id = ? AND owner_id = ? AND deleted_at IS NOT NULL`,
+		id, ownerID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("note not in trash or not owned")
+	}
+	return tx.Commit()
+}
+
+// PurgeExpiredNotes 清理删除超过 days 天的笔记,返回被清的 id 供磁盘附件清理。
+func (d *Repo) PurgeExpiredNotes(days int) ([]int64, error) {
+	rows, err := d.Query(
+		`SELECT id FROM notes
+		 WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', ?)`,
+		fmt.Sprintf("-%d days", days))
+	if err != nil {
+		return nil, err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for _, id := range ids {
+		// 与 PurgeNote 同一 FTS 成对律:先塞回索引再删,触发器才不报错
+		tx, err := d.Begin()
+		if err != nil {
+			return ids, err
+		}
+		if _, err := tx.Exec(
+			`INSERT INTO notes_fts(rowid, title, content_md)
+			 SELECT id, title, content_md FROM notes WHERE id = ?`, id,
+		); err != nil {
+			tx.Rollback()
+			return ids, err
+		}
+		if _, err := tx.Exec(`DELETE FROM notes WHERE id = ?`, id); err != nil {
+			tx.Rollback()
+			return ids, err
+		}
+		if err := tx.Commit(); err != nil {
+			return ids, err
+		}
+	}
+	return ids, nil
 }

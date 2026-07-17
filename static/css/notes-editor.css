@@ -441,6 +441,47 @@ body.ne-library .ne-page {
   color: var(--ne-err, #dc2626);
 }
 
+/* ── 回收站(文库页) ──
+   入口=搜索行里的安静文字按钮;视图内 恢复/彻底删除 复用 ne-lib-del
+   悬停浮现语言,恢复是正向操作转强调蓝,彻底删除保持警示红 */
+.ne-lib-trash-btn {
+  flex: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ne-faint);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.ne-lib-trash-btn:hover { color: var(--ne-fg); }
+
+.ne-trash-bar {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding: 8px 0 10px;
+  border-bottom: 1px solid var(--ne-line);
+}
+.ne-trash-back {
+  font: inherit;
+  font-size: 13px;
+  color: var(--ne-muted);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.ne-trash-back:hover { color: var(--ne-fg); }
+.ne-trash-hint { font-size: 12px; color: var(--ne-faint); }
+
+/* 已删标题不可点开,降为普通文字色 */
+.ne-trash-title { color: var(--ne-muted); cursor: default; }
+.ne-lib-row:hover .ne-trash-title { color: var(--ne-muted); }
+.ne-trash-recover:hover { color: var(--ne-accent); }
+
 /* 触屏没有 hover，删除按钮常显 */
 @media (hover: none) {
   .ne-lib-del {

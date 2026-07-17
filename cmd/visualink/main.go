@@ -174,6 +174,7 @@ func main() {
 
 	// 后台任务
 	tasks.StartAutoArchive(tasksDeps)
+	notes.StartTrashAutoPurge(notesDeps)
 
 	addr := ":8080"
 	if p := os.Getenv("PORT"); p != "" { // 本地开发可覆盖端口,默认行为不变

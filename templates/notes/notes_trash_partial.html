@@ -1,0 +1,31 @@
+{{define "notes_trash_partial.html"}}
+{{/* 回收站视图:与文库列表同一语言(一行一篇+悬停浮现操作)。
+     data-view="trash" 供页面 JS 识别——切回标签页的自动刷新须跳过本视图。 */}}
+<div data-view="trash">
+  <div class="ne-trash-bar">
+    <button type="button" class="ne-trash-back"
+      hx-get="/notes" hx-target="#notes-list" hx-swap="innerHTML">← 返回文库</button>
+    <span class="ne-trash-hint">删除的笔记保留 30 天，到期自动清除</span>
+  </div>
+  {{if .Notes}}
+  <div class="ne-lib-list">
+    {{range .Notes}}
+    <div class="ne-lib-row">
+      <span class="ne-lib-title ne-trash-title">{{if .Title}}{{.Title}}{{else}}无标题笔记{{end}}</span>
+      <span class="ne-lib-meta">删除于 {{.DeletedAtLabel}}</span>
+      <button type="button" class="ne-lib-del ne-trash-recover"
+        hx-post="/notes/{{.ID}}/recover"
+        hx-target="#notes-list" hx-swap="innerHTML"
+        title="恢复到原来的分区与分组">恢复</button>
+      <button type="button" class="ne-lib-del"
+        hx-delete="/notes/{{.ID}}/purge"
+        hx-target="#notes-list" hx-swap="innerHTML"
+        hx-confirm="彻底删除「{{if .Title}}{{.Title}}{{else}}无标题笔记{{end}}」？正文、历史版本与附件将无法找回。">彻底删除</button>
+    </div>
+    {{end}}
+  </div>
+  {{else}}
+  <div class="ne-lib-empty">回收站是空的</div>
+  {{end}}
+</div>
+{{end}}

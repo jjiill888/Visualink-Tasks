@@ -59,6 +59,9 @@
         hx-trigger="keyup changed delay:300ms, search"
         hx-target="#notes-list"
         hx-swap="innerHTML">
+      <button type="button" class="ne-lib-trash-btn"
+        hx-get="/notes/trash" hx-target="#notes-list" hx-swap="innerHTML"
+        title="查看已删除的笔记（保留 30 天）">回收站</button>
       <a class="ne-lib-new" href="/notes/new" target="_blank" rel="noopener"
         title="新建笔记，在新标签页打开">＋ 新建</a>
     </div>
@@ -97,6 +100,8 @@
   (function () {
     function refreshList() {
       if (document.hidden || !window.htmx) return;
+      /* 回收站视图不自动刷回文库列表 */
+      if (document.querySelector('#notes-list [data-view="trash"]')) return;
       var q = document.getElementById('note-search').value;
       htmx.ajax('GET', '/notes' + (q ? '?q=' + encodeURIComponent(q) : ''),
         { target: '#notes-list', swap: 'innerHTML' });

@@ -635,3 +635,67 @@ func randomSlug() string {
 	_, _ = rand.Read(b[:])
 	return hex.EncodeToString(b[:])
 }
+
+// ── 回收站 ──────────────────────────────────────────────────────────────────
+
+// trashData 回收站片段的数据。
+type trashData struct {
+	Notes []*TrashedNote
+}
+
+func renderTrash(w http.ResponseWriter, d *Deps, ownerID int64) {
+	list, err := d.Repo.ListTrashedNotes(ownerID)
+	if err != nil {
+		http.Error(w, "查询失败", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := partials.ExecuteTemplate(w, "notes_trash_partial.html", &trashData{Notes: list}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// NotesTrash handles GET /notes/trash — 文库页回收站视图(HTMX 片段)。
+func NotesTrash(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := auth.UserFromContext(r)
+		renderTrash(w, d, u.ID)
+	}
+}
+
+// RecoverNote handles POST /notes/{id}/recover — 恢复到原分区/原分组。
+// 不走 loadNote:GetNote 只查未删除的,这里要操作的恰是已删除行。
+func RecoverNote(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := auth.UserFromContext(r)
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			http.Error(w, "无效的笔记 ID", http.StatusBadRequest)
+			return
+		}
+		if err := d.Repo.RecoverNote(id, u.ID); err != nil {
+			http.Error(w, "恢复失败:笔记不在回收站,或不属于你", http.StatusForbidden)
+			return
+		}
+		renderTrash(w, d, u.ID)
+	}
+}
+
+// PurgeNote handles DELETE /notes/{id}/purge — 彻底删除(库行 CASCADE + 磁盘附件目录)。
+func PurgeNote(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := auth.UserFromContext(r)
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			http.Error(w, "无效的笔记 ID", http.StatusBadRequest)
+			return
+		}
+		if err := d.Repo.PurgeNote(id, u.ID); err != nil {
+			http.Error(w, "删除失败:笔记不在回收站,或不属于你", http.StatusForbidden)
+			return
+		}
+		// 库行已删,附件目录属于该笔记独占,直接整目录移除
+		_ = os.RemoveAll(filepath.Join(NoteAttachRoot, strconv.FormatInt(id, 10)))
+		renderTrash(w, d, u.ID)
+	}
+}
