@@ -556,6 +556,24 @@ func (d *Repo) GetNoteRevision(noteID, revID int64) (*model.NoteRevision, error)
 	return rev, err
 }
 
+// GetPrevNoteRevision 取某版本的上一版(同一笔记里 id 更小的最近一条);
+// 没有上一版返回 nil,diff 视图把整篇视为新增。
+func (d *Repo) GetPrevNoteRevision(noteID, revID int64) (*model.NoteRevision, error) {
+	rev := &model.NoteRevision{}
+	err := d.QueryRow(`
+		SELECT r.id, r.note_id, r.content_md, r.saved_by, r.saved_at,
+		       COALESCE(NULLIF(u.display_name,''), u.username)
+		FROM note_revisions r
+		JOIN users u ON u.id = r.saved_by
+		WHERE r.note_id = ? AND r.id < ?
+		ORDER BY r.id DESC LIMIT 1
+	`, noteID, revID).Scan(&rev.ID, &rev.NoteID, &rev.ContentMD, &rev.SavedBy, &rev.SavedAt, &rev.SaverName)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return rev, err
+}
+
 // RestoreNoteRevision 恢复到某历史版本：恢复前先把当前正文存一条 revision
 // （不受 5 分钟节流限制，保证可以回退「恢复」这个动作本身），再覆盖正文。
 func (d *Repo) RestoreNoteRevision(noteID, revID, userID int64) error {

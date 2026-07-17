@@ -1,0 +1,46 @@
+{{template "base.html" .}}
+
+{{define "title"}}版本对比 — {{if .Data.Note.Title}}{{.Data.Note.Title}}{{else}}无标题笔记{{end}}{{end}}
+
+{{define "head"}}
+{{/* 设计词元内联:diff 配色消费 --ne-* 变量;与快照页一样恒为浅色 */}}
+<style>{{neBaseCSS}}</style>
+<link rel="stylesheet" href="/static/css/notes-editor.css?v={{notesEditorCSSVersion}}">
+{{end}}
+
+{{define "content"}}
+{{$n := .Data.Note}}
+{{$rev := .Data.Rev}}
+{{$prev := .Data.Prev}}
+<div class="note-editor-page">
+  <div class="note-editor-toolbar">
+    <a href="/notes/{{$n.ID}}" class="us-btn us-btn-sm us-btn-outline">← 返回编辑</a>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span class="text-muted" style="font-size:13px">
+        {{if $prev}}{{$prev.SavedAtLabel}} → {{$rev.SavedAtLabel}}{{else}}首个版本（整篇视为新增）· {{$rev.SavedAtLabel}}{{end}}
+        由 {{$rev.SaverName}} 保存
+        <span class="ne-diff-stat">＋{{.Data.Adds}} －{{.Data.Dels}}</span>
+      </span>
+      <a href="/notes/{{$n.ID}}/revisions/{{$rev.ID}}" class="us-btn us-btn-sm us-btn-outline">查看渲染快照</a>
+    </div>
+  </div>
+
+  <div class="us-card note-editor-card">
+    {{if or .Data.Adds .Data.Dels}}
+    <div class="ne-diff">
+      {{range .Data.Lines}}
+      {{if eq .Op "skip"}}
+      <div class="ne-diff-skip">⋯ {{.N}} 行未改动</div>
+      {{else}}
+      <div class="ne-diff-line ne-diff-{{.Op}}"><span class="ne-diff-sign">{{if eq .Op "add"}}+{{else if eq .Op "del"}}−{{end}}</span><span class="ne-diff-text">{{.Text}}</span></div>
+      {{end}}
+      {{end}}
+    </div>
+    {{else}}
+    <div class="ne-diff-same">两个版本内容完全相同</div>
+    {{end}}
+  </div>
+</div>
+{{end}}
+
+{{define "scripts"}}{{end}}

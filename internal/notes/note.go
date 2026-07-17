@@ -518,6 +518,47 @@ func NoteRevisionPage(d *Deps) http.HandlerFunc {
 	}
 }
 
+// NoteRevisionDiff GET /notes/{id}/revisions/{rid}/diff — 与上一版本的行级对比页。
+// 上一版 = 同一笔记里 id 更小的最近一条;首个版本没有上一版,整篇视为新增。
+func NoteRevisionDiff(d *Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		n := loadNote(w, r, d)
+		if n == nil {
+			return
+		}
+		rid, err := strconv.ParseInt(chi.URLParam(r, "rid"), 10, 64)
+		if err != nil {
+			http.Error(w, "无效的版本 ID", http.StatusBadRequest)
+			return
+		}
+		rev, err := d.Repo.GetNoteRevision(n.ID, rid)
+		if err != nil {
+			http.Error(w, "服务器错误", http.StatusInternalServerError)
+			return
+		}
+		if rev == nil {
+			http.Error(w, "版本不存在", http.StatusNotFound)
+			return
+		}
+		prev, err := d.Repo.GetPrevNoteRevision(n.ID, rid)
+		if err != nil {
+			http.Error(w, "服务器错误", http.StatusInternalServerError)
+			return
+		}
+		var oldMD string
+		if prev != nil {
+			oldMD = prev.ContentMD
+		}
+		lines, adds, dels := diffLines(oldMD, rev.ContentMD)
+		pd := auth.PageData(r, "notes")
+		pd.Data = map[string]any{
+			"Note": n, "Rev": rev, "Prev": prev,
+			"Lines": lines, "Adds": adds, "Dels": dels,
+		}
+		render(w, r, "note_diff.html", pd)
+	}
+}
+
 // RestoreNoteRevision POST /notes/{id}/restore/{rid} — 恢复到某历史版本（需编辑权）。
 func RestoreNoteRevision(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

@@ -40,6 +40,7 @@ func Routes(r chi.Router, d *Deps) {
 	r.Handle("/collab/*", CollabProxy()) // y-sweet websocket 反代(仅登录用户可达)
 	r.Get("/notes/{id}/history", NoteHistory(d))
 	r.Get("/notes/{id}/revisions/{rid}", NoteRevisionPage(d))
+	r.Get("/notes/{id}/revisions/{rid}/diff", NoteRevisionDiff(d)) // 与上一版本的行级对比
 	r.Post("/notes/{id}/restore/{rid}", RestoreNoteRevision(d))
 	r.Post("/notes/{id}/attachments", UploadNoteAttachment(d))
 	r.Get("/attachments/{id}/{name}", ServeNoteAttachment(d))

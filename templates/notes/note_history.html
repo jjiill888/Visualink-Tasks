@@ -12,6 +12,7 @@
       <span class="ne-hist-time">{{.SavedAtLabel}}</span>
       <span class="ne-hist-saver">{{.SaverName}}</span>
       <a class="ne-hist-act" href="/notes/{{$noteID}}/revisions/{{.ID}}" target="_blank" rel="noopener">查看</a>
+      <a class="ne-hist-act" href="/notes/{{$noteID}}/revisions/{{.ID}}/diff" target="_blank" rel="noopener" title="与上一版本的行级对比">对比</a>
       {{if $canEdit}}
       <button type="button" class="ne-hist-act"
         hx-post="/notes/{{$noteID}}/restore/{{.ID}}"
