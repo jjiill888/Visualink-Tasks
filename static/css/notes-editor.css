@@ -482,8 +482,17 @@ body.ne-library .ne-page {
 .ne-lib-row:hover .ne-trash-title { color: var(--ne-muted); }
 .ne-trash-recover:hover { color: var(--ne-accent); }
 
-/* ── 历史版本 diff 页 ──
+/* ── 历史版本 diff 页(独立 ne 页,body.ne-diff-page) ──
    ne 语义色淡底:增=ok、删=err 淡底+划线;折叠标记与统计走装饰灰 */
+body.ne-diff-page .ne-page {
+  max-width: 920px; /* diff 行比正文长,列稍宽减少软换行 */
+  padding-top: 96px;
+}
+.ne-diff-meta {
+  font-size: 13px;
+  color: var(--ne-muted);
+  margin: 0 0 20px;
+}
 .ne-diff {
   font-family: ui-monospace, SFMono-Regular, Consolas, 'Courier New', monospace;
   font-size: 13px;
@@ -517,7 +526,7 @@ body.ne-library .ne-page {
 }
 .ne-diff-stat { color: var(--ne-faint); margin-left: 6px; }
 .ne-diff-same { color: var(--ne-muted); font-size: 13px; }
-/* 深色底下换低亮度淡底(页面当前恒浅色,规则为将来主题化备着) */
+/* 深色主题:低亮度淡底 */
 .ne-dark .ne-diff-add { background: rgba(99, 193, 116, 0.12); }
 .ne-dark .ne-diff-del { background: rgba(224, 108, 117, 0.12); }
 

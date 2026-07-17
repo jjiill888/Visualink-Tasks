@@ -555,7 +555,7 @@ func NoteRevisionDiff(d *Deps) http.HandlerFunc {
 			"Note": n, "Rev": rev, "Prev": prev,
 			"Lines": lines, "Adds": adds, "Dels": dels,
 		}
-		render(w, r, "note_diff.html", pd)
+		renderStandalone(w, "note_diff.html", pd)
 	}
 }
 

@@ -1,31 +1,55 @@
-{{template "base.html" .}}
-
-{{define "title"}}版本对比 — {{if .Data.Note.Title}}{{.Data.Note.Title}}{{else}}无标题笔记{{end}}{{end}}
-
-{{define "head"}}
-{{/* 设计词元内联:diff 配色消费 --ne-* 变量;与快照页一样恒为浅色 */}}
-<style>{{neBaseCSS}}</style>
-<link rel="stylesheet" href="/static/css/notes-editor.css?v={{notesEditorCSSVersion}}">
-{{end}}
-
-{{define "content"}}
+{{/* 版本对比页 —— 独立 ne 页（不套 base.html），与文库/编辑页同一设计语言：
+     40px 安静顶栏 + 单栏居中；增=ok 淡底、删=err 淡底+划线、长段未改动折叠；
+     深浅主题跟随全系统 ne-theme。 */}}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <script>
+  /* 主题先行：与编辑页共用 ne-theme（auto/light/dark），样式前定好 .ne-dark 防闪烁 */
+  (function () {
+    var t = localStorage.getItem('ne-theme');
+    if (t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('ne-dark');
+    }
+    if (t === 'light' || t === 'dark') document.documentElement.style.colorScheme = t;
+  })();
+  </script>
+  <title>版本对比 — {{if .Data.Note.Title}}{{.Data.Note.Title}}{{else}}无标题笔记{{end}}</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%234f46e5'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-weight='bold' font-size='16' fill='white'>VT</text></svg>">
+  {{/* 全系统设计词元（ne-base.css）内联直出：零额外请求，样式前就位 */}}
+  <style>{{neBaseCSS}}</style>
+  <link rel="stylesheet" href="/static/css/notes-editor.css?v={{notesEditorCSSVersion}}">
+</head>
 {{$n := .Data.Note}}
 {{$rev := .Data.Rev}}
 {{$prev := .Data.Prev}}
-<div class="note-editor-page">
-  <div class="note-editor-toolbar">
-    <a href="/notes/{{$n.ID}}" class="us-btn us-btn-sm us-btn-outline">← 返回编辑</a>
-    <div style="display:flex;align-items:center;gap:12px">
-      <span class="text-muted" style="font-size:13px">
-        {{if $prev}}{{$prev.SavedAtLabel}} → {{$rev.SavedAtLabel}}{{else}}首个版本（整篇视为新增）· {{$rev.SavedAtLabel}}{{end}}
-        由 {{$rev.SaverName}} 保存
-        <span class="ne-diff-stat">＋{{.Data.Adds}} －{{.Data.Dels}}</span>
-      </span>
-      <a href="/notes/{{$n.ID}}/revisions/{{$rev.ID}}" class="us-btn us-btn-sm us-btn-outline">查看渲染快照</a>
-    </div>
-  </div>
+<body class="note-standalone ne-diff-page">
 
-  <div class="us-card note-editor-card">
+  <header class="ne-topbar">
+    <a class="ne-link" href="/notes/{{$n.ID}}">← 返回编辑</a>
+    <div class="ne-right">
+      <a class="ne-link" href="/notes/{{$n.ID}}/revisions/{{$rev.ID}}" target="_blank" rel="noopener"
+        title="以渲染后的样子查看该版本快照">查看渲染快照</a>
+      {{/* 主题切换与编辑页同款图标（半圆=自动/太阳=浅色/月亮=深色） */}}
+      <button type="button" class="ne-link" id="ne-theme-toggle" data-theme="auto" title="切换配色：自动 → 浅色 → 深色">
+        <svg class="ne-ico-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none"/></svg>
+        <svg class="ne-ico-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.5 1.5M17.2 17.2l1.5 1.5M5.3 18.7l1.5-1.5M17.2 6.8l1.5-1.5"/></svg>
+        <svg class="ne-ico-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.6A8.2 8.2 0 1 1 10.4 3.4a6.6 6.6 0 0 0 10.2 10.2z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="ne-page">
+    <h1 class="ne-lib-head">{{if $n.Title}}{{$n.Title}}{{else}}无标题笔记{{end}}</h1>
+    <div class="ne-diff-meta">
+      {{if $prev}}{{$prev.SavedAtLabel}} → {{$rev.SavedAtLabel}}{{else}}首个版本（整篇视为新增）· {{$rev.SavedAtLabel}}{{end}}
+      · 由 {{$rev.SaverName}} 保存
+      <span class="ne-diff-stat">＋{{.Data.Adds}} －{{.Data.Dels}}</span>
+    </div>
+
     {{if or .Data.Adds .Data.Dels}}
     <div class="ne-diff">
       {{range .Data.Lines}}
@@ -39,8 +63,30 @@
     {{else}}
     <div class="ne-diff-same">两个版本内容完全相同</div>
     {{end}}
-  </div>
-</div>
-{{end}}
+  </main>
 
-{{define "scripts"}}{{end}}
+  <script>
+  /* 配色切换：与文库/编辑页同一逻辑（自动 → 浅色 → 深色，记 localStorage） */
+  (function () {
+    var btn = document.getElementById('ne-theme-toggle');
+    var media = matchMedia('(prefers-color-scheme: dark)');
+    function apply() {
+      var t = localStorage.getItem('ne-theme') || 'auto';
+      var dark = t === 'dark' || (t === 'auto' && media.matches);
+      document.documentElement.classList.toggle('ne-dark', dark);
+      document.documentElement.style.colorScheme = t === 'auto' ? '' : t;
+      btn.dataset.theme = t;
+      btn.title = '配色：' + { auto: '自动（跟随系统）', light: '浅色', dark: '深色' }[t] + '，点击切换';
+    }
+    btn.addEventListener('click', function () {
+      var order = ['auto', 'light', 'dark'];
+      var cur = localStorage.getItem('ne-theme') || 'auto';
+      localStorage.setItem('ne-theme', order[(order.indexOf(cur) + 1) % order.length]);
+      apply();
+    });
+    media.addEventListener('change', apply);
+    apply();
+  })();
+  </script>
+</body>
+</html>

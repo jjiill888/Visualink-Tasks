@@ -24,7 +24,8 @@ func InitTemplates() {
 		// 文库页内嵌列表片段(搜索时 HTMX 单独刷新)
 		"notes.html":         web.ParseSet("notes/notes.html", "notes/notes_list_partial.html"),
 		"note_revision.html": web.ParseSet("shared/base.html", "notes/note_revision.html"),
-		"note_diff.html":     web.ParseSet("shared/base.html", "notes/note_diff.html"),
+		// 版本对比页:独立 ne 页(与文库/编辑页同款,不套 base.html)
+		"note_diff.html": web.ParseSet("notes/note_diff.html"),
 	}
 	partials = web.ParseSet(
 		"notes/notes_list_partial.html",
